@@ -1,0 +1,145 @@
+@custom-variant dark (&:is(.dark *));
+
+:root {
+  --font-size: 16px;
+  --background: #f0f8ff;
+  --foreground: #0d1f2d;
+  --card: #ffffff;
+  --card-foreground: #0d1f2d;
+  --popover: #ffffff;
+  --popover-foreground: #0d1f2d;
+  --primary: #0d9488;
+  --primary-foreground: #ffffff;
+  --secondary: #ccfbf1;
+  --secondary-foreground: #134e4a;
+  --muted: #e8f5f5;
+  --muted-foreground: #5c7d7a;
+  --accent: #f0fdfa;
+  --accent-foreground: #0d9488;
+  --destructive: #dc2626;
+  --destructive-foreground: #ffffff;
+  --border: rgba(0, 0, 0, 0.08);
+  --input: #ffffff;
+  --input-background: #f8fffe;
+  --switch-background: #cbd5e1;
+  --font-weight-medium: 500;
+  --font-weight-normal: 400;
+  --ring: #0d9488;
+  --chart-1: #0d9488;
+  --chart-2: #06b6d4;
+  --chart-3: #8b5cf6;
+  --chart-4: #f59e0b;
+  --chart-5: #f43f5e;
+  --radius: 0.5rem;
+  --sidebar: #1a3040;
+  --sidebar-foreground: #94b9cc;
+  --sidebar-primary: #14b8a6;
+  --sidebar-primary-foreground: #042f2e;
+  --sidebar-accent: #1f3d50;
+  --sidebar-accent-foreground: #e0f2f1;
+  --sidebar-border: rgba(255, 255, 255, 0.07);
+  --sidebar-ring: #14b8a6;
+}
+
+.dark {
+  --background: #050b18;
+  --foreground: #dde8f5;
+  --card: #0a1228;
+  --card-foreground: #dde8f5;
+  --popover: #0a1228;
+  --popover-foreground: #dde8f5;
+  --primary: #14b8a6;
+  --primary-foreground: #000d0c;
+  --secondary: #11213a;
+  --secondary-foreground: #8aaec8;
+  --muted: #0e1929;
+  --muted-foreground: #537a95;
+  --accent: #0e1929;
+  --accent-foreground: #14b8a6;
+  --destructive: #ef4444;
+  --destructive-foreground: #ffffff;
+  --border: rgba(255, 255, 255, 0.07);
+  --input: #0e1929;
+  --input-background: #0e1929;
+  --switch-background: #1e3a4f;
+  --font-weight-medium: 500;
+  --font-weight-normal: 400;
+  --ring: #14b8a6;
+  --chart-1: #14b8a6;
+  --chart-2: #06b6d4;
+  --chart-3: #8b5cf6;
+  --chart-4: #f59e0b;
+  --chart-5: #f43f5e;
+  --sidebar: #030810;
+  --sidebar-foreground: #7a9ab5;
+  --sidebar-primary: #14b8a6;
+  --sidebar-primary-foreground: #000d0c;
+  --sidebar-accent: #0e1929;
+  --sidebar-accent-foreground: #dde8f5;
+  --sidebar-border: rgba(255, 255, 255, 0.05);
+  --sidebar-ring: #14b8a6;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-input-background: var(--input-background);
+  --color-switch-background: var(--switch-background);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+  }
+
+  html {
+    font-size: var(--font-size);
+  }
+
+  h1 { font-size: var(--text-2xl); font-weight: var(--font-weight-medium); line-height: 1.5; }
+  h2 { font-size: var(--text-xl); font-weight: var(--font-weight-medium); line-height: 1.5; }
+  h3 { font-size: var(--text-lg); font-weight: var(--font-weight-medium); line-height: 1.5; }
+  h4 { font-size: var(--text-base); font-weight: var(--font-weight-medium); line-height: 1.5; }
+  label { font-size: var(--text-base); font-weight: var(--font-weight-medium); line-height: 1.5; }
+  button { font-size: var(--text-base); font-weight: var(--font-weight-medium); line-height: 1.5; }
+  input { font-size: var(--text-base); font-weight: var(--font-weight-normal); line-height: 1.5; }
+}
