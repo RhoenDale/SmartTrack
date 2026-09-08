@@ -1,0 +1,107 @@
+===============================================
+SIMPLE STEPS TO FIX STAFF NAMES (3 MINUTES)
+===============================================
+
+You got the error "Duplicate column name 'staff_id'" - that's GOOD! 
+It means the column already exists. Now we just need to populate it.
+
+STEP 1: Open phpMyAdmin
+------------------------
+Go to: http://localhost/phpmyadmin
+Click on "smarttrack" database (left sidebar)
+Click "SQL" tab (top menu)
+
+
+STEP 2: Run This Query First
+-----------------------------
+Copy and paste this into the SQL box:
+
+    SELECT id, name, email FROM users;
+
+Click "Go"
+Write down YOUR user ID (should be like U001, U002, U003, etc.)
+For example: U003
+
+
+STEP 3: See What Names Are in Transactions
+------------------------------------------
+Copy and paste this:
+
+    SELECT DISTINCT staff FROM transactions ORDER BY staff;
+
+Click "Go"
+You'll see names like "J. Dela Cruz", "M. Santos", "Maria", etc.
+Write down which names are YOURS
+
+
+STEP 4: Link Your Transactions
+-------------------------------
+Copy and paste this, but REPLACE 'U003' with YOUR user ID from Step 2:
+
+    UPDATE transactions SET staff_id = 'U003' 
+    WHERE staff IN ('J. Dela Cruz', 'Maria', 'M. Santos');
+
+IMPORTANT: Replace 'U003' with your actual ID!
+IMPORTANT: Replace the names in () with the names from Step 3 that are yours!
+
+Click "Go"
+
+
+STEP 5: Verify It Worked
+-------------------------
+Copy and paste this:
+
+    SELECT 
+        t.staff as old_name,
+        u.name as current_name,
+        t.transacted_at
+    FROM transactions t
+    LEFT JOIN users u ON t.staff_id = u.id
+    ORDER BY t.transacted_at DESC
+    LIMIT 10;
+
+Click "Go"
+You should see "Paksiw" (or your updated name) in the "current_name" column!
+
+
+STEP 6: Refresh Your App
+-------------------------
+Go back to SmartTrack
+Press Ctrl + Shift + R (hard refresh)
+Go to Transactions page
+✅ Should show "Paksiw" now!
+
+
+===============================================
+QUICK EXAMPLE
+===============================================
+
+If your user ID is U003 and you see these old names in Step 3:
+- J. Dela Cruz
+- Maria
+
+Then in Step 4, run:
+
+UPDATE transactions SET staff_id = 'U003' 
+WHERE staff IN ('J. Dela Cruz', 'Maria');
+
+
+===============================================
+STILL NOT WORKING?
+===============================================
+
+Option 1: Use the automatic script
+-----------------------------------
+1. In phpMyAdmin SQL tab
+2. Open file: populate_staff_id.sql
+3. Copy ALL contents
+4. Paste and click "Go"
+
+Option 2: Use the guided script
+--------------------------------
+1. In phpMyAdmin SQL tab
+2. Open file: quick_fix_paksiw.sql
+3. Follow the instructions in that file
+4. It will guide you step by step
+
+===============================================
