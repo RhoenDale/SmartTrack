@@ -10,6 +10,9 @@
 function getApiBase(): string {
   if (typeof window === 'undefined') return 'http://localhost/SmartTrack/api';
 
+  const configuredApiBase = import.meta.env.VITE_API_URL?.trim().replace(/\/$/, '');
+  if (configuredApiBase) return configuredApiBase;
+
   const { protocol, hostname, port } = window.location;
 
   // Vite dev server (any port that's not 80/443)
