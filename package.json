@@ -98,6 +98,7 @@
     "electron": "^43.1.1",
     "electron-builder": "^26.15.3",
     "embla-carousel-react": "8.6.0",
+    "gh-pages": "^6.3.0",
     "input-otp": "1.4.2",
     "lucide-react": "0.487.0",
     "motion": "12.23.24",
