@@ -95,27 +95,34 @@ if ($id) {
         require_fields($data, ['name', 'category', 'supplier', 'reorder', 'price']);
 
         $pdo->prepare(
-            'UPDATE products SET name=?, category=?, supplier=?, reorder=?, price=?, sale_price=?, updated_at=NOW()
+            'UPDATE products SET name=?, category=?, supplier=?, reorder=?, price=?, sale_price=?, is_vat_exempt=?, updated_at=NOW()
              WHERE id = ?'
         )->execute([
             $data['name'], $data['category'], $data['supplier'],
             (int)$data['reorder'], (float)$data['price'],
             isset($data['sale_price']) && $data['sale_price'] !== '' ? (float)$data['sale_price'] : null,
+            isset($data['is_vat_exempt']) ? (int)$data['is_vat_exempt'] : 0,
             $id,
         ]);
 
-        // Replace batches if provided
+        // Replace batches if provided — preserving batch cost data
         if (!empty($data['batches']) && is_array($data['batches'])) {
             $pdo->prepare('DELETE FROM product_batches WHERE product_id = ?')->execute([$id]);
             $ins = $pdo->prepare(
-                'INSERT INTO product_batches (batch_id, product_id, qty, expiry_date, received_date)
-                 VALUES (?, ?, ?, ?, ?)'
+                'INSERT INTO product_batches (batch_id, product_id, qty, expiry_date, received_date, batch_total_cost, unit_cost)
+                 VALUES (?, ?, ?, ?, ?, ?, ?)'
             );
             foreach ($data['batches'] as $b) {
+                $qty       = (int)$b['qty'];
+                $totalCost = isset($b['batchTotalCost']) && $b['batchTotalCost'] !== '' && $b['batchTotalCost'] !== null
+                             ? (float)$b['batchTotalCost'] : null;
+                $unitCost  = ($totalCost !== null && $qty > 0) ? round($totalCost / $qty, 4) : null;
                 $ins->execute([
-                    $b['batchId'], $id, (int)$b['qty'],
+                    $b['batchId'], $id, $qty,
                     date('Y-m-d', strtotime($b['expiryDate'] ?? $b['expiry'])),
                     date('Y-m-d', strtotime($b['receivedDate'])),
+                    $totalCost,
+                    $unitCost,
                 ]);
             }
         }
@@ -179,24 +186,31 @@ if ($method === 'POST') {
     }
 
     $pdo->prepare(
-        'INSERT INTO products (id, name, category, supplier, reorder, price, sale_price, status)
-         VALUES (?, ?, ?, ?, ?, ?, ?, "good")'
+        'INSERT INTO products (id, name, category, supplier, reorder, price, sale_price, is_vat_exempt, status)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, "good")'
     )->execute([
         $data['id'], $data['name'], $data['category'], $data['supplier'],
         (int)$data['reorder'], (float)$data['price'],
         isset($data['sale_price']) && $data['sale_price'] !== '' ? (float)$data['sale_price'] : null,
+        isset($data['is_vat_exempt']) ? (int)$data['is_vat_exempt'] : 0,
     ]);
 
-    // Insert batches
+    // Insert batches with optional batch cost
     $ins = $pdo->prepare(
-        'INSERT INTO product_batches (batch_id, product_id, qty, expiry_date, received_date)
-         VALUES (?, ?, ?, ?, ?)'
+        'INSERT INTO product_batches (batch_id, product_id, qty, expiry_date, received_date, batch_total_cost, unit_cost)
+         VALUES (?, ?, ?, ?, ?, ?, ?)'
     );
     foreach ($data['batches'] as $b) {
+        $qty       = (int)$b['qty'];
+        $totalCost = isset($b['batchTotalCost']) && $b['batchTotalCost'] !== '' && $b['batchTotalCost'] !== null
+                     ? (float)$b['batchTotalCost'] : null;
+        $unitCost  = ($totalCost !== null && $qty > 0) ? round($totalCost / $qty, 4) : null;
         $ins->execute([
-            $b['batchId'], $data['id'], (int)$b['qty'],
+            $b['batchId'], $data['id'], $qty,
             date('Y-m-d', strtotime($b['expiryDate'] ?? $b['expiry'])),
             date('Y-m-d', strtotime($b['receivedDate'])),
+            $totalCost,
+            $unitCost,
         ]);
     }
 

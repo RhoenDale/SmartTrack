@@ -7,11 +7,14 @@ export default function StockAlertsPage({
   inventory,
   onGoToInventory,
   onEditProduct,
+  userRole,
 }: {
   inventory: Product[];
   onGoToInventory: () => void;
   onEditProduct: (product: Product) => void;
+  userRole: string;
 }) {
+  const canManageStock = userRole === "inventory_manager";
   const critical = inventory.filter(i => i.status === "critical");
   const low = inventory.filter(i => i.status === "low");
   const moderate = inventory.filter(i => i.status === "moderate");
@@ -145,9 +148,11 @@ export default function StockAlertsPage({
                               </div>
                             </div>
                             <div className="mt-3 flex items-center gap-2">
-                              <button onClick={() => onEditProduct(item)} className="flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground rounded-lg text-[11px] font-bold hover:opacity-90 transition-opacity">
-                                <RefreshCw size={10} />Reorder Now
-                              </button>
+                              {canManageStock && (
+                                <button onClick={() => onEditProduct(item)} className="flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground rounded-lg text-[11px] font-bold hover:opacity-90 transition-opacity">
+                                  <RefreshCw size={10} />Reorder Now
+                                </button>
+                              )}
                               <span className="text-[10px] text-muted-foreground">Unit price: {fmt(item.price)}</span>
                             </div>
                           </div>
@@ -207,9 +212,11 @@ export default function StockAlertsPage({
                           </div>
                         </div>
                         <div className="mt-3">
-                          <button onClick={() => onEditProduct(item)} className="flex items-center gap-1.5 px-3 py-1.5 bg-red-500 text-white rounded-lg text-[11px] font-bold hover:opacity-90 transition-opacity">
-                            <Pencil size={10} />Update Batch
-                          </button>
+                          {canManageStock && (
+                            <button onClick={() => onEditProduct(item)} className="flex items-center gap-1.5 px-3 py-1.5 bg-red-500 text-white rounded-lg text-[11px] font-bold hover:opacity-90 transition-opacity">
+                              <Pencil size={10} />Update Batch
+                            </button>
+                          )}
                         </div>
                       </div>
                     ))}

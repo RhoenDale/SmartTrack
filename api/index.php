@@ -55,6 +55,7 @@ try {
         case 'dashboard':    require __DIR__ . '/routes/dashboard.php';    break;
         case 'reports':      require __DIR__ . '/routes/reports.php';      break;
         case 'stock-alerts': require __DIR__ . '/routes/stock_alerts.php'; break;
+        case 'financial':    require __DIR__ . '/routes/financial.php';    break;
         default:
             json_response(['error' => "Route '$resource' not found."], 404);
     }

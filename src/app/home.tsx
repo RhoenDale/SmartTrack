@@ -1,8 +1,9 @@
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import {
   LayoutDashboard, Package, ShoppingCart, BarChart2, Users,
   Bell, Search, Shield, Pill,
-  Moon, Sun, Settings, BellRing, ClipboardList,
+  Moon, Sun, Settings, BellRing, ClipboardList, Landmark,
+  X, ArrowRight, RefreshCw,
 } from "lucide-react";
 import {
   sortBatchesByExpiry, normalizeProduct,
@@ -26,6 +27,7 @@ import AnalyticsPage  from "./analytics";
 import StockAlertsPage from "./stockalerts";
 import ReportsPage    from "./reports";
 import UsersPage      from "./users";
+import FinancialPage  from "./financial";
 
 export default function Home({ user, onLogout }: { user: AuthUser; onLogout: () => void }) {
   const isAdmin            = user.role === "admin" || user.role === "admin/owner";
@@ -47,6 +49,7 @@ export default function Home({ user, onLogout }: { user: AuthUser; onLogout: () 
   const [notifs,        setNotifs]        = useState<Notification[]>([]);
   const [categories,    setCategories]    = useState<string[]>([]);
   const [loading,       setLoading]       = useState(true);
+  const [refreshing,    setRefreshing]    = useState(false);
 
   // ── Modal state ─────────────────────────────────────────────────────────────
   const [showAddProduct,    setShowAddProduct]    = useState(false);
@@ -63,9 +66,17 @@ export default function Home({ user, onLogout }: { user: AuthUser; onLogout: () 
   const [hoveredNotifPid,   setHoveredNotifPid]   = useState<string | null>(null);
   const [showUserProfile,   setShowUserProfile]   = useState(false);
 
+  // ── Universal search ────────────────────────────────────────────────────────
+  const [searchQuery,      setSearchQuery]      = useState("");
+  const [searchOpen,       setSearchOpen]       = useState(false);
+  const [searchHighlight,  setSearchHighlight]  = useState(0);
+  const searchRef = useRef<HTMLDivElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
   // ── Initial data load ───────────────────────────────────────────────────────
-  const loadAll = useCallback(async () => {
-    setLoading(true);
+  const loadAll = useCallback(async (showLoading = true) => {
+    if (showLoading) setLoading(true);
+    else setRefreshing(true);
     try {
       const [prods, txns, staffList, notifList, cats] = await Promise.all([
         productsApi.list(),
@@ -82,7 +93,8 @@ export default function Home({ user, onLogout }: { user: AuthUser; onLogout: () 
     } catch (e) {
       console.error("Load failed:", e);
     } finally {
-      setLoading(false);
+      if (showLoading) setLoading(false);
+      else setRefreshing(false);
     }
   }, [isAdmin]);
 
@@ -98,9 +110,38 @@ export default function Home({ user, onLogout }: { user: AuthUser; onLogout: () 
     return () => window.removeEventListener("smarttrack:navigate", handler);
   }, []);
 
+  // ── Universal search: close on outside click ────────────────────────────────
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (searchRef.current && !searchRef.current.contains(e.target as Node)) {
+        setSearchOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  // Ctrl+K / Cmd+K to focus search
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === "k") {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+        setSearchOpen(true);
+      }
+      if (e.key === "Escape") {
+        setSearchOpen(false);
+        setSearchQuery("");
+        searchInputRef.current?.blur();
+      }
+    };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, []);
+
   // Guard: redirect non-admin away from admin-only pages
   useEffect(() => {
-    if (!isAdmin && (page === "dashboard" || page === "users")) setPage(defaultPage());
+    if (!isAdmin && (page === "users" || page === "financial")) setPage(defaultPage());
     if (isCashier && page === "inventory") setPage("transactions");
     if (isInventoryManager && page === "transactions") setPage("inventory");
   }, [isAdmin, isCashier, isInventoryManager, page]);
@@ -124,7 +165,82 @@ export default function Home({ user, onLogout }: { user: AuthUser; onLogout: () 
   const totalAlertBadge   = lowStockCount + totalExpiryAlerts;
   const unreadCount       = notifs.filter(n => !n.read).length;
 
+  // ── Universal search results ─────────────────────────────────────────────────
+  type SearchResult =
+    | { kind: "product";     id: string; label: string; sub: string }
+    | { kind: "transaction"; id: string; label: string; sub: string };
+
+  const searchResults = useMemo((): SearchResult[] => {
+    const q = searchQuery.trim().toLowerCase();
+    if (q.length < 2) return [];
+    const results: SearchResult[] = [];
+
+    // Products
+    for (const p of inventory) {
+      if (
+        p.name.toLowerCase().includes(q) ||
+        p.id.toLowerCase().includes(q) ||
+        p.category.toLowerCase().includes(q) ||
+        p.supplier?.toLowerCase().includes(q)
+      ) {
+        results.push({
+          kind: "product",
+          id: p.id,
+          label: p.name,
+          sub: `${p.category} · ${p.stock} units · ${p.id}`,
+        });
+      }
+      if (results.length >= 20) break;
+    }
+
+    // Transactions
+    for (const tx of transactions) {
+      if (
+        tx.id.toLowerCase().includes(q) ||
+        tx.product.toLowerCase().includes(q) ||
+        tx.staff.toLowerCase().includes(q)
+      ) {
+        results.push({
+          kind: "transaction",
+          id: tx.id,
+          label: tx.id,
+          sub: `${tx.product} · ${tx.type} · ${tx.date}`,
+        });
+      }
+      if (results.length >= 30) break;
+    }
+
+    return results.slice(0, 8);
+  }, [searchQuery, inventory, transactions]);
+
   // ── Handlers ─────────────────────────────────────────────────────────────────
+
+  const handleSearchSelect = (result: { kind: "product" | "transaction"; id: string }) => {
+    setSearchQuery("");
+    setSearchOpen(false);
+    searchInputRef.current?.blur();
+    if (result.kind === "product") {
+      setSelectedProductId(result.id);
+      setPage("inventory");
+    } else {
+      setPage("transactions");
+    }
+  };
+
+  const handleSearchKeyDown = (e: { key: string; preventDefault: () => void }) => {
+    if (!searchResults.length) return;
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setSearchHighlight(h => Math.min(h + 1, searchResults.length - 1));
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setSearchHighlight(h => Math.max(h - 1, 0));
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      const r = searchResults[searchHighlight];
+      if (r) handleSearchSelect(r);
+    }
+  };
 
   const handleAddCategory = async (cat: string) => {
     if (categories.includes(cat)) return;
@@ -140,11 +256,14 @@ export default function Home({ user, onLogout }: { user: AuthUser; onLogout: () 
         id: updated.id, name: updated.name, category: updated.category,
         supplier: updated.supplier, reorder: updated.reorder,
         price: updated.price,
-        sale_price: updated.salePrice ?? updated.sale_price ?? null,
+        sale_price:    updated.salePrice    ?? updated.sale_price    ?? null,
+        is_vat_exempt: updated.isVatExempt  ? 1 : (updated.is_vat_exempt ?? 0),
         batches: updated.batches.map(b => ({
           batchId: b.batchId, qty: b.qty,
           expiryDate: b.expiryDate ?? b.expiry,
           receivedDate: b.receivedDate,
+          batchTotalCost: b.batchTotalCost ?? null,
+          unitCost:       b.unitCost       ?? null,
         })),
       };
       const saved = original
@@ -173,7 +292,13 @@ export default function Home({ user, onLogout }: { user: AuthUser; onLogout: () 
 
   const handleAddSale = async (tx: Transaction, productId: string, qty: number) => {
     try {
-      const res = await transactionsApi.sale({ product_id: productId, qty });
+      const res = await transactionsApi.sale({
+        product_id: productId,
+        qty,
+        customer_vat_exempt: !!tx.customerVatExempt,
+        customer_exemption_type: tx.customerExemptionType ?? null,
+        customer_id_number: tx.customerIdNumber ?? null,
+      });
       setTransactions(prev => [res.transaction, ...prev]);
       setInventory(prev => prev.map(p => p.id === productId ? normalizeProduct(res.product) : p));
     } catch (e: unknown) {
@@ -302,6 +427,11 @@ export default function Home({ user, onLogout }: { user: AuthUser; onLogout: () 
     setShowNotifications(false);
   };
 
+  const handleRefresh = () => {
+    setShowNotifications(false);
+    loadAll(false);
+  };
+
   const handleStockAlertEditProduct = (product: Product) => {
     setPage("inventory");
     setSelectedProductId(product.id);
@@ -316,19 +446,22 @@ export default function Home({ user, onLogout }: { user: AuthUser; onLogout: () 
     { id: "analytics",    icon: BarChart2,       label: "Analytics" },
     { id: "stock-alerts", icon: BellRing,        label: "Stock Alerts", badge: totalAlertBadge },
     { id: "reports",      icon: ClipboardList,   label: "Reports" },
+    { id: "financial",    icon: Landmark,        label: "Financial" },
     { id: "users",        icon: Users,           label: "Users" },
   ];
   const invNav: typeof adminNav = [
-    { id: "inventory",    icon: Package,       label: "Inventory",    badge: lowStockCount },
-    { id: "analytics",    icon: BarChart2,     label: "Analytics" },
-    { id: "stock-alerts", icon: BellRing,      label: "Stock Alerts", badge: totalAlertBadge },
-    { id: "reports",      icon: ClipboardList, label: "Reports" },
+    { id: "inventory",    icon: Package,         label: "Inventory",    badge: lowStockCount },
+    { id: "dashboard",    icon: LayoutDashboard, label: "Dashboard" },
+    { id: "analytics",    icon: BarChart2,       label: "Analytics" },
+    { id: "stock-alerts", icon: BellRing,        label: "Stock Alerts", badge: totalAlertBadge },
+    { id: "reports",      icon: ClipboardList,   label: "Reports" },
   ];
   const cashierNav: typeof adminNav = [
-    { id: "transactions", icon: ShoppingCart,  label: "Transactions" },
-    { id: "analytics",    icon: BarChart2,     label: "Analytics" },
-    { id: "stock-alerts", icon: BellRing,      label: "Stock Alerts", badge: totalAlertBadge },
-    { id: "reports",      icon: ClipboardList, label: "Reports" },
+    { id: "transactions", icon: ShoppingCart,    label: "Transactions" },
+    { id: "dashboard",    icon: LayoutDashboard, label: "Dashboard" },
+    { id: "analytics",    icon: BarChart2,       label: "Analytics" },
+    { id: "stock-alerts", icon: BellRing,        label: "Stock Alerts", badge: totalAlertBadge },
+    { id: "reports",      icon: ClipboardList,   label: "Reports" },
   ];
   const navItems = isAdmin ? adminNav : isInventoryManager ? invNav : cashierNav;
 
@@ -440,13 +573,113 @@ export default function Home({ user, onLogout }: { user: AuthUser; onLogout: () 
           {/* Topbar */}
           <header className="flex-shrink-0 h-14 border-b border-border flex items-center gap-3 px-4 sm:px-6 bg-card shadow-sm" style={{ zIndex: 10, position: "relative" }}>
             <div className="flex-1 flex items-center">
-              <div className="relative max-w-xs w-full hidden sm:block">
-                <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                <input placeholder="Search products, transactions"
-                  className="w-full bg-background border border-border rounded-xl pl-8 pr-4 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary shadow-sm" />
+              <div ref={searchRef} className="relative max-w-sm w-full hidden sm:block">
+                <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none z-10" />
+                <input
+                  ref={searchInputRef}
+                  placeholder="Search products, transactions…"
+                  value={searchQuery}
+                  onChange={e => { setSearchQuery(e.target.value); setSearchHighlight(0); setSearchOpen(true); }}
+                  onFocus={() => setSearchOpen(true)}
+                  onKeyDown={handleSearchKeyDown}
+                  className="w-full bg-background border border-border rounded-xl pl-8 pr-8 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary shadow-sm"
+                />
+                {searchQuery && (
+                  <button onClick={() => { setSearchQuery(""); setSearchOpen(false); searchInputRef.current?.focus(); }}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors">
+                    <X size={12} />
+                  </button>
+                )}
+                {!searchQuery && (
+                  <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground/60 font-mono hidden lg:block pointer-events-none">⌘K</span>
+                )}
+
+                {/* Dropdown */}
+                {searchOpen && searchQuery.length >= 2 && (
+                  <div className="absolute top-full left-0 right-0 mt-1.5 bg-card border border-border rounded-xl shadow-lg overflow-hidden z-50">
+                    {searchResults.length === 0 ? (
+                      <div className="px-4 py-3 text-xs text-muted-foreground">No results for "{searchQuery}"</div>
+                    ) : (
+                      <>
+                        {/* Group headers */}
+                        {(() => {
+                          const products = searchResults.filter(r => r.kind === "product");
+                          const txns     = searchResults.filter(r => r.kind === "transaction");
+                          return (
+                            <>
+                              {products.length > 0 && (
+                                <>
+                                  <div className="px-3 pt-2.5 pb-1 text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
+                                    Products
+                                  </div>
+                                  {products.map((r) => {
+                                    const idx = searchResults.indexOf(r);
+                                    return (
+                                      <button key={r.id} onMouseDown={() => handleSearchSelect(r)}
+                                        onMouseEnter={() => setSearchHighlight(idx)}
+                                        className={`w-full flex items-center gap-3 px-3 py-2.5 text-left transition-colors ${idx === searchHighlight ? "bg-primary/10" : "hover:bg-muted/40"}`}>
+                                        <div className="w-6 h-6 rounded-lg bg-violet-100 dark:bg-violet-900/30 flex items-center justify-center flex-shrink-0">
+                                          <Package size={11} className="text-violet-600 dark:text-violet-400" />
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                          <p className="text-xs font-semibold text-foreground truncate">{r.label}</p>
+                                          <p className="text-[10px] text-muted-foreground truncate">{r.sub}</p>
+                                        </div>
+                                        <ArrowRight size={11} className="text-muted-foreground flex-shrink-0" />
+                                      </button>
+                                    );
+                                  })}
+                                </>
+                              )}
+                              {txns.length > 0 && (
+                                <>
+                                  <div className={`px-3 pb-1 text-[10px] font-bold text-muted-foreground uppercase tracking-widest ${products.length > 0 ? "pt-2 border-t border-border mt-1" : "pt-2.5"}`}>
+                                    Transactions
+                                  </div>
+                                  {txns.map(r => {
+                                    const idx = searchResults.indexOf(r);
+                                    return (
+                                      <button key={r.id} onMouseDown={() => handleSearchSelect(r)}
+                                        onMouseEnter={() => setSearchHighlight(idx)}
+                                        className={`w-full flex items-center gap-3 px-3 py-2.5 text-left transition-colors ${idx === searchHighlight ? "bg-primary/10" : "hover:bg-muted/40"}`}>
+                                        <div className="w-6 h-6 rounded-lg bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center flex-shrink-0">
+                                          <ShoppingCart size={11} className="text-emerald-600 dark:text-emerald-400" />
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                          <p className="text-xs font-semibold text-foreground truncate">{r.label}</p>
+                                          <p className="text-[10px] text-muted-foreground truncate">{r.sub}</p>
+                                        </div>
+                                        <ArrowRight size={11} className="text-muted-foreground flex-shrink-0" />
+                                      </button>
+                                    );
+                                  })}
+                                </>
+                              )}
+                            </>
+                          );
+                        })()}
+                        <div className="px-3 py-2 border-t border-border bg-muted/20 flex items-center gap-3 text-[10px] text-muted-foreground">
+                          <span><kbd className="px-1 py-0.5 rounded border border-border bg-background font-mono">↑↓</kbd> navigate</span>
+                          <span><kbd className="px-1 py-0.5 rounded border border-border bg-background font-mono">↵</kbd> select</span>
+                          <span><kbd className="px-1 py-0.5 rounded border border-border bg-background font-mono">Esc</kbd> close</span>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
             <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleRefresh}
+                disabled={refreshing}
+                aria-label="Refresh data"
+                title="Refresh data"
+                className="relative w-9 h-9 flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded-xl transition-all disabled:opacity-60"
+              >
+                <RefreshCw size={16} className={refreshing ? "animate-spin" : ""} />
+              </button>
               <div className="relative">
                 <button onClick={() => setShowNotifications(v => !v)}
                   className="relative w-9 h-9 flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded-xl transition-all">
@@ -476,7 +709,7 @@ export default function Home({ user, onLogout }: { user: AuthUser; onLogout: () 
 
           {/* Pages */}
           <main className="flex-1 overflow-y-auto">
-            {page === "dashboard"    && isAdmin && <DashboardView user={user} inventory={inventory} transactions={transactions} />}
+            {page === "dashboard"    && <DashboardView user={user} inventory={inventory} transactions={transactions} />}
             {page === "inventory"    && <InventoryPage inventory={inventory} categories={categories}
               onAddProduct={() => setShowAddProduct(true)} onEditProduct={setEditingProduct}
               onDeleteProduct={setDeletingProduct} onAddCategory={handleAddCategory}
@@ -485,8 +718,9 @@ export default function Home({ user, onLogout }: { user: AuthUser; onLogout: () 
             {page === "transactions" && <TransactionsPage user={user} transactions={transactions} inventory={inventory} currentUser={user}
               onAddSale={() => setShowAddSale(true)} onAddReturn={setReturningTx} onViewInvoice={setViewingInvoice} />}
             {page === "analytics"    && <AnalyticsPage inventory={inventory} transactions={transactions} />}
-            {page === "stock-alerts" && <StockAlertsPage inventory={inventory} onGoToInventory={() => setPage("inventory")} onEditProduct={handleStockAlertEditProduct} />}
+            {page === "stock-alerts" && <StockAlertsPage inventory={inventory} onGoToInventory={() => setPage("inventory")} onEditProduct={handleStockAlertEditProduct} userRole={user.role} />}
             {page === "reports"      && <ReportsPage inventory={inventory} transactions={transactions} user={user} />}
+            {page === "financial"    && isAdmin && <FinancialPage user={user} />}
             {page === "users"        && isAdmin && <UsersPage staff={staff} currentUserId={user.id} currentUserRole={user.role} onAddUser={() => setShowAddUser(true)} onEditUser={setEditingUser} onDeleteUser={handleDeleteUser} onToggleStatus={handleToggleStatus} onResetPassword={handleAdminResetPassword} onCreatePassword={handleAdminCreatePassword} />}
           </main>
         </div>
@@ -498,7 +732,7 @@ export default function Home({ user, onLogout }: { user: AuthUser; onLogout: () 
           onClose={() => setEditingProduct(null)} onSave={handleSaveProduct} onAddCategory={handleAddCategory} />}
         {deletingProduct && <DeleteConfirmModal product={deletingProduct}
           onClose={() => setDeletingProduct(null)} onConfirm={() => handleDeleteProduct(deletingProduct)} />}
-        {showAddSale && <NewSaleModal onClose={() => setShowAddSale(false)} onAdd={handleAddSale} inventory={inventory} currentUser={user} />}
+        {showAddSale && <NewSaleModal onClose={() => setShowAddSale(false)} onAdd={handleAddSale} inventory={inventory} currentUser={user} onGoToInventory={() => { setShowAddSale(false); setPage("inventory"); }} />}
         {returningTx  && <ReturnModal saleTx={returningTx} onClose={() => setReturningTx(null)} onAdd={handleReturn} inventory={inventory} currentUser={user} />}
         {showAddUser  && <UserFormModal onClose={() => setShowAddUser(false)} onSave={handleSaveUser} currentUserRole={user.role} />}
         {editingUser  && <UserFormModal initial={editingUser} onClose={() => setEditingUser(null)} onSave={handleSaveUser} currentUserRole={user.role} />}

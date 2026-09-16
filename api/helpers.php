@@ -173,7 +173,7 @@ function sync_product_status(string $productId): void {
 function enrich_product(array $product): array {
     $pdo  = db();
     $stmt = $pdo->prepare(
-        'SELECT batch_id, qty, expiry_date, received_date
+        'SELECT batch_id, qty, expiry_date, received_date, batch_total_cost, unit_cost
          FROM product_batches
          WHERE product_id = ? AND qty > 0
          ORDER BY received_date ASC, id ASC'
@@ -191,20 +191,23 @@ function enrich_product(array $product): array {
             $earliestExpiry = $b['expiry_date'];
         }
         $batchArr[] = [
-            'batchId'      => $b['batch_id'],
-            'qty'          => (int)$b['qty'],
-            'expiry'       => date('m/d/Y', strtotime($b['expiry_date'])),
-            'expiryDate'   => $b['expiry_date'],
-            'receivedDate' => date('m/d/Y', strtotime($b['received_date'])),
+            'batchId'        => $b['batch_id'],
+            'qty'            => (int)$b['qty'],
+            'expiry'         => date('m/d/Y', strtotime($b['expiry_date'])),
+            'expiryDate'     => $b['expiry_date'],
+            'receivedDate'   => date('m/d/Y', strtotime($b['received_date'])),
+            'batchTotalCost' => $b['batch_total_cost'] !== null ? (float)$b['batch_total_cost'] : null,
+            'unitCost'       => $b['unit_cost']        !== null ? (float)$b['unit_cost']        : null,
         ];
     }
 
-    $product['stock']     = $stock;
-    $product['expiry']    = $earliestExpiry ? date('m/d/Y', strtotime($earliestExpiry)) : '—';
-    $product['batches']   = $batchArr;
-    $product['price']     = (float)$product['price'];
-    $product['sale_price']= $product['sale_price'] !== null ? (float)$product['sale_price'] : null;
-    $product['reorder']   = (int)$product['reorder'];
+    $product['stock']      = $stock;
+    $product['expiry']     = $earliestExpiry ? date('m/d/Y', strtotime($earliestExpiry)) : '—';
+    $product['batches']    = $batchArr;
+    $product['price']      = (float)$product['price'];
+    $product['sale_price'] = $product['sale_price'] !== null ? (float)$product['sale_price'] : null;
+    $product['is_vat_exempt'] = (int)($product['is_vat_exempt'] ?? 0);
+    $product['reorder']    = (int)$product['reorder'];
 
     return $product;
 }

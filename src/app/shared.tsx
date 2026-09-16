@@ -1,6 +1,6 @@
 // ─── Shared utilities, UI components and small modals used across pages ───────
 import React from "react";
-import { X, ArrowUpRight, ArrowDownRight, Package, Trash2, Eye, EyeOff, AlertTriangle } from "lucide-react";
+import { X, ArrowUpRight, ArrowDownRight, Package, Trash2, Eye, EyeOff, AlertTriangle, ShieldAlert } from "lucide-react";
 import { type Product, type StockStatus, type Transaction, type TxStatus, type TxType } from "./data";
 
 // ─── Currency helpers ─────────────────────────────────────────────────────────
@@ -319,7 +319,7 @@ export function ViewReasonModal({ tx, onClose }: { tx: Transaction; onClose: () 
 // ─── Notification Panel ───────────────────────────────────────────────────────
 import { useRef, useEffect, useState, useMemo } from "react";
 import { AlertTriangle as _AlertTriangle, FileText as _FileText, Check as _Check, CheckCheck, RefreshCw, X as _X } from "lucide-react";
-import { sortBatchesFIFO, sortBatchesByExpiry, deductFIFO, getTotalStock, getEarliestExpiry, parseExpiry, formatExpiryString, ROLES, ROLE_LABELS, type Notification, type ProductBatch } from "./data";
+import { sortBatchesFIFO, sortBatchesByExpiry, deductFIFO, getTotalStock, getEarliestExpiry, parseExpiry, formatExpiryString, ROLES, ROLE_LABELS, computeTax, VAT_RATE_LABEL, type Notification, type ProductBatch } from "./data";
 
 export function NotificationPanel({
   notifs, onMarkAll, onMarkOne, onNotificationClick, onNotificationHover, productMap, onClose,
@@ -413,12 +413,16 @@ export function ProductFormModal({
     price: initial?.price != null ? String(initial.price) : "",
     salePrice: initial?.salePrice != null ? String(initial.salePrice) : "",
   });
+  const [isVatExempt, setIsVatExempt] = useState<boolean>(
+    !!(initial?.isVatExempt ?? initial?.is_vat_exempt)
+  );
   const [customCategory, setCustomCategory] = useState("");
   const set = (k: keyof typeof form) => (v: string) => setForm(f => ({ ...f, [k]: v }));
 
   const [batches, setBatches] = useState<ProductBatch[]>(initial?.batches ?? []);
   const [newBatchQty, setNewBatchQty] = useState("");
   const [newBatchExpiry, setNewBatchExpiry] = useState("");
+  const [newBatchTotalCost, setNewBatchTotalCost] = useState("");
 
   const handleCategoryChange = (v: string) => {
     set("category")(v);
@@ -432,13 +436,20 @@ export function ProductFormModal({
     const batchId = `${form.id.trim() || suggestedId}-B${batchNum}`;
     const expiryDate = parseExpiry(newBatchExpiry.trim());
     if (Number.isNaN(expiryDate.getTime())) return;
+    const totalCost = newBatchTotalCost.trim() !== "" ? parseFloat(newBatchTotalCost) : null;
+    const unitCost  = totalCost != null && qty > 0 ? parseFloat((totalCost / qty).toFixed(4)) : null;
     const newBatch: ProductBatch = {
-      batchId, qty, expiry: formatExpiryString(expiryDate), expiryDate: formatExpiryString(expiryDate),
+      batchId, qty,
+      expiry: formatExpiryString(expiryDate),
+      expiryDate: formatExpiryString(expiryDate),
       receivedDate: new Date().toLocaleDateString("en-PH"),
+      batchTotalCost: totalCost,
+      unitCost,
     };
     setBatches(prev => sortBatchesFIFO([...prev, newBatch]));
     setNewBatchQty("");
     setNewBatchExpiry("");
+    setNewBatchTotalCost("");
   };
 
   function handleRemoveBatch(batchId: string) {
@@ -461,6 +472,7 @@ export function ProductFormModal({
     const updated: Product = {
       id: form.id.trim(), name: form.name, category: finalCategory, supplier: form.supplier.trim(),
       stock: totalStock, reorder, price, salePrice: salePriceVal,
+      isVatExempt, is_vat_exempt: isVatExempt ? 1 : 0,
       expiry: getEarliestExpiry(sortedBatches), status: computeStatus(totalStock, reorder), batches: sortedBatches,
     };
     onSave(initial ?? null, updated);
@@ -489,27 +501,87 @@ export function ProductFormModal({
         </div>
         <FieldInput label="Reorder Point" type="number" value={form.reorder} onChange={set("reorder")} placeholder="0" required min={0} />
         <div className="grid grid-cols-2 gap-3">
-          <FieldInput label={`Regular Price (${PESO})`} type="number" value={form.price} onChange={set("price")} placeholder="0.00" required min={0} step={0.01} />
-          <FieldInput label={`Sale Price (${PESO})`} type="number" value={form.salePrice} onChange={set("salePrice")} placeholder="Optional" min={0} step={0.01} helperText="If set, old price shows as strikethrough" />
+          <FieldInput label={`Selling Price (${PESO}) — VAT-inclusive`} type="number" value={form.price} onChange={set("price")} placeholder="0.00" required min={0} step={0.01} />
+          <FieldInput label={`Sale/Discounted Price (${PESO})`} type="number" value={form.salePrice} onChange={set("salePrice")} placeholder="Optional" min={0} step={0.01} helperText="Discounted price (optional)" />
         </div>
+
+        {/* VAT-exempt toggle */}
+        <div className="flex items-center justify-between bg-muted/30 border border-border rounded-xl px-4 py-3">
+          <div>
+            <p className="text-xs font-semibold text-foreground">VAT-Exempt Product</p>
+            <p className="text-[10px] text-muted-foreground mt-0.5">
+              e.g. essential medicines for Senior Citizens / PWD (BIR RA 10963)
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setIsVatExempt(v => !v)}
+            className={`relative w-10 h-5.5 rounded-full transition-colors duration-200 flex-shrink-0 ${isVatExempt ? "bg-emerald-500" : "bg-muted"}`}
+            style={{ width: 40, height: 22 }}
+          >
+            <span className={`absolute top-0.5 left-0.5 w-[18px] h-[18px] rounded-full bg-white shadow transition-transform duration-200 ${isVatExempt ? "translate-x-[18px]" : "translate-x-0"}`} />
+          </button>
+        </div>
+
+        {/* Live VAT breakdown */}
+        {parseFloat(form.price) > 0 && (
+          <div className="bg-sky-50 dark:bg-sky-500/10 border border-sky-200 dark:border-sky-500/20 rounded-xl px-4 py-3 space-y-1.5">
+            <p className="text-[10px] font-bold text-sky-700 dark:text-sky-400 uppercase tracking-wide">
+              VAT Breakdown — {isVatExempt ? "VAT-Exempt" : `${VAT_RATE_LABEL} Standard VAT`}
+            </p>
+            {(() => {
+              const activePrice = parseFloat(form.salePrice || form.price) || parseFloat(form.price) || 0;
+              const breakdown = computeTax(activePrice, isVatExempt);
+              return (
+                <div className="space-y-1 text-xs">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Selling Price (VAT-inclusive)</span>
+                    <span className="font-semibold text-foreground tabular-nums">{PESO}{activePrice.toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Pre-tax Amount (Net)</span>
+                    <span className="font-semibold text-foreground tabular-nums">{PESO}{breakdown.preTax.toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className={`${isVatExempt ? "text-muted-foreground/60" : "text-muted-foreground"}`}>
+                      VAT ({isVatExempt ? "Exempt" : VAT_RATE_LABEL})
+                    </span>
+                    <span className={`tabular-nums font-semibold ${isVatExempt ? "text-muted-foreground/60" : "text-sky-600 dark:text-sky-400"}`}>
+                      {PESO}{breakdown.tax.toFixed(2)}
+                    </span>
+                  </div>
+                  <div className="border-t border-sky-200 dark:border-sky-500/30 pt-1 flex justify-between font-bold">
+                    <span className="text-foreground">Total</span>
+                    <span className="tabular-nums text-sky-700 dark:text-sky-400">{PESO}{breakdown.total.toFixed(2)}</span>
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
+        )}
         <div className="space-y-2">
           <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">
             Stock Batches <span className="text-primary">(FIFO — first in first out)</span>
           </label>
           {batches.length > 0 && (
             <div className="bg-muted/30 border border-border rounded-xl overflow-hidden">
-              <div className="grid grid-cols-4 px-3 py-1.5 bg-muted/50 text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
-                <span>Batch ID</span><span>Qty</span><span>Expiry</span><span>Received</span>
+              <div className="grid grid-cols-5 px-3 py-1.5 bg-muted/50 text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
+                <span>Batch ID</span><span>Qty</span><span>Expiry</span><span>Batch Cost</span><span>Unit Cost</span>
               </div>
               {sortBatchesFIFO(batches).map((b, i) => (
-                <div key={b.batchId} className={`grid grid-cols-4 px-3 py-2 text-xs items-center border-t border-border/40 ${i === 0 ? "bg-amber-50/50 dark:bg-amber-500/5" : ""}`}>
+                <div key={b.batchId} className={`grid grid-cols-5 px-3 py-2 text-xs items-center border-t border-border/40 ${i === 0 ? "bg-amber-50/50 dark:bg-amber-500/5" : ""}`}>
                   <span className="text-muted-foreground font-mono text-[11px]">
                     {i === 0 && <span className="text-amber-600 dark:text-amber-400 mr-1">▶</span>}{b.batchId}
                   </span>
                   <span className="font-bold text-foreground">{b.qty}</span>
                   <span className={i === 0 ? "font-semibold text-amber-700 dark:text-amber-400" : "text-foreground"}>{b.expiry}</span>
+                  <span className="text-foreground tabular-nums">
+                    {b.batchTotalCost != null ? `${PESO}${b.batchTotalCost.toFixed(2)}` : <span className="text-muted-foreground/60 italic">—</span>}
+                  </span>
                   <div className="flex items-center justify-between">
-                    <span className="text-muted-foreground">{b.receivedDate}</span>
+                    <span className="text-muted-foreground tabular-nums">
+                      {b.unitCost != null ? `${PESO}${b.unitCost.toFixed(4)}` : "—"}
+                    </span>
                     <button type="button" onClick={() => handleRemoveBatch(b.batchId)} className="text-muted-foreground hover:text-red-500 transition-colors ml-2"><_X size={11} /></button>
                   </div>
                 </div>
@@ -531,8 +603,21 @@ export function ProductFormModal({
               <input type="date" value={newBatchExpiry} onChange={e => setNewBatchExpiry(e.target.value)}
                 className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all" />
             </div>
+            <div className="flex-1">
+              <label className="block text-[10px] text-muted-foreground mb-1">
+                Batch Cost ({PESO}) <span className="text-muted-foreground/60 font-normal">optional</span>
+              </label>
+              <input type="number" value={newBatchTotalCost} onChange={e => setNewBatchTotalCost(e.target.value)}
+                placeholder="e.g. 5000" min={0} step={0.01}
+                className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all" />
+              {newBatchTotalCost && newBatchQty && parseFloat(newBatchQty) > 0 && (
+                <p className="text-[10px] text-primary mt-0.5 tabular-nums">
+                  Unit cost: {PESO}{(parseFloat(newBatchTotalCost) / parseFloat(newBatchQty)).toFixed(4)}
+                </p>
+              )}
+            </div>
             <button type="button" onClick={handleAddBatch}
-              className="px-3 py-2 bg-primary text-primary-foreground rounded-lg text-xs font-bold hover:opacity-90 transition-opacity whitespace-nowrap flex-shrink-0">
+              className="px-3 py-2 bg-primary text-primary-foreground rounded-lg text-xs font-bold hover:opacity-90 transition-opacity whitespace-nowrap flex-shrink-0 self-end mb-0">
               + Add Batch
             </button>
           </div>
@@ -554,19 +639,156 @@ export function ProductFormModal({
 }
 
 // ─── New Sale Modal ───────────────────────────────────────────────────────────
+// Expiry helpers used in sale flow
+const EXPIRY_BLOCK_DAYS = 60;
+
+/** Returns days left until expiry — negative means already expired. */
+function daysUntilExpiry(expiryStr: string): number {
+  const [mm, dd, yyyy] = expiryStr.split("/");
+  const expDate = new Date(`${yyyy}-${mm.padStart(2,"0")}-${dd.padStart(2,"0")}T00:00:00`);
+  return (expDate.getTime() - Date.now()) / 86400000;
+}
+
+/** Returns the earliest-expiring batch of a product that has qty > 0. */
+function getFirstBatch(product: import("./data").Product) {
+  return [...product.batches]
+    .filter(b => b.qty > 0)
+    .sort((a, b) => {
+      const toMs = (s: string) => { const [mm,dd,yyyy] = s.split("/"); return new Date(`${yyyy}-${mm}-${dd}`).getTime(); };
+      return toMs(a.expiry) - toMs(b.expiry);
+    })[0] ?? null;
+}
+
+/** Returns "blocked" | "warning" | "ok" and days left for a product. */
+export function getExpiryStatus(product: import("./data").Product): { status: "blocked" | "ok"; daysLeft: number; batchId: string } | null {
+  const batch = getFirstBatch(product);
+  if (!batch) return null;
+  const days = daysUntilExpiry(batch.expiry);
+  if (days <= EXPIRY_BLOCK_DAYS) return { status: "blocked", daysLeft: Math.ceil(days), batchId: batch.batchId };
+  return null;
+}
+
+// ── Expiry block dialog (SweetAlert-style) ────────────────────────────────────
+export function ExpiryBlockDialog({
+  product, batchId, daysLeft, onClose, onGoToInventory, canManage,
+}: {
+  product: import("./data").Product;
+  batchId: string;
+  daysLeft: number;
+  onClose: () => void;
+  onGoToInventory: () => void;
+  canManage: boolean;
+}) {
+  const expired    = daysLeft <= 0;
+  const isOneBatch = product.batches.filter(b => b.qty > 0).length === 1;
+
+  return (
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.6)" }}>
+      <div className="bg-card border border-border rounded-2xl shadow-2xl max-w-sm w-full p-6 space-y-4 animate-in fade-in zoom-in-95 duration-200">
+        {/* Icon */}
+        <div className="flex flex-col items-center gap-3">
+          <div className={`w-14 h-14 rounded-full flex items-center justify-center ${expired ? "bg-red-100 dark:bg-red-500/20" : "bg-amber-100 dark:bg-amber-500/20"}`}>
+            <ShieldAlert size={28} className={expired ? "text-red-600 dark:text-red-400" : "text-amber-600 dark:text-amber-400"} />
+          </div>
+          <h2 className={`text-base font-bold text-center ${expired ? "text-red-700 dark:text-red-400" : "text-amber-700 dark:text-amber-400"}`}>
+            {expired ? "Batch Expired" : "Near-Expiry — Sale Blocked"}
+          </h2>
+        </div>
+
+        {/* Body */}
+        <div className="bg-muted/40 border border-border rounded-xl p-3 space-y-1.5 text-xs">
+          <div className="flex justify-between">
+            <span className="text-muted-foreground">Product</span>
+            <span className="font-semibold text-foreground">{product.name}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-muted-foreground">Batch</span>
+            <span className="font-mono text-foreground">{batchId}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-muted-foreground">Status</span>
+            <span className={`font-bold ${expired ? "text-red-600 dark:text-red-400" : "text-amber-600 dark:text-amber-400"}`}>
+              {expired ? `Expired ${Math.abs(daysLeft)}d ago` : `Expires in ${daysLeft}d`}
+            </span>
+          </div>
+        </div>
+
+        <p className="text-xs text-muted-foreground text-center leading-relaxed">
+          {expired
+            ? "This product cannot be sold — the first batch has already expired."
+            : `Products expiring within ${EXPIRY_BLOCK_DAYS} days cannot be dispensed for patient safety.`}
+          {canManage
+            ? isOneBatch
+              ? " This is the only batch — please remove the product from inventory."
+              : " Please remove this batch from inventory. The next batch will then become available for sale."
+            : " Please inform your Inventory Manager to remove this batch from the system."}
+        </p>
+
+        {/* Actions */}
+        <div className="flex gap-2 pt-1">
+          <button onClick={onClose}
+            className="flex-1 py-2.5 border border-border rounded-xl text-sm font-semibold text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-all">
+            {canManage ? "Cancel" : "Understood"}
+          </button>
+          {canManage && (
+            <button onClick={onGoToInventory}
+              className={`flex-1 py-2.5 rounded-xl text-sm font-bold text-white transition-all hover:opacity-90 ${expired ? "bg-red-500" : "bg-amber-500"}`}>
+              {isOneBatch ? "Remove Product" : "Update Inventory"}
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const CUSTOMER_EXEMPTION_TYPES = ["Senior Citizen", "PWD", "Other Qualified ID"] as const;
+type CustomerExemptionType = typeof CUSTOMER_EXEMPTION_TYPES[number];
+const roundCurrency = (value: number) => Math.round(value * 100) / 100;
+
 export function NewSaleModal({
-  onClose, onAdd, inventory, currentUser,
+  onClose, onAdd, inventory, currentUser, onGoToInventory,
 }: {
   onClose: () => void;
   onAdd: (t: Transaction, productId: string, qty: number) => void;
   inventory: Product[];
   currentUser: import("./data").AuthUser;
+  onGoToInventory: () => void;
 }) {
+  const canManage = currentUser.role === "inventory_manager";
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [qty, setQty] = useState("1");
+  const [expiryBlock, setExpiryBlock] = useState<{ batchId: string; daysLeft: number } | null>(null);
+  const [customerVatExempt, setCustomerVatExempt] = useState(false);
+  const [customerExemptionType, setCustomerExemptionType] = useState<CustomerExemptionType>("Senior Citizen");
+  const [customerIdNumber, setCustomerIdNumber] = useState("");
+
   const qtyNum = parseInt(qty) || 0;
   const unitPrice = selectedProduct ? (selectedProduct.salePrice ?? selectedProduct.price) : 0;
-  const total = unitPrice * qtyNum;
+  const shelfTotal = roundCurrency(unitPrice * qtyNum);
+  const productVatExempt = !!(selectedProduct?.isVatExempt ?? selectedProduct?.is_vat_exempt);
+  const taxBreakdown = selectedProduct ? (() => {
+    if (productVatExempt) return computeTax(shelfTotal, true);
+    if (customerVatExempt) {
+      const vatRemovedTotal = roundCurrency(shelfTotal / 1.12);
+      return { preTax: vatRemovedTotal, tax: 0, total: vatRemovedTotal, rate: 0, isExempt: true };
+    }
+    return computeTax(shelfTotal, false);
+  })() : null;
+  const customerExemptionMissing = customerVatExempt && customerIdNumber.trim() === "";
+  const exemptionNote = customerVatExempt
+    ? `Customer VAT exemption: ${customerExemptionType} ID ${customerIdNumber.trim()}`
+    : undefined;
+
+  // Check expiry whenever a product is selected
+  const handleSelect = (p: Product | null) => {
+    setSelectedProduct(p);
+    setExpiryBlock(null);
+    if (p) {
+      const exp = getExpiryStatus(p);
+      if (exp) setExpiryBlock({ batchId: exp.batchId, daysLeft: exp.daysLeft });
+    }
+  };
 
   const fifoPreview = useMemo(() => {
     if (!selectedProduct || qtyNum <= 0 || qtyNum > selectedProduct.stock) return [];
@@ -576,21 +798,97 @@ export function NewSaleModal({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedProduct || qtyNum <= 0 || qtyNum > selectedProduct.stock) return;
+    if (customerExemptionMissing) return;
+    // Re-check expiry at submit time (guard against stale state)
+    const exp = getExpiryStatus(selectedProduct);
+    if (exp) { setExpiryBlock({ batchId: exp.batchId, daysLeft: exp.daysLeft }); return; }
+    const tb = taxBreakdown;
+    if (!tb) return;
     const { consumed } = deductFIFO(selectedProduct.batches, qtyNum);
     const tx: Transaction = {
       id: `TXN-${Date.now().toString().slice(-4)}`, type: "sale", product: selectedProduct.name,
-      qty: qtyNum, amount: total, staff: staffAbbrev(currentUser.name), date: nowDateStr(),
-      status: "completed", productId: selectedProduct.id, batchesConsumed: consumed,
+      qty: qtyNum, amount: tb.total,
+      preTaxAmount: tb.preTax, taxAmount: tb.tax, taxRate: tb.rate,
+      customerVatExempt,
+      customerExemptionType: customerVatExempt ? customerExemptionType : null,
+      customerIdNumber: customerVatExempt ? customerIdNumber.trim() : null,
+      staff: staffAbbrev(currentUser.name), date: nowDateStr(),
+      status: "completed", productId: selectedProduct.id, batchesConsumed: consumed, note: exemptionNote,
     };
     onAdd(tx, selectedProduct.id, qtyNum);
     onClose();
   };
 
+  const handleGoToInventory = () => {
+    onClose();
+    onGoToInventory();
+  };
+
   return (
+    <>
+      {/* Expiry block dialog — shown on top of modal */}
+      {expiryBlock && selectedProduct && (
+        <ExpiryBlockDialog
+          product={selectedProduct}
+          batchId={expiryBlock.batchId}
+          daysLeft={expiryBlock.daysLeft}
+          onClose={() => setExpiryBlock(null)}
+          onGoToInventory={handleGoToInventory}
+          canManage={canManage}
+        />
+      )}
     <Modal title="New Sale" onClose={onClose} wide>
       <form onSubmit={handleSubmit} className="space-y-4">
-        <ProductSearchWidget inventory={inventory} onSelect={setSelectedProduct} selectedProduct={selectedProduct} />
+        <ProductSearchWidget inventory={inventory} onSelect={handleSelect} selectedProduct={selectedProduct} />
         <FieldInput label="Quantity" type="number" value={qty} onChange={setQty} placeholder="1" required min={1} />
+        {selectedProduct && (
+          <div className="border border-border rounded-xl px-4 py-3 space-y-3 bg-muted/20">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold text-foreground">Customer VAT-Exempt ID</p>
+                <p className="text-[10px] text-muted-foreground mt-0.5">Senior Citizen, PWD, or other qualified ID</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setCustomerVatExempt(v => !v)}
+                className={`relative flex-shrink-0 rounded-full transition-colors duration-200 ${customerVatExempt ? "bg-emerald-500" : "bg-muted"}`}
+                style={{ width: 40, height: 22 }}
+              >
+                <span className={`absolute top-0.5 left-0.5 w-[18px] h-[18px] rounded-full bg-white shadow transition-transform duration-200 ${customerVatExempt ? "translate-x-[18px]" : "translate-x-0"}`} />
+              </button>
+            </div>
+            {customerVatExempt && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[10px] text-muted-foreground mb-1">ID Type</label>
+                  <select
+                    value={customerExemptionType}
+                    onChange={e => setCustomerExemptionType(e.target.value as CustomerExemptionType)}
+                    className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all"
+                  >
+                    {CUSTOMER_EXEMPTION_TYPES.map(type => <option key={type} value={type}>{type}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[10px] text-muted-foreground mb-1">ID Number</label>
+                  <input
+                    type="text"
+                    value={customerIdNumber}
+                    onChange={e => setCustomerIdNumber(e.target.value)}
+                    placeholder="Enter ID number"
+                    required={customerVatExempt}
+                    className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all"
+                  />
+                </div>
+              </div>
+            )}
+            {customerExemptionMissing && (
+              <p className="text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1">
+                <_AlertTriangle size={11} /> Customer ID number is required for VAT exemption.
+              </p>
+            )}
+          </div>
+        )}
         {fifoPreview.length > 0 && (
           <div className="bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 rounded-xl px-4 py-3 space-y-1.5">
             <p className="text-[10px] font-bold text-amber-700 dark:text-amber-400 uppercase tracking-wide flex items-center gap-1">
@@ -607,19 +905,52 @@ export function NewSaleModal({
         {selectedProduct && qtyNum > selectedProduct.stock && (
           <p className="text-xs text-red-500 flex items-center gap-1"><_AlertTriangle size={11} /> Quantity exceeds available stock ({selectedProduct.stock} units)</p>
         )}
-        {total > 0 && (
-          <div className="flex items-center justify-between bg-primary/5 border border-primary/20 rounded-xl px-4 py-3">
-            <span className="text-sm font-semibold text-foreground">Total Amount</span>
-            <span className="text-lg font-bold text-primary">{fmt(total)}</span>
+        {shelfTotal > 0 && taxBreakdown && (
+          <div className="bg-sky-50 dark:bg-sky-500/10 border border-sky-200 dark:border-sky-500/20 rounded-xl px-4 py-3 space-y-1.5">
+            <p className="text-[10px] font-bold text-sky-700 dark:text-sky-400 uppercase tracking-wide">
+              Price Breakdown — {customerVatExempt && !productVatExempt ? "Customer VAT-Exempt" : taxBreakdown.isExempt ? "VAT-Exempt" : `${VAT_RATE_LABEL} VAT Inclusive`}
+            </p>
+            <div className="space-y-1 text-xs">
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Unit Price × {qtyNum}</span>
+                <span className="tabular-nums text-foreground">{fmt(unitPrice)} × {qtyNum}</span>
+              </div>
+              {customerVatExempt && !productVatExempt && (
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">VAT Removed</span>
+                  <span className="tabular-nums font-semibold text-emerald-600 dark:text-emerald-400">-{fmt(shelfTotal - taxBreakdown.total)}</span>
+                </div>
+              )}
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Pre-tax Amount</span>
+                <span className="tabular-nums text-foreground">{fmt(taxBreakdown.preTax)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className={taxBreakdown.isExempt ? "text-muted-foreground/60" : "text-muted-foreground"}>
+                  VAT ({taxBreakdown.isExempt ? "Exempt" : VAT_RATE_LABEL})
+                </span>
+                <span className={`tabular-nums font-semibold ${taxBreakdown.isExempt ? "text-muted-foreground/60" : "text-sky-600 dark:text-sky-400"}`}>
+                  {fmt(taxBreakdown.tax)}
+                </span>
+              </div>
+              <div className="border-t border-sky-200 dark:border-sky-500/30 pt-1.5 flex justify-between font-bold">
+                <span className="text-foreground">Total</span>
+                <span className="tabular-nums text-primary text-base">{fmt(taxBreakdown.total)}</span>
+              </div>
+            </div>
           </div>
         )}
         <div className="flex gap-3 pt-2">
           <button type="button" onClick={onClose} className="flex-1 py-2.5 border border-border rounded-xl text-sm font-semibold text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-all">Cancel</button>
-          <button type="submit" disabled={!selectedProduct || qtyNum <= 0 || qtyNum > (selectedProduct?.stock ?? 0)}
-            className="flex-1 py-2.5 bg-primary text-primary-foreground rounded-xl text-sm font-bold hover:opacity-90 transition-opacity disabled:opacity-50">Confirm Sale</button>
+          <button type="submit"
+            disabled={!selectedProduct || qtyNum <= 0 || qtyNum > (selectedProduct?.stock ?? 0) || !!expiryBlock || customerExemptionMissing}
+            className="flex-1 py-2.5 bg-primary text-primary-foreground rounded-xl text-sm font-bold hover:opacity-90 transition-opacity disabled:opacity-50">
+            Confirm Sale
+          </button>
         </div>
       </form>
     </Modal>
+    </>
   );
 }
 
@@ -637,7 +968,7 @@ export function ReturnModal({
   const [qty, setQty] = useState("1");
   const [reason, setReason] = useState("");
   const qtyNum = parseInt(qty) || 0;
-  const unitPrice = product ? (product.salePrice ?? product.price) : 0;
+  const unitPrice = saleTx.qty > 0 ? saleTx.amount / saleTx.qty : product ? (product.salePrice ?? product.price) : 0;
   const refund = qtyNum * unitPrice;
   const maxQty = saleTx.qty;
 
@@ -1225,29 +1556,74 @@ export function ResetPasswordModal({
 // ─── Invoice Modal ────────────────────────────────────────────────────────────
 export function InvoiceModal({ tx, onClose }: { tx: Transaction; onClose: () => void }) {
   const typeHeader: Record<import("./data").TxType, string> = {
-    sale: "SALES RECEIPT", return: "RETURN RECEIPT", adjustment: "INVENTORY ADJUSTMENT",
+    sale: "OFFICIAL RECEIPT", return: "RETURN RECEIPT", adjustment: "INVENTORY ADJUSTMENT",
   };
   const header = typeHeader[tx.type];
-  const PESO_SYMBOL = "\u20b1";
+  const P = "\u20b1";
+
+  // Tax figures — use stored values if present, otherwise derive from amount
+  const isExempt   = (tx.taxRate ?? 0) === 0;
+  const preTax     = tx.preTaxAmount ?? (isExempt ? tx.amount : Math.round(tx.amount / 1.12 * 100) / 100);
+  const taxAmt     = tx.taxAmount    ?? (isExempt ? 0 : Math.round((tx.amount - preTax) * 100) / 100);
+  const unitNet    = tx.qty > 0 ? preTax / tx.qty : 0;
+  const vatLabel   = isExempt ? "VAT-Exempt" : "VAT (12%)";
+  const customerExemptionText =
+    tx.type === "sale" && tx.customerVatExempt
+      ? `${tx.customerExemptionType ?? "Qualified ID"} ID ${tx.customerIdNumber ?? ""}`.trim()
+      : tx.type === "sale" && tx.note?.startsWith("Customer VAT exemption: ")
+        ? tx.note.replace("Customer VAT exemption: ", "")
+        : "";
+  const escapeReceiptHtml = (value: string) =>
+    value.replace(/[&<>"']/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch] ?? ch));
+  const customerExemptionHtml = customerExemptionText
+    ? `<div class="bold">VAT Exemption:</div><div style="word-break:break-word">${escapeReceiptHtml(customerExemptionText)}</div><div class="dashes"></div>`
+    : "";
 
   const handlePrint = () => {
-    const win = window.open("", "_blank", "width=400,height=600");
+    const win = window.open("", "_blank", "width=420,height=680");
     if (!win) return;
     win.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"/><title>Receipt ${tx.id}</title>
-    <style>body{margin:0;padding:16px;background:#fff;font-family:'Courier New',monospace;font-size:12px;color:#000;}
-    .receipt{width:302px;margin:0 auto;}.center{text-align:center;}.bold{font-weight:bold;}
-    .dashes{border-top:1px dashed #000;margin:6px 0;}.row{display:flex;justify-content:space-between;}
-    @media print{body{margin:0;padding:0;}}</style></head><body>
-    <div class="receipt"><div class="center bold" style="font-size:14px;">TANGUB PHARMACY</div>
-    <div class="center">Tangub City, Misamis Occidental</div><div class="center">Tel: (088) 545-0001</div>
-    <div class="dashes"></div><div class="center bold">${header}</div><div class="dashes"></div>
-    <div class="row"><span>Txn ID:</span><span>${tx.id}</span></div>
-    <div class="row"><span>Date:</span><span>${tx.date}</span></div>
-    <div class="row"><span>Staff:</span><span>${tx.staff}</span></div>
-    <div class="dashes"></div><div class="row bold"><span>ITEM</span><span>AMT</span></div><div class="dashes"></div>
-    <div>${tx.product}</div><div class="row"><span>${tx.qty} x &#8369;${(tx.amount/tx.qty).toFixed(2)}</span><span>&#8369;${tx.amount.toFixed(2)}</span></div>
-    <div class="dashes"></div><div class="row bold"><span>${tx.type==="return"?"REFUND TOTAL":"TOTAL"}</span><span>&#8369;${tx.amount.toFixed(2)}</span></div>
-    <div class="dashes"></div><div class="center">Thank you for your business!</div></div></body></html>`);
+    <style>
+      body{margin:0;padding:16px;background:#fff;font-family:'Courier New',monospace;font-size:12px;color:#000;}
+      .receipt{width:302px;margin:0 auto;}
+      .center{text-align:center;} .bold{font-weight:bold;} .right{text-align:right;}
+      .dashes{border-top:1px dashed #000;margin:6px 0;}
+      .row{display:flex;justify-content:space-between;margin:2px 0;}
+      .small{font-size:10px;}
+      @media print{body{margin:0;padding:0;}}
+    </style></head><body>
+    <div class="receipt">
+      <div class="center bold" style="font-size:14px;">TANGUB PHARMACY</div>
+      <div class="center small">Tangub City, Misamis Occidental</div>
+      <div class="center small">Tel: (088) 545-0001</div>
+      <div class="center small">TIN: 123-456-789-000</div>
+      <div class="dashes"></div>
+      <div class="center bold">${header}</div>
+      <div class="dashes"></div>
+      <div class="row"><span>OR No.:</span><span>${tx.id}</span></div>
+      <div class="row"><span>Date:</span><span>${tx.date}</span></div>
+      <div class="row"><span>Cashier:</span><span>${tx.staff}</span></div>
+      <div class="dashes"></div>
+      <div class="row bold"><span>ITEM</span><span>AMT</span></div>
+      <div class="dashes"></div>
+      <div style="margin-bottom:2px">${tx.product}</div>
+      <div class="row">
+        <span>${tx.qty} × ${P}${unitNet.toFixed(2)} (net)</span>
+        <span>${P}${preTax.toFixed(2)}</span>
+      </div>
+      <div class="dashes"></div>
+      <div class="row"><span>Vatable Sales</span><span>${P}${isExempt ? "0.00" : preTax.toFixed(2)}</span></div>
+      <div class="row"><span>VAT-Exempt Sales</span><span>${P}${isExempt ? preTax.toFixed(2) : "0.00"}</span></div>
+      <div class="row"><span>Zero-Rated Sales</span><span>${P}0.00</span></div>
+      <div class="row"><span>${vatLabel}</span><span>${P}${taxAmt.toFixed(2)}</span></div>
+      <div class="dashes"></div>
+      <div class="row bold"><span>${tx.type === "return" ? "TOTAL REFUND" : "TOTAL AMOUNT DUE"}</span><span>${P}${tx.amount.toFixed(2)}</span></div>
+      <div class="dashes"></div>
+      ${customerExemptionHtml}
+      ${tx.type === "return" && tx.note ? `<div class="bold">Return Reason:</div><div style="word-break:break-word">${tx.note}</div><div class="dashes"></div>` : ""}
+      <div class="center small" style="margin-top:4px">This serves as your Official Receipt</div>
+      <div class="center small">Thank you for your patronage!</div>
+    </div></body></html>`);
     win.document.close(); win.print();
   };
 
@@ -1256,7 +1632,7 @@ export function InvoiceModal({ tx, onClose }: { tx: Transaction; onClose: () => 
       <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" onClick={onClose} />
       <div className="relative bg-card border border-border rounded-2xl shadow-2xl w-full max-w-sm max-h-[90vh] flex flex-col">
         <div className="flex items-center justify-between px-6 py-4 border-b border-border flex-shrink-0">
-          <h2 className="text-sm font-bold text-foreground">Receipt / Invoice</h2>
+          <h2 className="text-sm font-bold text-foreground">Official Receipt</h2>
           <div className="flex items-center gap-2">
             <button onClick={handlePrint} className="flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground rounded-lg text-xs font-bold hover:opacity-90 transition-opacity">
               Print
@@ -1265,31 +1641,62 @@ export function InvoiceModal({ tx, onClose }: { tx: Transaction; onClose: () => 
           </div>
         </div>
         <div className="p-4 overflow-y-auto flex justify-center">
-          <div style={{ width: 302, fontFamily: "'Courier New', monospace", fontSize: 12, background: "#fff", color: "#000", padding: "12px 8px" }}>
+          {/* On-screen receipt preview */}
+          <div style={{ width: 302, fontFamily: "'Courier New', monospace", fontSize: 12, background: "#fff", color: "#000", padding: "12px 8px", border: "1px solid #e5e7eb", borderRadius: 8 }}>
             <div style={{ textAlign: "center", fontWeight: "bold", fontSize: 14 }}>TANGUB PHARMACY</div>
-            <div style={{ textAlign: "center" }}>Tangub City, Misamis Occidental</div>
+            <div style={{ textAlign: "center", fontSize: 10 }}>Tangub City, Misamis Occidental</div>
+            <div style={{ textAlign: "center", fontSize: 10 }}>Tel: (088) 545-0001  ·  TIN: 123-456-789-000</div>
             <div style={{ borderTop: "1px dashed #000", margin: "6px 0" }} />
             <div style={{ textAlign: "center", fontWeight: "bold" }}>{header}</div>
             <div style={{ borderTop: "1px dashed #000", margin: "6px 0" }} />
-            <div style={{ display: "flex", justifyContent: "space-between" }}><span>Txn ID:</span><span>{tx.id}</span></div>
-            <div style={{ display: "flex", justifyContent: "space-between" }}><span>Date:</span><span>{tx.date}</span></div>
-            <div style={{ display: "flex", justifyContent: "space-between" }}><span>Staff:</span><span>{tx.staff}</span></div>
+            {[
+              ["OR No.:", tx.id],
+              ["Date:", tx.date],
+              ["Cashier:", tx.staff],
+            ].map(([k, v]) => (
+              <div key={k} style={{ display: "flex", justifyContent: "space-between", marginBottom: 2 }}>
+                <span>{k}</span><span>{v}</span>
+              </div>
+            ))}
             <div style={{ borderTop: "1px dashed #000", margin: "6px 0" }} />
+            <div style={{ display: "flex", justifyContent: "space-between", fontWeight: "bold", marginBottom: 4 }}>
+              <span>ITEM</span><span>AMT</span>
+            </div>
             <div style={{ marginBottom: 2 }}>{tx.product}</div>
             <div style={{ display: "flex", justifyContent: "space-between" }}>
-              <span>{tx.qty} × {PESO_SYMBOL}{(tx.amount / tx.qty).toFixed(2)}</span>
-              <span>{PESO_SYMBOL}{tx.amount.toFixed(2)}</span>
+              <span>{tx.qty} × {P}{unitNet.toFixed(2)} (net)</span>
+              <span>{P}{preTax.toFixed(2)}</span>
             </div>
+            <div style={{ borderTop: "1px dashed #000", margin: "6px 0" }} />
+            {/* BIR-required VAT breakdown lines */}
+            {[
+              ["Vatable Sales",    isExempt ? "0.00" : preTax.toFixed(2)],
+              ["VAT-Exempt Sales", isExempt ? preTax.toFixed(2) : "0.00"],
+              ["Zero-Rated Sales", "0.00"],
+              [vatLabel,           taxAmt.toFixed(2)],
+            ].map(([k, v]) => (
+              <div key={k} style={{ display: "flex", justifyContent: "space-between", marginBottom: 2, fontSize: 11 }}>
+                <span>{k}</span><span>{P}{v}</span>
+              </div>
+            ))}
             <div style={{ borderTop: "1px dashed #000", margin: "6px 0" }} />
             <div style={{ display: "flex", justifyContent: "space-between", fontWeight: "bold" }}>
-              <span>{tx.type === "return" ? "REFUND TOTAL" : "TOTAL"}</span>
-              <span>{PESO_SYMBOL}{tx.amount.toFixed(2)}</span>
+              <span>{tx.type === "return" ? "TOTAL REFUND" : "TOTAL AMOUNT DUE"}</span>
+              <span>{P}{tx.amount.toFixed(2)}</span>
             </div>
             <div style={{ borderTop: "1px dashed #000", margin: "6px 0" }} />
-            {tx.type === "return" && tx.note && (
-              <><div style={{ fontWeight: "bold" }}>Return Reason:</div><div style={{ wordBreak: "break-word" }}>{tx.note}</div><div style={{ borderTop: "1px dashed #000", margin: "6px 0" }} /></>
+            {customerExemptionText && (
+              <>
+                <div style={{ fontWeight: "bold" }}>VAT Exemption:</div>
+                <div style={{ wordBreak: "break-word", marginBottom: 4 }}>{customerExemptionText}</div>
+                <div style={{ borderTop: "1px dashed #000", margin: "6px 0" }} />
+              </>
             )}
-            <div style={{ textAlign: "center" }}>Thank you for your business!</div>
+            {tx.type === "return" && tx.note && (
+              <><div style={{ fontWeight: "bold" }}>Return Reason:</div><div style={{ wordBreak: "break-word", marginBottom: 4 }}>{tx.note}</div></>
+            )}
+            <div style={{ textAlign: "center", fontSize: 10, marginTop: 4 }}>This serves as your Official Receipt</div>
+            <div style={{ textAlign: "center", fontSize: 10 }}>Thank you for your patronage!</div>
           </div>
         </div>
       </div>
@@ -1346,20 +1753,32 @@ export function ProductSearchWidget({
         {query && <button type="button" onClick={clear} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"><_X size={13} /></button>}
         {open && filtered.length > 0 && (
           <div className="absolute z-20 top-full mt-1 w-full bg-card border border-border rounded-xl shadow-xl overflow-hidden">
-            {filtered.map(p => (
+          {filtered.map(p => {
+              const expBlock = getExpiryStatus(p);
+              return (
               <button key={p.id} type="button" onClick={() => selectProduct(p)}
-                className="w-full flex items-center justify-between px-3 py-2.5 hover:bg-muted/50 transition-colors text-left border-b border-border/40 last:border-b-0">
+                className={`w-full flex items-center justify-between px-3 py-2.5 hover:bg-muted/50 transition-colors text-left border-b border-border/40 last:border-b-0 ${expBlock ? "opacity-70" : ""}`}>
                 <div>
-                  <p className="text-xs font-bold text-foreground">{p.name}</p>
+                  <div className="flex items-center gap-1.5">
+                    <p className="text-xs font-bold text-foreground">{p.name}</p>
+                    {expBlock && (
+                      <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${expBlock.daysLeft <= 0 ? "bg-red-100 text-red-700 dark:bg-red-500/20 dark:text-red-400" : "bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-400"}`}>
+                        {expBlock.daysLeft <= 0 ? "EXPIRED" : `${expBlock.daysLeft}d left`}
+                      </span>
+                    )}
+                  </div>
                   <p className="text-[10px] text-muted-foreground">{p.id} &middot; {p.stock} in stock</p>
                 </div>
                 <div className="flex-shrink-0 ml-2">
-                  {p.salePrice != null ? (
+                  {expBlock ? (
+                    <span className="text-[10px] font-bold text-red-600 dark:text-red-400">Cannot sell</span>
+                  ) : p.salePrice != null ? (
                     <div><span className="text-[10px] text-muted-foreground line-through">{fmt(p.price)}</span><span className="text-xs font-bold text-primary ml-1">{fmt(p.salePrice)}</span></div>
                   ) : <span className="text-xs font-bold text-foreground">{fmt(p.price)}</span>}
                 </div>
               </button>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>

@@ -20,8 +20,9 @@ export default function TransactionsPage({
   onAddReturn: (tx: Transaction) => void;
   onViewInvoice: (tx: Transaction) => void;
 }) {
+  const todayISO = new Date().toISOString().slice(0, 10); // "YYYY-MM-DD"
   const [typeFilter, setTypeFilter] = useState<"all" | "sale" | "return" | "adjustment">("all");
-  const [dateFrom, setDateFrom] = useState("");
+  const [dateFrom, setDateFrom] = useState(todayISO);
   const [dateTo, setDateTo] = useState("");
   const [viewingReason, setViewingReason] = useState<Transaction | null>(null);
 
@@ -47,8 +48,15 @@ export default function TransactionsPage({
     });
   }, [typeFilter, transactions, dateFrom, dateTo]);
 
-  const totalSales = transactions.filter(t => t.type === "sale").reduce((s, t) => s + t.amount, 0);
-  const totalReturns = transactions.filter(t => t.type === "return").reduce((s, t) => s + t.amount, 0);
+  const today = new Date().toLocaleDateString("en-US", { month: "2-digit", day: "2-digit", year: "numeric" }); // "MM/DD/YYYY"
+
+  const salesToday   = transactions.filter(t => t.type === "sale"   && t.date.startsWith(today));
+  const allSales     = transactions.filter(t => t.type === "sale");
+  const allReturns   = transactions.filter(t => t.type === "return");
+
+  const salesTodayAmt  = salesToday.reduce((s, t) => s + t.amount, 0);
+  const allSalesAmt    = allSales.reduce((s, t) => s + t.amount, 0);
+  const allReturnsAmt  = allReturns.reduce((s, t) => s + t.amount, 0);
   const isAdmin = user.role === "admin" || user.role === "admin/owner";
   const canModify = !isAdmin; // Admins cannot add sales or returns
 
@@ -94,10 +102,26 @@ export default function TransactionsPage({
         )}
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         {[
-          { label: "Sales Today", val: fmt(totalSales), sub: `${transactions.filter(t => t.type === "sale").length} transactions`, color: "text-emerald-600 dark:text-emerald-400" },
-          { label: "Returns / Refunds", val: fmt(totalReturns), sub: `${transactions.filter(t => t.type === "return").length} returns`, color: "text-orange-600 dark:text-orange-400" },
+          {
+            label: "Sales Today",
+            val: fmt(salesTodayAmt),
+            sub: `${salesToday.length} transaction${salesToday.length !== 1 ? "s" : ""}`,
+            color: "text-emerald-600 dark:text-emerald-400",
+          },
+          {
+            label: "All Sales",
+            val: fmt(allSalesAmt),
+            sub: `${allSales.length} total sale${allSales.length !== 1 ? "s" : ""}`,
+            color: "text-sky-600 dark:text-sky-400",
+          },
+          {
+            label: "Returns / Refunds",
+            val: fmt(allReturnsAmt),
+            sub: `${allReturns.length} return${allReturns.length !== 1 ? "s" : ""}`,
+            color: "text-orange-600 dark:text-orange-400",
+          },
         ].map(c => (
           <div key={c.label} className="bg-card border border-border rounded-xl p-4 shadow-sm">
             <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">{c.label}</p>
@@ -127,6 +151,14 @@ export default function TransactionsPage({
             <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="w-32 rounded-lg border border-border bg-background px-3 py-2 text-xs text-foreground" />
             <label className="text-[10px] uppercase tracking-wide text-muted-foreground">To</label>
             <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="w-32 rounded-lg border border-border bg-background px-3 py-2 text-xs text-foreground" />
+            {(dateFrom !== todayISO || dateTo !== "") && (
+              <button
+                onClick={() => { setDateFrom(todayISO); setDateTo(""); }}
+                className="text-xs text-primary hover:text-primary/80 font-semibold transition-colors"
+              >
+                Reset
+              </button>
+            )}
             {isAdmin && (
               <button onClick={handleExport} className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors font-semibold">
                 <FileText size={12} />Export

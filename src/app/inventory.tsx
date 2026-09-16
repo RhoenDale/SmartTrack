@@ -29,8 +29,10 @@ export default function InventoryPage({
   const rowRefs = useRef<Record<string, HTMLTableRowElement | null>>({});
 
   // Check if user is admin (read-only access to inventory)
-  const isAdmin = userRole === "admin" || userRole === "admin/owner";
-  const canModify = !isAdmin;
+  const isAdmin   = userRole === "admin" || userRole === "admin/owner";
+  const isCashier = userRole === "cashier";
+  // Only inventory_manager can add, edit, or delete products
+  const canModify = !isAdmin && !isCashier;
 
   useEffect(() => {
     if (selectedProductId) {
@@ -60,7 +62,8 @@ export default function InventoryPage({
           <h1 className="text-xl font-bold text-foreground">Inventory</h1>
           <p className="text-sm text-muted-foreground mt-0.5">
             {inventory.length} products · {inventory.filter(i => i.status !== "good").length} need attention
-            {isAdmin && <span className="ml-2 text-amber-600 dark:text-amber-400 font-semibold">· Read-only access</span>}
+            {isAdmin   && <span className="ml-2 text-amber-600 dark:text-amber-400 font-semibold">· Read-only access</span>}
+            {isCashier && <span className="ml-2 text-violet-600 dark:text-violet-400 font-semibold">· View-only access</span>}
           </p>
         </div>
         {canModify && (
@@ -132,14 +135,25 @@ export default function InventoryPage({
                   <td className="px-4 py-3 text-xs font-bold text-foreground">{item.stock.toLocaleString()}</td>
                   <td className="px-4 py-3 text-xs text-muted-foreground">{item.reorder}</td>
                   <td className="px-4 py-3 text-xs font-bold">
-                    {item.salePrice != null ? (
-                      <span>
-                        <span className="line-through text-muted-foreground mr-1">{fmt(item.price)}</span>
-                        <span className="text-primary">{fmt(item.salePrice)}</span>
-                      </span>
-                    ) : (
-                      <span className="text-foreground">{fmt(item.price)}</span>
-                    )}
+                    <div className="flex flex-col gap-0.5">
+                      {item.salePrice != null ? (
+                        <span>
+                          <span className="line-through text-muted-foreground mr-1">{fmt(item.price)}</span>
+                          <span className="text-primary">{fmt(item.salePrice)}</span>
+                        </span>
+                      ) : (
+                        <span className="text-foreground">{fmt(item.price)}</span>
+                      )}
+                      {item.isVatExempt || item.is_vat_exempt ? (
+                        <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/20 w-fit">
+                          VAT-EXEMPT
+                        </span>
+                      ) : (
+                        <span className="text-[9px] text-muted-foreground/60">
+                          incl. 12% VAT
+                        </span>
+                      )}
+                    </div>
                   </td>
                   <td className="px-4 py-3 text-xs text-muted-foreground">
                     {(() => {
@@ -168,7 +182,9 @@ export default function InventoryPage({
                         </button>
                       </div>
                     ) : (
-                      <span className="text-[10px] text-muted-foreground italic">View only</span>
+                      <span className="text-[10px] text-muted-foreground italic">
+                        {isCashier ? "View only" : "Read only"}
+                      </span>
                     )}
                   </td>
                 </tr>

@@ -131,14 +131,80 @@ function handle_sale(PDO $pdo, array $authUser): void {
     $qty       = (int)$data['qty'];
     if ($qty <= 0) json_response(['error' => 'Qty must be > 0.'], 422);
 
+    $customerVatExempt      = !empty($data['customer_vat_exempt']);
+    $customerExemptionType  = trim((string)($data['customer_exemption_type'] ?? ''));
+    $customerIdNumber       = trim((string)($data['customer_id_number'] ?? ''));
+    $allowedExemptionTypes  = ['Senior Citizen', 'PWD', 'Other Qualified ID'];
+    if ($customerVatExempt) {
+        if (!in_array($customerExemptionType, $allowedExemptionTypes, true)) {
+            json_response(['error' => 'Invalid VAT exemption ID type.'], 422);
+        }
+        if ($customerIdNumber === '') {
+            json_response(['error' => 'Customer ID number is required for VAT exemption.'], 422);
+        }
+    }
+
     // Fetch product for price
     $prod = $pdo->prepare('SELECT * FROM products WHERE id = ?');
     $prod->execute([$productId]);
     $product = $prod->fetch();
     if (!$product) json_response(['error' => 'Product not found.'], 404);
 
-    $unitPrice = $product['sale_price'] !== null ? (float)$product['sale_price'] : (float)$product['price'];
-    $amount    = round($unitPrice * $qty, 2);
+    $unitPrice   = $product['sale_price'] !== null ? (float)$product['sale_price'] : (float)$product['price'];
+    $shelfAmount = round($unitPrice * $qty, 2);
+    $amount      = $shelfAmount;
+
+    // ── VAT calculation ───────────────────────────────────────────────────────
+    $isProductVatExempt = (int)($product['is_vat_exempt'] ?? 0) === 1;
+    if ($isProductVatExempt) {
+        $vatRate      = 0.0;
+        $preTaxAmount = $amount;
+        $taxAmount    = 0.0;
+    } elseif ($customerVatExempt) {
+        $amount       = round($shelfAmount / 1.12, 2);
+        $vatRate      = 0.0;
+        $preTaxAmount = $amount;
+        $taxAmount    = 0.0;
+    } else {
+        $vatRate      = 0.12;
+        $preTaxAmount = round($amount / 1.12, 2);
+        $taxAmount    = round($amount - $preTaxAmount, 2);
+    }
+    $note = $customerVatExempt
+        ? "Customer VAT exemption: {$customerExemptionType} ID {$customerIdNumber}"
+        : null;
+
+    // ── Expiry guard: block sale if the FIFO-first batch expires within 60 days ─
+    $batchStmt = $pdo->prepare(
+        "SELECT batch_id, expiry_date, qty
+         FROM product_batches
+         WHERE product_id = ? AND qty > 0
+         ORDER BY received_date ASC, id ASC
+         LIMIT 1"
+    );
+    $batchStmt->execute([$productId]);
+    $firstBatch = $batchStmt->fetch();
+    if ($firstBatch) {
+        $daysLeft = (strtotime($firstBatch['expiry_date']) - time()) / 86400;
+        if ($daysLeft <= 0) {
+            json_response([
+                'error'         => "Cannot sell \"{$product['name']}\" — the first batch (ID: {$firstBatch['batch_id']}) has already EXPIRED on " . date('m/d/Y', strtotime($firstBatch['expiry_date'])) . ". Remove this batch from inventory immediately.",
+                'type'          => 'expiry_block',
+                'batchId'       => $firstBatch['batch_id'],
+                'expiryDate'    => $firstBatch['expiry_date'],
+                'daysLeft'      => (int)$daysLeft,
+            ], 422);
+        }
+        if ($daysLeft <= 60) {
+            json_response([
+                'error'         => "Cannot sell \"{$product['name']}\" — the first batch (ID: {$firstBatch['batch_id']}) expires in " . ceil($daysLeft) . " days (" . date('m/d/Y', strtotime($firstBatch['expiry_date'])) . "). Products within 60 days of expiry cannot be sold. Please remove or update this batch.",
+                'type'          => 'expiry_block',
+                'batchId'       => $firstBatch['batch_id'],
+                'expiryDate'    => $firstBatch['expiry_date'],
+                'daysLeft'      => (int)ceil($daysLeft),
+            ], 422);
+        }
+    }
 
     $pdo->beginTransaction();
     try {
@@ -147,10 +213,12 @@ function handle_sale(PDO $pdo, array $authUser): void {
         $txId = gen_tx_id('TXN');
         $pdo->prepare(
             'INSERT INTO transactions
-             (id, type, product_name, product_id, qty, amount, staff, staff_id, status, transacted_at)
-             VALUES (?, "sale", ?, ?, ?, ?, ?, ?, "completed", NOW())'
+             (id, type, product_name, product_id, qty, amount, pre_tax_amount, tax_amount, tax_rate,
+               staff, staff_id, status, note, transacted_at)
+              VALUES (?, "sale", ?, ?, ?, ?, ?, ?, ?, ?, ?, "completed", ?, NOW())'
         )->execute([$txId, $product['name'], $productId, $qty, $amount,
-                    staff_abbrev($authUser['name']), $authUser['id']]);
+                    $preTaxAmount, $taxAmount, $vatRate,
+                    staff_abbrev($authUser['name']), $authUser['id'], $note]);
 
         // Record FIFO audit trail
         $ins = $pdo->prepare(
@@ -220,12 +288,18 @@ function handle_return(PDO $pdo, array $authUser): void {
     $batchId   = $origBatch['batch_id']    ?? ($productId . '-B1');
     $expiry    = $origBatch['expiry_date'] ?? date('Y-m-d');
 
-    // Fetch product for unit price
+    // Fetch product for restock/status sync
     $pStmt = $pdo->prepare('SELECT * FROM products WHERE id = ?');
     $pStmt->execute([$productId]);
-    $product   = $pStmt->fetch();
-    $unitPrice = $product['sale_price'] !== null ? (float)$product['sale_price'] : (float)$product['price'];
-    $refund    = round($unitPrice * $qty, 2);
+    $product = $pStmt->fetch();
+    $soldQty = max((int)$sale['qty'], 1);
+    $unitRefund = (float)$sale['amount'] / $soldQty;
+    $refund = round($unitRefund * $qty, 2);
+
+    // ── VAT on refund — mirror the original sale's tax rate ──────────────────
+    $origVatRate      = isset($sale['tax_rate']) ? (float)$sale['tax_rate'] : 0.12;
+    $retPreTaxAmount  = $origVatRate == 0 ? $refund : round($refund / 1.12, 2);
+    $retTaxAmount     = round($refund - $retPreTaxAmount, 2);
 
     $pdo->beginTransaction();
     try {
@@ -234,12 +308,13 @@ function handle_return(PDO $pdo, array $authUser): void {
         $retId = gen_tx_id('RET');
         $pdo->prepare(
             'INSERT INTO transactions
-             (id, type, product_name, product_id, qty, amount, staff, staff_id, status,
-              note, returned_tx_id, transacted_at)
-             VALUES (?, "return", ?, ?, ?, ?, ?, ?, "completed", ?, ?, NOW())'
+             (id, type, product_name, product_id, qty, amount, pre_tax_amount, tax_amount, tax_rate,
+              staff, staff_id, status, note, returned_tx_id, transacted_at)
+             VALUES (?, "return", ?, ?, ?, ?, ?, ?, ?, ?, ?, "completed", ?, ?, NOW())'
         )->execute([
             $retId, $sale['product_name'], $productId,
-            $qty, $refund, staff_abbrev($authUser['name']), $authUser['id'],
+            $qty, $refund, $retPreTaxAmount, $retTaxAmount, $origVatRate,
+            staff_abbrev($authUser['name']), $authUser['id'],
             $reason, $saleTxId,
         ]);
 
@@ -326,6 +401,17 @@ function format_transaction(array $tx): array {
     if (strpos($staffName, ' ') !== false && !strpos($staffName, '.')) {
         $staffName = staff_abbrev($staffName);
     }
+
+    $customerVatExempt = false;
+    $customerExemptionType = null;
+    $customerIdNumber = null;
+    if (($tx['type'] ?? '') === 'sale' && !empty($tx['note'])) {
+        if (preg_match('/^Customer VAT exemption: (.+) ID (.+)$/', $tx['note'], $matches)) {
+            $customerVatExempt = true;
+            $customerExemptionType = $matches[1];
+            $customerIdNumber = $matches[2];
+        }
+    }
     
     return [
         'id'               => $tx['id'],
@@ -334,6 +420,12 @@ function format_transaction(array $tx): array {
         'productId'        => $tx['product_id'],
         'qty'              => (int)$tx['qty'],
         'amount'           => (float)$tx['amount'],
+        'preTaxAmount'     => isset($tx['pre_tax_amount']) ? (float)$tx['pre_tax_amount'] : null,
+        'taxAmount'        => isset($tx['tax_amount'])     ? (float)$tx['tax_amount']     : null,
+        'taxRate'          => isset($tx['tax_rate'])       ? (float)$tx['tax_rate']       : null,
+        'customerVatExempt' => $customerVatExempt,
+        'customerExemptionType' => $customerExemptionType,
+        'customerIdNumber' => $customerIdNumber,
         'staff'            => $staffName,
         'status'           => $tx['status'],
         'date'             => date('m/d/Y H:i', strtotime($tx['transacted_at'])),

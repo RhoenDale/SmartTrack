@@ -94,7 +94,13 @@ export const transactionsApi = {
     return get<import('./data').Transaction[]>(`/transactions?${params}`);
   },
   get:        (id: string) => get<import('./data').Transaction>(`/transactions/${id}`),
-  sale:       (data: { product_id: string; qty: number }) =>
+  sale:       (data: {
+    product_id: string;
+    qty: number;
+    customer_vat_exempt?: boolean;
+    customer_exemption_type?: string | null;
+    customer_id_number?: string | null;
+  }) =>
     post<{ transaction: import('./data').Transaction; product: import('./data').Product }>(
       '/transactions/sale', data),
   return:     (data: { sale_tx_id: string; qty: number; reason: string }) =>
@@ -171,6 +177,72 @@ export const reportsApi = {
   sales:     () => get('/reports/sales'),
   stock:     () => get('/reports/stock'),
   inventory: () => get('/reports/inventory'),
+};
+
+// ─── Financial Management ─────────────────────────────────────────────────────
+export const financialApi = {
+  summary:   (dateFrom = '', dateTo = '') => {
+    const p = new URLSearchParams();
+    if (dateFrom) p.set('date_from', dateFrom);
+    if (dateTo)   p.set('date_to',   dateTo);
+    const qs = p.toString() ? `?${p}` : '';
+    return get<{
+      totalRevenue: number; totalPreTax: number; totalVatCollected: number; netVatPayable: number;
+      totalReturns: number; netRevenue: number;
+      grossProfit: number; salesCount: number; returnsCount: number;
+      adjustmentsCount: number; totalTransactions: number; avgOrderValue: number;
+      todayRevenue: number; weekRevenue: number; monthRevenue: number;
+    }>(`/financial/summary${qs}`);
+  },
+  daily:     (days = 30) =>
+    get<{ date: string; revenue: number; returns: number }[]>(`/financial/daily?days=${days}`),
+  monthly:   () =>
+    get<{ month: string; revenue: number; returns: number; net: number; sales_count: number }[]>('/financial/monthly'),
+  records:   (params: { type?: string; dateFrom?: string; dateTo?: string; page?: number; perPage?: number }) => {
+    const p = new URLSearchParams({ type: params.type ?? 'all', page: String(params.page ?? 1), per_page: String(params.perPage ?? 25) });
+    if (params.dateFrom) p.set('date_from', params.dateFrom);
+    if (params.dateTo)   p.set('date_to',   params.dateTo);
+    return get<{
+      records: { id: string; type: string; product: string; qty: number; amount: number; staff: string; note: string; status: string; date: string }[];
+      total: number; page: number; per_page: number; pages: number;
+    }>(`/financial/records?${p}`);
+  },
+  breakdown: (dateFrom = '', dateTo = '') => {
+    const p = new URLSearchParams();
+    if (dateFrom) p.set('date_from', dateFrom);
+    if (dateTo)   p.set('date_to',   dateTo);
+    const qs = p.toString() ? `?${p}` : '';
+    return get<{ category: string; revenue: number; units: number; share: number }[]>(`/financial/breakdown${qs}`);
+  },
+  staff:     (dateFrom = '', dateTo = '') => {
+    const p = new URLSearchParams();
+    if (dateFrom) p.set('date_from', dateFrom);
+    if (dateTo)   p.set('date_to',   dateTo);
+    const qs = p.toString() ? `?${p}` : '';
+    return get<{ staff: string; transactions: number; revenue: number; unitsSold: number }[]>(`/financial/staff${qs}`);
+  },
+  exportCsv: (type = 'all', dateFrom = '', dateTo = '') => {
+    const p = new URLSearchParams({ type });
+    if (dateFrom) p.set('date_from', dateFrom);
+    if (dateTo)   p.set('date_to',   dateTo);
+    window.open(`${API_BASE}/financial/export?${p}`, '_blank');
+  },
+  income: (dateFrom = '', dateTo = '') => {
+    const p = new URLSearchParams();
+    if (dateFrom) p.set('date_from', dateFrom);
+    if (dateTo)   p.set('date_to',   dateTo);
+    const qs = p.toString() ? `?${p}` : '';
+    return get<{
+      rows: {
+        productId: string; productName: string; category: string;
+        unitsSold: number; revenue: number;
+        totalCost: number | null; grossProfit: number | null;
+        margin: number | null; avgUnitCost: number | null;
+        multiCost: boolean; hasCostData: boolean;
+      }[];
+      totals: { revenue: number; totalCost: number; grossProfit: number; margin: number | null };
+    }>(`/financial/income${qs}`);
+  },
 };
 
 // ─── Stock Alerts ─────────────────────────────────────────────────────────────

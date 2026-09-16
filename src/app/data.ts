@@ -1,7 +1,7 @@
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export type UserRole    = "admin/owner" | "admin" | "inventory_manager" | "cashier";
-export type Page        = "dashboard" | "inventory" | "transactions" | "analytics" | "users" | "stock-alerts" | "reports";
+export type Page        = "dashboard" | "inventory" | "transactions" | "analytics" | "users" | "stock-alerts" | "reports" | "financial";
 export type StockStatus = "good" | "moderate" | "low" | "critical";
 export type TxStatus    = "completed";
 export type TxType      = "sale" | "return" | "adjustment";
@@ -17,26 +17,30 @@ export interface AuthUser {
 }
 
 export interface ProductBatch {
-  batchId:      string;   // e.g. "P001-B1"
-  qty:          number;
-  expiry:       string;   // "MM/DD/YYYY"
-  expiryDate:   string;   // "YYYY-MM-DD" from API
-  receivedDate: string;   // "MM/DD/YYYY"
+  batchId:        string;   // e.g. "P001-B1"
+  qty:            number;
+  expiry:         string;   // "MM/DD/YYYY"
+  expiryDate:     string;   // "YYYY-MM-DD" from API
+  receivedDate:   string;   // "MM/DD/YYYY"
+  batchTotalCost?: number | null; // total paid to supplier for this batch
+  unitCost?:       number | null; // batchTotalCost / original qty
 }
 
 export interface Product {
-  id:        string;
-  name:      string;
-  category:  string;
-  supplier:  string;
-  stock:     number;      // computed: sum of batch qty
-  reorder:   number;
-  price:     number;
-  sale_price?: number | null;
-  salePrice?:  number | null; // alias used in UI
-  expiry:    string;      // earliest batch expiry "MM/DD/YYYY"
-  status:    StockStatus;
-  batches:   ProductBatch[];
+  id:           string;
+  name:         string;
+  category:     string;
+  supplier:     string;
+  stock:        number;      // computed: sum of batch qty
+  reorder:      number;
+  price:        number;      // VAT-inclusive selling price
+  sale_price?:  number | null;
+  salePrice?:   number | null; // alias used in UI
+  is_vat_exempt?: number | null; // 0 = standard VAT, 1 = VAT-exempt
+  isVatExempt?:   boolean;       // camelCase alias
+  expiry:       string;      // earliest batch expiry "MM/DD/YYYY"
+  status:       StockStatus;
+  batches:      ProductBatch[];
 }
 
 export interface Transaction {
@@ -45,7 +49,13 @@ export interface Transaction {
   product:           string;  // product name
   productId?:        string;
   qty:               number;
-  amount:            number;
+  amount:            number;  // total paid by customer
+  preTaxAmount?:     number;  // net of VAT (taxable base)
+  taxAmount?:        number;  // VAT collected
+  taxRate?:          number;  // e.g. 0.12 or 0 if exempt
+  customerVatExempt?: boolean;
+  customerExemptionType?: string | null;
+  customerIdNumber?: string | null;
   staff:             string;
   date:              string;  // "MM/DD/YYYY HH:MM"
   status:            TxStatus;
@@ -148,10 +158,13 @@ export function getTotalStock(batches: ProductBatch[]): number {
 export function normalizeProduct(p: Product): Product {
   return {
     ...p,
-    salePrice: p.sale_price ?? p.salePrice ?? undefined,
+    salePrice:    p.sale_price    ?? p.salePrice    ?? undefined,
+    isVatExempt:  !!(p.is_vat_exempt ?? (p.isVatExempt ? 1 : 0)),
     batches: (p.batches ?? []).map(b => ({
       ...b,
-      expiryDate: b.expiryDate ?? b.expiry,
+      expiryDate:     b.expiryDate     ?? b.expiry,
+      batchTotalCost: b.batchTotalCost ?? null,
+      unitCost:       b.unitCost       ?? null,
     })),
   };
 }
@@ -202,4 +215,42 @@ export function deductFIFO(
   });
 
   return { updatedBatches: updated.filter(b => b.qty > 0), consumed };
+}
+
+// ─── VAT / Tax utilities (Philippine BIR — 12% standard rate) ────────────────
+
+export const VAT_RATE        = 0.12;   // 12% standard VAT
+export const VAT_DIVISOR     = 1.12;   // used to extract VAT from inclusive price
+export const VAT_RATE_LABEL  = "12%";
+
+export interface TaxBreakdown {
+  preTax:     number;  // net amount before VAT  (amount / 1.12)
+  tax:        number;  // VAT amount             (amount - preTax)
+  total:      number;  // final sale total       (= amount)
+  rate:       number;  // 0.12 or 0 if exempt
+  isExempt:   boolean;
+}
+
+/**
+ * Compute VAT breakdown from a VAT-inclusive total.
+ * Philippine BIR: prices are quoted VAT-inclusive; pre-tax = total ÷ 1.12.
+ */
+export function computeTax(total: number, isVatExempt = false): TaxBreakdown {
+  if (isVatExempt) {
+    return { preTax: total, tax: 0, total, rate: 0, isExempt: true };
+  }
+  const preTax = round2(total / VAT_DIVISOR);
+  const tax    = round2(total - preTax);
+  return { preTax, tax, total, rate: VAT_RATE, isExempt: false };
+}
+
+/** Compute tax breakdown for a product + quantity. */
+export function computeSaleTax(product: Product, qty: number): TaxBreakdown {
+  const unitPrice = product.salePrice ?? product.price;
+  const total     = round2(unitPrice * qty);
+  return computeTax(total, !!(product.isVatExempt ?? product.is_vat_exempt));
+}
+
+function round2(n: number): number {
+  return Math.round(n * 100) / 100;
 }
