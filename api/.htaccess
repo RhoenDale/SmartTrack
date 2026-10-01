@@ -1,0 +1,12 @@
+Options -Indexes
+RewriteEngine On
+
+# Pass Authorization header through to PHP (required for Bearer token auth)
+# Apache strips this header by default in CGI/FastCGI mode
+RewriteCond %{HTTP:Authorization} .
+RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
+
+# Route all requests to index.php
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^(.*)$ index.php [QSA,L]
