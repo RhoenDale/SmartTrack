@@ -29,6 +29,27 @@ function require_fields(array $data, array $fields): void {
     }
 }
 
+/** Normalize an optional batch expiry date, accepting API and display formats. */
+function normalize_optional_date(mixed $value): ?string {
+    if ($value === null || $value === '') return null;
+    if (!is_string($value)) {
+        json_response(['error' => 'Expiry date must be a valid date or left blank.'], 422);
+    }
+
+    $value = trim($value);
+    if ($value === '') return null;
+
+    foreach (['!Y-m-d' => 'Y-m-d', '!m/d/Y' => 'm/d/Y'] as $inputFormat => $outputFormat) {
+        $date = DateTimeImmutable::createFromFormat($inputFormat, $value);
+        $errors = DateTimeImmutable::getLastErrors();
+        if ($date && ($errors === false || ($errors['warning_count'] === 0 && $errors['error_count'] === 0))) {
+            return $date->format('Y-m-d');
+        }
+    }
+
+    json_response(['error' => 'Expiry date must be a valid date or left blank.'], 422);
+}
+
 /**
  * Compute stock status from stock and reorder point.
  * Mirrors the frontend computeStatus() in shared.tsx.
@@ -127,7 +148,7 @@ function fifo_deduct(string $productId, int $qty): array {
  * Restock a batch (for returns).
  * If batch exists, adds qty back; otherwise re-inserts it.
  */
-function fifo_restock(string $productId, int $qty, string $batchId, string $expiryDate): void {
+function fifo_restock(string $productId, int $qty, string $batchId, ?string $expiryDate): void {
     $pdo  = db();
     $stmt = $pdo->prepare('SELECT id FROM product_batches WHERE batch_id = ?');
     $stmt->execute([$batchId]);
@@ -205,13 +226,13 @@ function enrich_product(array $product): array {
 
     foreach ($batches as $b) {
         $stock += (int)$b['qty'];
-        if ($earliestExpiry === null || $b['expiry_date'] < $earliestExpiry) {
+        if ($b['expiry_date'] !== null && ($earliestExpiry === null || $b['expiry_date'] < $earliestExpiry)) {
             $earliestExpiry = $b['expiry_date'];
         }
         $batchArr[] = [
             'batchId'        => $b['batch_id'],
             'qty'            => (int)$b['qty'],
-            'expiry'         => date('m/d/Y', strtotime($b['expiry_date'])),
+            'expiry'         => $b['expiry_date'] ? date('m/d/Y', strtotime($b['expiry_date'])) : null,
             'expiryDate'     => $b['expiry_date'],
             'receivedDate'   => date('m/d/Y', strtotime($b['received_date'])),
             'batchTotalCost' => $b['batch_total_cost'] !== null ? (float)$b['batch_total_cost'] : null,

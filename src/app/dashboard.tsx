@@ -1,6 +1,6 @@
 import { Package, AlertTriangle, ShoppingCart, RotateCcw, Clock } from "lucide-react";
 import {
-  sortBatchesFIFO,
+  sortBatchesByExpiry,
   getEarliestExpiry,
   parseExpiry,
   groupCartTransactions,
@@ -51,10 +51,11 @@ function useComputedData(inventory: Product[], transactions: Transaction[], now:
     const within30: Product[] = [];
     const within90: Product[] = [];
     inventory.forEach(p => {
-      const batches = sortBatchesFIFO(p.batches);
-      if (batches.length === 0) return;
+      const batches = sortBatchesByExpiry(p.batches);
+      if (batches.length === 0 || !batches[0].expiryDate) return;
       const earliest = batches[0];
-      const msLeft = parseExpiry(earliest.expiryDate ?? earliest.expiry).getTime() - now;
+      const msLeft = parseExpiry(earliest.expiryDate).getTime() - now;
+      if (Number.isNaN(msLeft)) return;
       const daysLeft = msLeft / (1000 * 60 * 60 * 24);
       if (daysLeft <= 0) expired.push(p);
       else if (daysLeft <= 30) within30.push(p);
@@ -149,7 +150,8 @@ function StockAlertsCard({
                 <div>
                   <p className="text-xs font-semibold text-foreground leading-tight">{item.name}</p>
                   <p className="text-[10px] text-muted-foreground mt-0.5">
-                    {item.stock} units · reorder at {item.reorder} · Exp: {getEarliestExpiry(item.batches)}
+                    {item.stock} units · reorder at {item.reorder}
+                    {getEarliestExpiry(item.batches) !== "—" && ` · Exp: ${getEarliestExpiry(item.batches)}`}
                   </p>
                 </div>
                 <StockBadge status={item.status} />

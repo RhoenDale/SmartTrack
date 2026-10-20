@@ -19,8 +19,8 @@ export interface AuthUser {
 export interface ProductBatch {
   batchId:        string;   // e.g. "P001-B1"
   qty:            number;
-  expiry:         string;   // "MM/DD/YYYY"
-  expiryDate:     string;   // "YYYY-MM-DD" from API
+  expiry:         string | null;   // "MM/DD/YYYY", or null when no expiry applies
+  expiryDate:     string | null;   // "YYYY-MM-DD" from API, or null when no expiry applies
   receivedDate:   string;   // "MM/DD/YYYY"
   batchTotalCost?: number | null; // total paid to supplier for this batch
   unitCost?:       number | null; // batchTotalCost / original qty
@@ -71,7 +71,7 @@ export interface Transaction {
   status:            TxStatus;
   note?:             string;
   returnedTxId?:     string;
-  batchesConsumed?:  { batchId: string; expiry: string; qty: number }[];
+  batchesConsumed?:  { batchId: string; expiry: string | null; qty: number }[];
   adjustmentReason?: string;
   damagedQty?:       number;
 }
@@ -194,12 +194,19 @@ export function sortBatchesFIFO(batches: ProductBatch[]): ProductBatch[] {
 export function sortBatchesByExpiry(batches: ProductBatch[]): ProductBatch[] {
   return [...batches]
     .filter(b => b.qty > 0)
-    .sort((a, b) => parseExpiry(a.expiry).getTime() - parseExpiry(b.expiry).getTime());
+    .sort((a, b) => {
+      const expiryTime = (expiry: string | null) => {
+        if (!expiry || expiry === "—") return Number.POSITIVE_INFINITY;
+        const time = parseExpiry(expiry).getTime();
+        return Number.isNaN(time) ? Number.POSITIVE_INFINITY : time;
+      };
+      return expiryTime(a.expiry) - expiryTime(b.expiry);
+    });
 }
 
 export function getEarliestExpiry(batches: ProductBatch[]): string {
   const active = sortBatchesByExpiry(batches);
-  return active.length > 0 ? active[0].expiry : "—";
+  return active.find(batch => batch.expiry)?.expiry ?? "—";
 }
 
 export function getTotalStock(batches: ProductBatch[]): number {
@@ -221,7 +228,7 @@ export function normalizeProduct(p: Product): Product {
     isVatExempt:  !!(p.is_vat_exempt ?? (p.isVatExempt ? 1 : 0)),
     batches: (p.batches ?? []).map(b => ({
       ...b,
-      expiryDate:     b.expiryDate     ?? b.expiry,
+      expiryDate:     b.expiryDate     ?? b.expiry ?? null,
       batchTotalCost: b.batchTotalCost ?? null,
       unitCost:       b.unitCost       ?? null,
     })),
@@ -258,13 +265,13 @@ export function getMonthlyDemand(transactions: Transaction[]): { month: string; 
 /** FIFO deduction — client-side preview only (actual deduction happens on server). */
 export function deductFIFO(
   batches: ProductBatch[], qty: number
-): { updatedBatches: ProductBatch[]; consumed: { batchId: string; expiry: string; qty: number }[] } {
+): { updatedBatches: ProductBatch[]; consumed: { batchId: string; expiry: string | null; qty: number }[] } {
   const sorted = sortBatchesFIFO(batches);
   const available = sorted.reduce((s, b) => s + b.qty, 0);
   if (qty > available) throw new Error(`Insufficient stock. Requested: ${qty}, Available: ${available}`);
 
   let remaining = qty;
-  const consumed: { batchId: string; expiry: string; qty: number }[] = [];
+  const consumed: { batchId: string; expiry: string | null; qty: number }[] = [];
   const updated = sorted.map(b => {
     if (remaining <= 0) return b;
     const take = Math.min(b.qty, remaining);

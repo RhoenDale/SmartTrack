@@ -61,6 +61,27 @@ $env:ELECTRON_START_URL="http://localhost:5173"; npm run electron
 
 ---
 
+## Share SmartTrack with a temporary Cloudflare link
+
+In the Windows desktop app, open **Settings → Share SmartTrack → Create share link**.
+The app checks that the local SmartTrack API and database are running, then starts a
+temporary Cloudflare Quick Tunnel. On first use, it downloads the official
+`cloudflared` Windows executable from Cloudflare's GitHub release and caches it in
+the current Windows user's SmartTrack app data folder. Internet access is required.
+
+Copy the generated `https://…trycloudflare.com` URL and send it to the people who
+need access. The shared site uses the packaged desktop web app and forwards API
+requests to the local XAMPP installation; visitors sign in with their own SmartTrack
+accounts. The link is temporary and changes the next time a tunnel is created.
+
+**Security:** Anyone who has the link can reach the login page and attempt to sign
+in. Share it only with trusted people, use individual accounts with appropriate
+roles, and select **Stop sharing** as soon as access is no longer needed. The
+tunnel also stops when the desktop app exits. Keep the host computer and XAMPP
+running while others are using the link.
+
+---
+
 ## 🔧 Architecture
 
 ### How It Works

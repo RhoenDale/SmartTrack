@@ -22,15 +22,19 @@ const {
   ipcMain,
   shell,
   nativeImage,
+  clipboard,
 } = require('electron');
 const fs   = require('node:fs');
 const path = require('node:path');
 const http = require('node:http');
+const https = require('node:https');
+const { spawn } = require('node:child_process');
 
 // ─── Environment ──────────────────────────────────────────────────────────────
 const DEV_SERVER_URL  = process.env.ELECTRON_START_URL || null;
 const IS_DEV          = !!DEV_SERVER_URL;
 const DIST_INDEX      = path.join(app.getAppPath(), 'dist', 'index.html');
+const DIST_DIR        = path.dirname(DIST_INDEX);
 const CAN_LOAD_DIST   = fs.existsSync(DIST_INDEX);
 const ICON_PATH       = path.join(__dirname, '../build/icon.ico');
 const API_BASE        = 'http://localhost/SmartTrack/api';
@@ -39,6 +43,11 @@ const API_BASE        = 'http://localhost/SmartTrack/api';
 let mainWindow  = null;
 let tray        = null;
 let isQuitting  = false;
+let shareServer = null;
+let cloudflared = null;
+let shareUrl    = null;
+let shareState  = 'stopped';
+let shareStartPromise = null;
 
 // ─── Logging ──────────────────────────────────────────────────────────────────
 function log(label, data) {
@@ -48,6 +57,274 @@ function log(label, data) {
   } else {
     console.log(`[${ts}] [SmartTrack] ${label}`);
   }
+}
+
+function publishShareStatus(error) {
+    const status = { state: shareState, url: shareUrl, error: error || null };
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('share-status', status);
+    }
+    return status;
+  }
+
+function downloadFile(url, destination, redirects = 0) {
+    return new Promise((resolve, reject) => {
+      if (redirects > 5) return reject(new Error('Too many redirects downloading cloudflared.'));
+      const parsed = new URL(url);
+      if (parsed.protocol !== 'https:' ||
+          !(parsed.hostname === 'github.com' || parsed.hostname.endsWith('.githubusercontent.com'))) {
+        return reject(new Error('Refusing an untrusted cloudflared download URL.'));
+      }
+
+      const request = https.get(parsed, (response) => {
+        if ([301, 302, 303, 307, 308].includes(response.statusCode)) {
+          const location = response.headers.location;
+          response.resume();
+          if (!location) return reject(new Error('Cloudflare download returned an invalid redirect.'));
+          const nextUrl = new URL(location, parsed).toString();
+          return resolve(downloadFile(nextUrl, destination, redirects + 1));
+        }
+        if (response.statusCode !== 200) {
+          response.resume();
+          return reject(new Error(`Cloudflare download failed (HTTP ${response.statusCode || 'unknown'}).`));
+        }
+
+        let bytes = 0;
+        const output = fs.createWriteStream(destination);
+        response.on('data', (chunk) => {
+          bytes += chunk.length;
+          if (bytes > 100 * 1024 * 1024) {
+            request.destroy(new Error('Cloudflare download exceeded the 100 MB limit.'));
+            output.destroy();
+          }
+        });
+        response.pipe(output);
+        output.on('finish', () => output.close(() => resolve(destination)));
+        output.on('error', (error) => reject(error));
+      });
+      request.setTimeout(30000, () => request.destroy(new Error('Cloudflare download timed out.')));
+      request.on('error', (error) => {
+        fs.rm(destination, { force: true }, () => reject(error));
+      });
+    });
+  }
+
+async function getCloudflaredPath() {
+    if (process.platform !== 'win32') {
+      throw new Error('Cloudflare sharing is currently supported by the Windows desktop app.');
+    }
+    const binaryPath = path.join(app.getPath('userData'), 'cloudflared.exe');
+    if (fs.existsSync(binaryPath) && fs.statSync(binaryPath).size > 1024 * 1024) {
+      return binaryPath;
+    }
+
+    shareState = 'downloading';
+    publishShareStatus();
+    const temporaryPath = `${binaryPath}.download`;
+    try {
+      await downloadFile(
+        'https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe',
+        temporaryPath
+      );
+      if (fs.statSync(temporaryPath).size <= 1024 * 1024) {
+        throw new Error('Downloaded cloudflared file is unexpectedly small.');
+      }
+      fs.rmSync(binaryPath, { force: true });
+      fs.renameSync(temporaryPath, binaryPath);
+      return binaryPath;
+    } catch (error) {
+      fs.rmSync(temporaryPath, { force: true });
+      throw new Error(`Could not download Cloudflare Tunnel: ${error.message}`);
+    }
+  }
+
+function serveSharedApp(req, res) {
+    const requestUrl = new URL(req.url, 'http://127.0.0.1');
+    if (requestUrl.pathname === '/SmartTrack/api' || requestUrl.pathname.startsWith('/SmartTrack/api/')) {
+    const endpoint = requestUrl.pathname.toLowerCase().replace(/\/+$/, '');
+    const blockedEndpoints = new Set([
+      '/smarttrack/api/diagnostic',
+      '/smarttrack/api/diagnostic.php',
+      '/smarttrack/api/setup-test-users',
+      '/smarttrack/api/setup-test-users.php',
+      '/smarttrack/api/test-complete-flow',
+      '/smarttrack/api/test-complete-flow.php',
+    ]);
+    if (blockedEndpoints.has(endpoint)) {
+      res.writeHead(404, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'This development endpoint is unavailable through the share link.' }));
+      return;
+    }
+    const headers = { ...req.headers };
+      delete headers.host;
+      headers.origin = 'http://localhost';
+      headers.referer = 'http://localhost/';
+      headers['x-forwarded-proto'] = req.headers['x-forwarded-proto'] === 'https' ? 'https' : 'http';
+      const proxyRequest = http.request({
+        hostname: '127.0.0.1',
+        port: 80,
+        path: requestUrl.pathname + requestUrl.search,
+        method: req.method,
+        headers,
+      }, (proxyResponse) => {
+        res.writeHead(proxyResponse.statusCode || 502, proxyResponse.headers);
+        proxyResponse.pipe(res);
+      });
+      proxyRequest.on('error', (error) => {
+        log('Share API proxy failed', error.message);
+        if (!res.headersSent) res.writeHead(502, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'The local SmartTrack API is unavailable.' }));
+      });
+      req.pipe(proxyRequest);
+      return;
+    }
+
+    if (req.method !== 'GET' && req.method !== 'HEAD') {
+      res.writeHead(405, { Allow: 'GET, HEAD' });
+      res.end();
+      return;
+    }
+
+    let pathname;
+    try {
+      pathname = decodeURIComponent(requestUrl.pathname);
+    } catch {
+      res.writeHead(400);
+      res.end('Bad request');
+      return;
+    }
+    const relativePath = pathname === '/' ? 'index.html' : pathname.replace(/^\/+/, '');
+    let filePath = path.resolve(DIST_DIR, relativePath);
+    if (filePath !== DIST_DIR && !filePath.startsWith(`${DIST_DIR}${path.sep}`)) {
+      res.writeHead(403);
+      res.end('Forbidden');
+      return;
+    }
+    if (!fs.existsSync(filePath) || !fs.statSync(filePath).isFile()) {
+      filePath = DIST_INDEX;
+    }
+    const contentTypes = {
+      '.css': 'text/css; charset=utf-8',
+      '.html': 'text/html; charset=utf-8',
+      '.ico': 'image/x-icon',
+      '.js': 'text/javascript; charset=utf-8',
+      '.json': 'application/json; charset=utf-8',
+      '.png': 'image/png',
+      '.svg': 'image/svg+xml',
+      '.woff': 'font/woff',
+      '.woff2': 'font/woff2',
+    };
+    res.writeHead(200, {
+      'Content-Type': contentTypes[path.extname(filePath).toLowerCase()] || 'application/octet-stream',
+      'X-Content-Type-Options': 'nosniff',
+    });
+    if (req.method === 'HEAD') res.end();
+    else fs.createReadStream(filePath).pipe(res);
+  }
+
+function stopShareTunnel() {
+    if (cloudflared) {
+      const child = cloudflared;
+      cloudflared = null;
+      child.kill();
+    }
+    if (shareServer) {
+      shareServer.close();
+      shareServer = null;
+    }
+    shareUrl = null;
+    shareState = 'stopped';
+    publishShareStatus();
+  }
+
+async function startShareTunnel() {
+    if (shareUrl && cloudflared) return publishShareStatus();
+    if (shareStartPromise) return shareStartPromise;
+    shareStartPromise = (async () => {
+      shareState = 'starting';
+      publishShareStatus();
+      try {
+        const health = await new Promise((resolve, reject) => {
+          const request = http.get(`${API_BASE}/diagnostic`, { timeout: 5000 }, (response) => {
+            let body = '';
+            response.setEncoding('utf8');
+            response.on('data', (chunk) => { body += chunk; });
+            response.on('end', () => {
+              try {
+                const diagnostic = JSON.parse(body);
+                if (response.statusCode !== 200 || diagnostic?.database?.status !== 'connected') {
+                  reject(new Error('Start Apache and MySQL in XAMPP and verify the SmartTrack database first.'));
+                } else resolve(true);
+              } catch (error) {
+                reject(error instanceof SyntaxError
+                  ? new Error('The SmartTrack API returned an invalid health response.')
+                  : error);
+              }
+            });
+          });
+          request.on('error', () => reject(new Error('SmartTrack API is unavailable. Start XAMPP Apache and MySQL first.')));
+          request.on('timeout', () => request.destroy(new Error('SmartTrack API health check timed out.')));
+        });
+        if (!health) throw new Error('SmartTrack API health check failed.');
+        if (!CAN_LOAD_DIST) throw new Error('The built SmartTrack web app is missing. Reinstall or rebuild the desktop app.');
+
+        const binaryPath = await getCloudflaredPath();
+        shareServer = http.createServer(serveSharedApp);
+        await new Promise((resolve, reject) => {
+          shareServer.once('error', reject);
+          shareServer.listen(0, '127.0.0.1', resolve);
+        });
+        const port = shareServer.address().port;
+        const child = spawn(binaryPath, [
+          'tunnel', '--url', `http://127.0.0.1:${port}`, '--no-autoupdate', '--loglevel', 'info',
+        ], { windowsHide: true, stdio: ['ignore', 'ignore', 'pipe'] });
+        cloudflared = child;
+        return await new Promise((resolve, reject) => {
+          let output = '';
+          let settled = false;
+          const timeout = setTimeout(() => finish(new Error('Cloudflare Tunnel did not provide a link within 60 seconds.')), 60000);
+          const finish = (error, result) => {
+            if (settled) return;
+            settled = true;
+            clearTimeout(timeout);
+            if (error) {
+              stopShareTunnel();
+              reject(error);
+            } else resolve(result);
+          };
+          child.stderr.setEncoding('utf8');
+          child.stderr.on('data', (chunk) => {
+            output = `${output}${chunk}`.slice(-12000);
+            const match = output.match(/https:\/\/[a-z0-9-]+\.trycloudflare\.com/i);
+            if (match) {
+              shareUrl = match[0];
+              shareState = 'running';
+              finish(null, publishShareStatus());
+            }
+          });
+          child.once('error', (error) => finish(new Error(`Could not launch cloudflared: ${error.message}`)));
+          child.once('exit', (code) => {
+            if (cloudflared !== child) return;
+            cloudflared = null;
+            if (shareServer) {
+              shareServer.close();
+              shareServer = null;
+            }
+            shareUrl = null;
+            shareState = 'stopped';
+            publishShareStatus(code === 0 ? null : `Cloudflare Tunnel stopped unexpectedly (exit ${code}).`);
+            if (!settled) finish(new Error(`Cloudflare Tunnel exited before creating a link. ${output.slice(-1000)}`));
+          });
+        });
+      } catch (error) {
+        stopShareTunnel();
+        publishShareStatus(error.message);
+        throw error;
+      } finally {
+        shareStartPromise = null;
+      }
+    })();
+  return shareStartPromise;
 }
 
 log('Starting', {
@@ -156,6 +433,18 @@ function registerIpcHandlers() {
       req.on('error', (err) => resolve({ reachable: false, dbConnected: false, error: err.message }));
       req.on('timeout', ()  => { req.destroy(); resolve({ reachable: false, dbConnected: false, error: 'timeout' }); });
     });
+  });
+
+  ipcMain.handle('share-status', () => publishShareStatus());
+  ipcMain.handle('share-start', () => startShareTunnel());
+  ipcMain.handle('share-stop', () => {
+    stopShareTunnel();
+    return publishShareStatus();
+  });
+  ipcMain.handle('copy-text', (_event, text) => {
+    if (typeof text !== 'string') throw new Error('Text to copy must be a string.');
+    clipboard.writeText(text);
+    return { ok: true };
   });
 
   // Open a native Save-file dialog (e.g. CSV export)
@@ -454,6 +743,7 @@ app.on('window-all-closed', () => {
 
 app.on('before-quit', () => {
   isQuitting = true;
+  stopShareTunnel();
 });
 
 // ─── Global error handling ────────────────────────────────────────────────────

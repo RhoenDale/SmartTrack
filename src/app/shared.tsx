@@ -451,7 +451,7 @@ export function ProductFormModal({
     price: initial?.price != null ? String(initial.price) : "",
     salePrice: initial?.salePrice != null ? String(initial.salePrice) : "",
     unitLabel: initial?.unitLabel ?? "unit",
-    unitsPerPack: initial?.unitsPerPack != null ? String(initial.unitsPerPack) : "1",
+    unitsPerPack: initial?.unitsPerPack != null && initial.unitsPerPack > 1 ? String(initial.unitsPerPack) : "",
     packPrice: initial?.packPrice != null ? String(initial.packPrice) : "",
   });
   const [isVatExempt, setIsVatExempt] = useState<boolean>(
@@ -472,17 +472,17 @@ export function ProductFormModal({
 
   const handleAddBatch = () => {
     const qty = parseInt(newBatchQty, 10);
-    if (!qty || qty <= 0 || !newBatchExpiry.trim()) return;
+    if (!qty || qty <= 0) return;
     const batchNum = batches.length + 1;
     const batchId = `${form.id.trim() || suggestedId}-B${batchNum}`;
-    const expiryDate = parseExpiry(newBatchExpiry.trim());
-    if (Number.isNaN(expiryDate.getTime())) return;
+    const expiryDate = newBatchExpiry.trim() ? parseExpiry(newBatchExpiry.trim()) : null;
+    if (expiryDate && Number.isNaN(expiryDate.getTime())) return;
     const totalCost = newBatchTotalCost.trim() !== "" ? parseFloat(newBatchTotalCost) : null;
     const unitCost  = totalCost != null && qty > 0 ? parseFloat((totalCost / qty).toFixed(4)) : null;
     const newBatch: ProductBatch = {
       batchId, qty,
-      expiry: formatExpiryString(expiryDate),
-      expiryDate: formatExpiryString(expiryDate),
+      expiry: expiryDate ? formatExpiryString(expiryDate) : null,
+      expiryDate: expiryDate ? formatExpiryString(expiryDate) : null,
       receivedDate: new Date().toLocaleDateString("en-PH"),
       batchTotalCost: totalCost,
       unitCost,
@@ -543,14 +543,31 @@ export function ProductFormModal({
               className="w-full bg-background border border-border rounded-lg px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all" />
           )}
         </div>
-        <FieldInput label="Reorder Point (packs/boxes)" type="number" value={form.reorder} onChange={set("reorder")} placeholder="0" required min={0} />
+        <FieldInput
+          label={parseInt(form.unitsPerPack, 10) > 1 ? "Reorder Point (packs/boxes)" : `Reorder Point (${form.unitLabel.trim() || "units"})`}
+          type="number"
+          value={form.reorder}
+          onChange={set("reorder")}
+          placeholder="0"
+          required
+          min={0}
+        />
         <div className="grid grid-cols-2 gap-3">
           <FieldInput label={`Selling Price (${PESO}) — VAT-inclusive`} type="number" value={form.price} onChange={set("price")} placeholder="0.00" required min={0} step={0.01} />
           <FieldInput label={`Sale/Discounted Price (${PESO})`} type="number" value={form.salePrice} onChange={set("salePrice")} placeholder="Optional" min={0} step={0.01} helperText="Discounted price (optional)" />
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <FieldInput label="Base Unit Label" value={form.unitLabel} onChange={set("unitLabel")} placeholder="tablet, bottle, piece" required />
-          <FieldInput label="Units per Pack/Box" type="number" value={form.unitsPerPack} onChange={set("unitsPerPack")} placeholder="1" required min={1} />
+          <FieldInput
+            label="Units per Pack/Box (optional)"
+            type="number"
+            value={form.unitsPerPack}
+            onChange={set("unitsPerPack")}
+            placeholder="e.g. 12"
+            min={1}
+            step={1}
+            helperText="Leave blank for single items with no pack."
+          />
           <FieldInput label={`Pack/Box Price (${PESO})`} type="number" value={form.packPrice} onChange={set("packPrice")} placeholder="Optional" min={0} step={0.01} helperText="Optional whole-pack price" />
         </div>
 
@@ -621,7 +638,7 @@ export function ProductFormModal({
                     {i === 0 && <span className="text-amber-600 dark:text-amber-400 mr-1">▶</span>}{b.batchId}
                   </span>
                   <span className="font-bold text-foreground">{b.qty}</span>
-                  <span className={i === 0 ? "font-semibold text-amber-700 dark:text-amber-400" : "text-foreground"}>{b.expiry}</span>
+                  <span className={i === 0 ? "font-semibold text-amber-700 dark:text-amber-400" : "text-foreground"}>{b.expiry ?? "No expiry"}</span>
                   <span className="text-foreground tabular-nums">
                     {b.batchTotalCost != null ? `${PESO}${b.batchTotalCost.toFixed(2)}` : <span className="text-muted-foreground/60 italic">—</span>}
                   </span>
@@ -646,7 +663,7 @@ export function ProductFormModal({
                 className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all" />
             </div>
             <div className="flex-1">
-              <label className="block text-[10px] text-muted-foreground mb-1">Expiry</label>
+              <label className="block text-[10px] text-muted-foreground mb-1">Expiry <span className="text-muted-foreground/60">(optional)</span></label>
               <input type="date" value={newBatchExpiry} onChange={e => setNewBatchExpiry(e.target.value)}
                 className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all" />
             </div>
@@ -673,7 +690,7 @@ export function ProductFormModal({
           </p>
           {batches.length === 0 && (
             <p className="text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1">
-              <_AlertTriangle size={11} /> Add at least one batch to set the stock quantity and expiry.
+              <_AlertTriangle size={11} /> Add at least one batch to set the stock quantity.
             </p>
           )}
         </div>
@@ -699,20 +716,15 @@ function daysUntilExpiry(expiryStr: string): number {
   return (expDate.getTime() - Date.now()) / 86400000;
 }
 
-/** Returns the earliest-expiring batch of a product that has qty > 0. */
+/** Returns the next batch that will be consumed according to FIFO. */
 function getFirstBatch(product: import("./data").Product) {
-  return [...product.batches]
-    .filter(b => b.qty > 0)
-    .sort((a, b) => {
-      const toMs = (s: string) => { const [mm,dd,yyyy] = s.split("/"); return new Date(`${yyyy}-${mm}-${dd}`).getTime(); };
-      return toMs(a.expiry) - toMs(b.expiry);
-    })[0] ?? null;
+  return sortBatchesFIFO(product.batches)[0] ?? null;
 }
 
 /** Returns "blocked" | "warning" | "ok" and days left for a product. */
 export function getExpiryStatus(product: import("./data").Product): { status: "blocked" | "ok"; daysLeft: number; batchId: string } | null {
   const batch = getFirstBatch(product);
-  if (!batch) return null;
+  if (!batch?.expiry) return null;
   const days = daysUntilExpiry(batch.expiry);
   if (days <= EXPIRY_BLOCK_DAYS) return { status: "blocked", daysLeft: Math.ceil(days), batchId: batch.batchId };
   return null;
@@ -1105,7 +1117,7 @@ export function NewSaleModal({
                 </p>
                 {fifoPreview.map(b => (
                   <div key={b.batchId} className="flex items-center justify-between text-xs">
-                    <span className="text-muted-foreground">{b.batchId} · Expiry: <span className="font-semibold text-foreground">{b.expiry}</span></span>
+                    <span className="text-muted-foreground">{b.batchId} · Expiry: <span className="font-semibold text-foreground">{b.expiry ?? "No expiry"}</span></span>
                     <span className="font-bold text-amber-700 dark:text-amber-400">{b.qty} units</span>
                   </div>
                 ))}
@@ -1812,7 +1824,12 @@ export function ResetPasswordModal({
 }
 
 // ─── Invoice Modal ────────────────────────────────────────────────────────────
-export function InvoiceModal({ tx, settings, onClose }: { tx: Transaction; settings: ReceiptSettings | null; onClose: () => void }) {
+export function InvoiceModal({ tx, settings, inventory, onClose }: {
+  tx: Transaction;
+  settings: ReceiptSettings | null;
+  inventory: Product[];
+  onClose: () => void;
+}) {
   const typeHeader: Record<import("./data").TxType, string> = {
     sale: "OFFICIAL RECEIPT", return: "RETURN RECEIPT", adjustment: "INVENTORY ADJUSTMENT",
   };
@@ -1820,6 +1837,22 @@ export function InvoiceModal({ tx, settings, onClose }: { tx: Transaction; setti
   const P = "\u20b1";
 
   const receiptItems = tx.cartItems?.length ? tx.cartItems : [tx];
+  const getReceiptQuantity = (item: Transaction) => {
+    const product = inventory.find(candidate => candidate.id === item.productId);
+    const quantity = item.saleQty ?? item.qty;
+    const unitLabel = product?.unitLabel?.trim();
+    const baseUnit = !unitLabel || unitLabel === "unit" || unitLabel === "piece"
+      ? "pcs"
+      : unitLabel;
+    const getUnitText = (count: number) =>
+      baseUnit === "pcs" || count === 1 || baseUnit.endsWith("s") ? baseUnit : `${baseUnit}s`;
+
+    if (item.saleUnit === "pack") {
+      const unitsPerPack = Math.max(1, item.unitsPerSale ?? product?.unitsPerPack ?? 1);
+      return `${quantity} pack/box${unitsPerPack > 1 ? ` (${quantity * unitsPerPack} ${getUnitText(quantity * unitsPerPack)})` : ""}`;
+    }
+    return `${quantity} ${getUnitText(quantity)}`;
+  };
   const lineBreakdowns = receiptItems.map(item => {
     const isExempt = (item.taxRate ?? (item.taxAmount ? 0.12 : 0)) === 0;
     const storedPreTax = item.preTaxAmount;
@@ -1867,13 +1900,15 @@ export function InvoiceModal({ tx, settings, onClose }: { tx: Transaction; setti
     if (!win) return;
     win.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"/><title>Receipt ${tx.id}</title>
     <style>
-      body{margin:0;padding:16px;background:#fff;font-family:'Courier New',monospace;font-size:12px;color:#000;}
-      .receipt{width:302px;margin:0 auto;}
+      @page{size:80mm auto;margin:0;}
+      body{margin:0;padding:4mm;background:#fff;font-family:'Courier New',monospace;font-size:12px;color:#000;}
+      .receipt{width:72mm;margin:0 auto;}
       .center{text-align:center;} .bold{font-weight:bold;} .right{text-align:right;}
       .dashes{border-top:1px dashed #000;margin:6px 0;}
-      .row{display:flex;justify-content:space-between;margin:2px 0;}
+      .row{display:flex;justify-content:space-between;gap:6px;margin:2px 0;}
+      .item-name{font-weight:bold;overflow-wrap:anywhere;}
       .small{font-size:10px;}
-      @media print{body{margin:0;padding:0;}}
+      @media print{body{margin:0;padding:0;}.receipt{width:72mm;}}
     </style></head><body>
     <div class="receipt">
       ${businessName ? `<div class="center bold" style="font-size:14px;">${escapeReceiptHtml(businessName)}</div>` : ""}
@@ -1891,10 +1926,9 @@ export function InvoiceModal({ tx, settings, onClose }: { tx: Transaction; setti
       <div class="dashes"></div>
       ${lineBreakdowns.map(({ item, preTax: linePreTax }) => {
         const quantity = item.saleQty ?? item.qty;
-        const unit = item.saleUnit && item.saleUnit !== "unit" ? item.saleUnit : "unit";
         const prices = getReceiptLinePrices({ item, preTax: linePreTax, tax: 0, isExempt: (item.taxRate ?? 0) === 0 });
         const unitPrice = quantity > 0 ? prices.listedTotal / quantity : 0;
-        const lineHtml = `<div class="row"><span>${escapeReceiptHtml(item.product)} · ${quantity} ${escapeReceiptHtml(unit)} × ${P}${unitPrice.toFixed(2)}</span><span>${P}${prices.listedTotal.toFixed(2)}</span></div>`;
+        const lineHtml = `<div class="item-name">${escapeReceiptHtml(item.product)}</div><div class="row"><span>${escapeReceiptHtml(getReceiptQuantity(item))} × ${P}${unitPrice.toFixed(2)}</span><span>${P}${prices.listedTotal.toFixed(2)}</span></div>`;
         const discountHtml = prices.discountAmount
           ? `<div class="row small"><span>VAT removed</span><span>-${P}${prices.vatRemoved.toFixed(2)}</span></div><div class="row small"><span>Customer ID discount (20%)</span><span>-${P}${prices.discountAmount.toFixed(2)}</span></div>`
           : "";
@@ -1931,7 +1965,7 @@ export function InvoiceModal({ tx, settings, onClose }: { tx: Transaction; setti
         </div>
         <div className="p-4 overflow-y-auto flex justify-center">
           {/* On-screen receipt preview */}
-          <div style={{ width: 302, fontFamily: "'Courier New', monospace", fontSize: 12, background: "#fff", color: "#000", padding: "12px 8px", border: "1px solid #e5e7eb", borderRadius: 8 }}>
+          <div style={{ width: 272, fontFamily: "'Courier New', monospace", fontSize: 12, background: "#fff", color: "#000", padding: "12px 8px", border: "1px solid #e5e7eb", borderRadius: 8 }}>
             {businessName && <div style={{ textAlign: "center", fontWeight: "bold", fontSize: 14 }}>{businessName}</div>}
             {businessAddress && <div style={{ textAlign: "center", fontSize: 10 }}>{businessAddress}</div>}
             {(businessPhone || businessTin) && <div style={{ textAlign: "center", fontSize: 10 }}>{businessPhone && `Tel: ${businessPhone}`}{businessPhone && businessTin ? " · " : ""}{businessTin && `TIN: ${businessTin}`}</div>}
@@ -1953,13 +1987,15 @@ export function InvoiceModal({ tx, settings, onClose }: { tx: Transaction; setti
             </div>
             {lineBreakdowns.map(({ item, preTax: linePreTax }) => {
               const quantity = item.saleQty ?? item.qty;
-              const unit = item.saleUnit && item.saleUnit !== "unit" ? item.saleUnit : "unit";
               const prices = getReceiptLinePrices({ item, preTax: linePreTax, tax: 0, isExempt: (item.taxRate ?? 0) === 0 });
               const unitPrice = quantity > 0 ? prices.listedTotal / quantity : 0;
               return <React.Fragment key={item.id}>
-                <div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginBottom: 3 }}>
-                  <span>{item.product} · {quantity} {unit} × {P}{unitPrice.toFixed(2)}</span>
-                  <span>{P}{prices.listedTotal.toFixed(2)}</span>
+                <div style={{ marginBottom: 4 }}>
+                  <div style={{ fontWeight: "bold", overflowWrap: "anywhere" }}>{item.product}</div>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+                    <span>{getReceiptQuantity(item)} × {P}{unitPrice.toFixed(2)}</span>
+                    <span>{P}{prices.listedTotal.toFixed(2)}</span>
+                  </div>
                 </div>
                 {!!prices.discountAmount && <>
                   <div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginBottom: 2, fontSize: 10, color: "#c2410c" }}><span>VAT removed</span><span>-{P}{prices.vatRemoved.toFixed(2)}</span></div>

@@ -82,24 +82,39 @@ function generate_inventory_notifications(PDO $pdo): void {
             upsert_notification($pdo, 'alert', $title, $body, $p['id']);
         }
 
-        // Expiry alerts
+        // Keep only the expiry notification that currently applies, if any.
+        $expiryTitles = [
+            "Expired: {$p['name']}",
+            "Expiring Soon: {$p['name']}",
+            "Expiry Alert: {$p['name']}",
+        ];
+        $currentExpiryTitle = null;
+
         if ($p['earliest_expiry']) {
             $expTs    = strtotime($p['earliest_expiry']);
             $daysLeft = ($expTs - $today) / 86400;
 
             if ($daysLeft <= 0) {
-                $title = "Expired: {$p['name']}";
+                $title = $currentExpiryTitle = $expiryTitles[0];
                 $body  = "Batch expired on " . date('m/d/Y', $expTs) . ". Remove from shelf immediately.";
                 upsert_notification($pdo, 'alert', $title, $body, $p['id']);
             } elseif ($daysLeft <= 30) {
-                $title = "Expiring Soon: {$p['name']}";
+                $title = $currentExpiryTitle = $expiryTitles[1];
                 $body  = "Expires " . date('m/d/Y', $expTs) . " — within 30 days. Prioritize sales.";
                 upsert_notification($pdo, 'alert', $title, $body, $p['id']);
             } elseif ($daysLeft <= 90) {
-                $title = "Expiry Alert: {$p['name']}";
+                $title = $currentExpiryTitle = $expiryTitles[2];
                 $body  = "Expires " . date('m/d/Y', $expTs) . " — within 90 days.";
                 upsert_notification($pdo, 'alert', $title, $body, $p['id']);
             }
+        }
+
+        if ($currentExpiryTitle === null) {
+            $pdo->prepare('DELETE FROM notifications WHERE product_id = ? AND title IN (?, ?, ?)')
+                ->execute([$p['id'], ...$expiryTitles]);
+        } else {
+            $pdo->prepare('DELETE FROM notifications WHERE product_id = ? AND title IN (?, ?, ?) AND title <> ?')
+                ->execute([$p['id'], ...$expiryTitles, $currentExpiryTitle]);
         }
     }
 }

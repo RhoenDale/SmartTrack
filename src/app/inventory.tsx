@@ -56,21 +56,23 @@ export default function InventoryPage({
   );
 
   const handleExportCsv = () => {
-    const headers = ["Product", "Category", "Supplier", "Stock (Packs / Units)", "Reorder At", "Unit Price", "Expiry", "Stock Status"];
+    const headers = ["Product", "Category", "Supplier", "Stock", "Reorder At", "Unit Price", "Expiry", "Stock Status"];
     const rows = inventory.map(item => {
       const unitsPerPack = Math.max(1, item.unitsPerPack ?? 1);
       const packCount = Math.floor(item.stock / unitsPerPack);
       const looseUnits = item.stock % unitsPerPack;
       const stock = unitsPerPack > 1
         ? `${packCount} packs/boxes (${item.stock} ${item.unitLabel ?? "unit"} total, ${looseUnits} loose)`
-        : `${packCount} packs (${item.stock} ${item.unitLabel ?? "unit"} total)`;
+        : `${item.stock} ${item.unitLabel ?? "unit"}${item.stock === 1 ? "" : "s"}`;
       const earliest = sortBatchesByExpiry(item.batches)[0]?.expiry ?? item.expiry;
       return [
         item.name,
         item.category,
         item.supplier,
         stock,
-        `${item.reorder} packs (${getReorderUnits(item)} units)`,
+        unitsPerPack > 1
+          ? `${item.reorder} packs (${getReorderUnits(item)} units)`
+          : `${getReorderUnits(item)} ${item.unitLabel ?? "unit"}${getReorderUnits(item) === 1 ? "" : "s"}`,
         fmt(item.price),
         earliest,
         item.status,
@@ -183,10 +185,13 @@ export default function InventoryPage({
                       const packCount = Math.floor(item.stock / unitsPerPack);
                       const looseUnits = item.stock % unitsPerPack;
                       const unitLabel = item.unitLabel ?? "unit";
-                      const packLabel = unitsPerPack > 1 ? "packs/boxes" : "packs";
                       return (
                         <div className="flex flex-col gap-0.5">
-                          <span className="font-bold text-foreground">{packCount.toLocaleString()} {packLabel}</span>
+                          <span className="font-bold text-foreground">
+                            {unitsPerPack > 1
+                              ? `${packCount.toLocaleString()} packs/boxes`
+                              : `${item.stock.toLocaleString()} ${unitLabel}${item.stock === 1 ? "" : "s"}`}
+                          </span>
                           <span className="text-[10px] text-muted-foreground">
                             {item.stock.toLocaleString()} {unitLabel}{item.stock !== 1 ? "s" : ""} total
                             {unitsPerPack > 1 && ` · ${looseUnits} loose`}
@@ -197,8 +202,15 @@ export default function InventoryPage({
                     })()}
                   </td>
                   <td className="px-4 py-3 text-xs text-muted-foreground">
-                    {item.reorder} pack{item.reorder !== 1 ? "s" : ""}
-                    <span className="block text-[10px]">({getReorderUnits(item).toLocaleString()} units)</span>
+                    {(() => {
+                      const unitsPerPack = Math.max(1, item.unitsPerPack ?? 1);
+                      const unitLabel = item.unitLabel ?? "unit";
+                      return unitsPerPack > 1
+                        ? <>{item.reorder} pack{item.reorder !== 1 ? "s" : ""}
+                            <span className="block text-[10px]">({getReorderUnits(item).toLocaleString()} units)</span>
+                          </>
+                        : <>{getReorderUnits(item).toLocaleString()} {unitLabel}{getReorderUnits(item) === 1 ? "" : "s"}</>;
+                    })()}
                   </td>
                   <td className="px-4 py-3 text-xs font-bold">
                     <div className="flex flex-col gap-0.5">
@@ -224,7 +236,7 @@ export default function InventoryPage({
                   <td className="px-4 py-3 text-xs text-muted-foreground">
                     {(() => {
                       const earliest = sortBatchesByExpiry(item.batches)[0];
-                      if (!earliest) return item.expiry;
+                      if (!earliest?.expiryDate) return item.expiry;
                       const monthsLeft = (new Date(earliest.expiryDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24 * 30);
                       return (
                         <span className={monthsLeft <= 3 ? "text-red-500 font-semibold" : monthsLeft <= 6 ? "text-amber-600 dark:text-amber-400 font-medium" : ""}>

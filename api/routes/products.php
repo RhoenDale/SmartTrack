@@ -44,7 +44,7 @@ if ($id && $sub === 'batches') {
         $batches = array_map(fn($b) => [
             'batchId'      => $b['batch_id'],
             'qty'          => (int)$b['qty'],
-            'expiry'       => date('m/d/Y', strtotime($b['expiry_date'])),
+            'expiry'       => $b['expiry_date'] ? date('m/d/Y', strtotime($b['expiry_date'])) : null,
             'expiryDate'   => $b['expiry_date'],
             'receivedDate' => date('m/d/Y', strtotime($b['received_date'])),
         ], $rows);
@@ -54,7 +54,8 @@ if ($id && $sub === 'batches') {
     if ($method === 'POST') {
         require_role(['admin/owner', 'admin', 'inventory_manager']);
         $data = body();
-        require_fields($data, ['qty', 'expiry_date']);
+        require_fields($data, ['qty']);
+        $expiryDate = normalize_optional_date($data['expiry_date'] ?? null);
 
         // Count existing batches to generate batchId
         $cnt = (int)$pdo->prepare('SELECT COUNT(*) FROM product_batches WHERE product_id = ?')
@@ -68,7 +69,7 @@ if ($id && $sub === 'batches') {
         $pdo->prepare(
             'INSERT INTO product_batches (batch_id, product_id, qty, expiry_date, received_date)
              VALUES (?, ?, ?, ?, ?)'
-        )->execute([$batchId, $id, (int)$data['qty'], $data['expiry_date'], $received]);
+        )->execute([$batchId, $id, (int)$data['qty'], $expiryDate, $received]);
 
         sync_product_status($id);
         json_response(['message' => 'Batch added.', 'batchId' => $batchId], 201);
@@ -122,7 +123,7 @@ if ($id) {
                 $unitCost  = ($totalCost !== null && $qty > 0) ? round($totalCost / $qty, 4) : null;
                 $ins->execute([
                     $b['batchId'], $id, $qty,
-                    date('Y-m-d', strtotime($b['expiryDate'] ?? $b['expiry'])),
+                    normalize_optional_date($b['expiryDate'] ?? $b['expiry'] ?? null),
                     date('Y-m-d', strtotime($b['receivedDate'])),
                     $totalCost,
                     $unitCost,
@@ -213,7 +214,7 @@ if ($method === 'POST') {
         $unitCost  = ($totalCost !== null && $qty > 0) ? round($totalCost / $qty, 4) : null;
         $ins->execute([
             $b['batchId'], $data['id'], $qty,
-            date('Y-m-d', strtotime($b['expiryDate'] ?? $b['expiry'])),
+            normalize_optional_date($b['expiryDate'] ?? $b['expiry'] ?? null),
             date('Y-m-d', strtotime($b['receivedDate'])),
             $totalCost,
             $unitCost,

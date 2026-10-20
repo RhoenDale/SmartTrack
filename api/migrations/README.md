@@ -1,5 +1,13 @@
 # Database Migrations
 
+## Make batch expiry dates optional
+
+Products and batches without an expiry date can be saved and sold without expiry
+alerts or expiry-date sale blocks. For an existing database, run
+`make_batch_expiry_optional.sql` once using phpMyAdmin or the MySQL command line.
+Fresh databases created from `smarttrack.sql` already allow empty batch expiry
+dates.
+
 ## Step-by-Step: Fix Staff Names in Transactions
 
 ### Step 1: Run the Migration

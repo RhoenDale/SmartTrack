@@ -1,5 +1,6 @@
 -- Product packaging and mixed unit sales
 -- Inventory remains stored in base units. A pack/box sale deducts units_per_pack.
+-- Keep units_per_pack at 1 for products sold only as single units (no pack size).
 ALTER TABLE products
   ADD COLUMN unit_label VARCHAR(30) NOT NULL DEFAULT 'unit' AFTER sale_price,
   ADD COLUMN units_per_pack INT NOT NULL DEFAULT 1 AFTER unit_label,

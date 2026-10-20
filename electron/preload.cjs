@@ -26,6 +26,7 @@ contextBridge.exposeInMainWorld('smarttrack', {
 
   /** The OS platform string — "win32", "darwin", "linux" */
   platform: process.platform,
+  isElectron: true,
 
   /** Whether the renderer is inside Electron */
   isElectron: true,
@@ -45,6 +46,17 @@ contextBridge.exposeInMainWorld('smarttrack', {
    * @returns {Promise<{reachable:boolean, dbConnected:boolean, error?:string}>}
    */
   checkXampp: () => invoke('check-xampp'),
+
+  /** Start or stop a temporary public Cloudflare link to this local app. */
+  getShareStatus: () => invoke('share-status'),
+  startShare: () => invoke('share-start'),
+  stopShare: () => invoke('share-stop'),
+  copyText: (text) => invoke('copy-text', text),
+  onShareStatus: (callback) => {
+    const listener = (_event, status) => callback(status);
+    ipcRenderer.on('share-status', listener);
+    return () => ipcRenderer.removeListener('share-status', listener);
+  },
 
   // ── File system helpers ───────────────────────────────────────────────────
 

@@ -76,7 +76,7 @@ CREATE TABLE IF NOT EXISTS `product_batches` (
   `batch_id`        VARCHAR(30)    NOT NULL UNIQUE,
   `product_id`      VARCHAR(20)    NOT NULL,
   `qty`             INT            NOT NULL DEFAULT 0,
-  `expiry_date`     DATE           NOT NULL,
+  `expiry_date`     DATE           NULL DEFAULT NULL,
   `received_date`   DATE           NOT NULL,
   `batch_total_cost` DECIMAL(12,2) NULL DEFAULT NULL
     COMMENT 'Total amount paid to supplier for this entire batch',
@@ -135,7 +135,7 @@ CREATE TABLE IF NOT EXISTS `transaction_batches` (
   `id`             INT         NOT NULL AUTO_INCREMENT,
   `transaction_id` VARCHAR(20) NOT NULL,
   `batch_id`       VARCHAR(30) NOT NULL,
-  `expiry_date`    DATE        NOT NULL,
+  `expiry_date`    DATE        NULL DEFAULT NULL,
   `qty`            INT         NOT NULL DEFAULT 0,
   PRIMARY KEY (`id`),
   KEY `idx_txbatch_tx` (`transaction_id`),
@@ -225,6 +225,13 @@ INSERT INTO `product_batches` (`batch_id`,`product_id`,`qty`,`expiry_date`,`rece
 ('P011-B1','P011', 300,'2028-03-31','2026-09-25', 1800.00,  6.0000),
 ('P012-B1','P012', 240,'2028-01-31','2026-09-25',  720.00,  3.0000);
 
+-- Add a second batch for the seeded products in the requested P010-P012 range.
+INSERT IGNORE INTO `product_batches`
+  (`batch_id`,`product_id`,`qty`,`expiry_date`,`received_date`,`batch_total_cost`,`unit_cost`) VALUES
+('SEED-EXTRA-P010','P010',200,'2029-02-28','2026-09-28', 300.00, 1.5000),
+('SEED-EXTRA-P011','P011',120,'2029-09-30','2026-09-28', 720.00, 6.0000),
+('SEED-EXTRA-P012','P012',100,'2030-04-30','2026-09-28', 300.00, 3.0000);
+
 -- Transactions (with VAT tax breakdown)
 -- VAT-exempt products (P002 Paracetamol, P003 Metformin, P004 Amlodipine, P007 Losartan):
 --   pre_tax_amount = amount, tax_amount = 0, tax_rate = 0
@@ -255,4 +262,3 @@ INSERT INTO `transaction_batches` (`transaction_id`,`batch_id`,`expiry_date`,`qt
 ('TXN-1204','P010-B1','2027-06-01',30),
 ('TXN-1205','P004-B1','2027-01-01',28),
 ('TXN-1206','P007-B1','2027-04-01',30);
-

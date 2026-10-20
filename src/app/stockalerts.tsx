@@ -25,7 +25,7 @@ export default function StockAlertsPage({
 
   const getExpiryStatus = (p: Product) => {
     const batches = sortBatchesByExpiry(p.batches);
-    if (batches.length === 0) return null;
+    if (batches.length === 0 || !batches[0].expiryDate) return null;
     const daysLeft = (new Date(batches[0].expiryDate).getTime() - now) / (1000 * 60 * 60 * 24);
     const expiry = batches[0].expiry;
     if (daysLeft <= 0) return { level: "expired" as const, daysLeft: Math.abs(Math.ceil(daysLeft)), expiry };
@@ -138,7 +138,10 @@ export default function StockAlertsPage({
                                   <p className="text-sm font-bold text-foreground">{item.name}</p>
                                   <span className="text-[10px] text-muted-foreground">{item.id}</span>
                                 </div>
-                                <p className="text-xs text-muted-foreground mt-0.5">{item.category} • Expires {item.expiry}</p>
+                                <p className="text-xs text-muted-foreground mt-0.5">
+                                  {item.category}
+                                  {item.expiry && item.expiry !== "—" && ` • Expires ${item.expiry}`}
+                                </p>
                               </div>
                               <StockBadge status={item.status} />
                             </div>

@@ -1,4 +1,5 @@
--- SmartTrack demo seed: 80 products, 80 stock batches, 40 batch updates, 80 transactions.
+-- SmartTrack demo seed: 80 products, 80 stock batches, up to 156 additional batches,
+-- 40 batch updates, and 80 transactions.
 -- Requires MySQL 8.0+ for recursive CTEs.
 -- Product stock distribution: 65 good, 10 moderate, 3 low, 2 critical.
 
@@ -92,6 +93,28 @@ SELECT
   ROUND(2.50 + MOD(n * 29, 900) / 100, 4)
 FROM seq;
 
+-- Add one repeatable second batch for each existing product from P010 through P165.
+-- Expiry dates vary deterministically from 2027-01-01 through 2030-12-31.
+INSERT IGNORE INTO product_batches
+  (batch_id, product_id, qty, expiry_date, received_date, batch_total_cost, unit_cost)
+SELECT
+  CONCAT('SEED-EXTRA-', product_id),
+  product_id,
+  batch_qty,
+  expiry_date,
+  '2026-09-28',
+  ROUND(batch_qty * unit_cost, 2),
+  unit_cost
+FROM (
+  SELECT
+    p.id AS product_id,
+    50 + MOD(CRC32(CONCAT(p.id, '-qty')), 151) AS batch_qty,
+    DATE_ADD('2027-01-01', INTERVAL MOD(CRC32(p.id), 1461) DAY) AS expiry_date,
+    ROUND(2.50 + MOD(CRC32(CONCAT(p.id, '-cost')), 900) / 100, 4) AS unit_cost
+  FROM products p
+  WHERE p.id BETWEEN 'P010' AND 'P165'
+) AS generated_batches;
+
 -- Mark 40 batches as updated after receipt.
 UPDATE product_batches
 SET
@@ -148,6 +171,9 @@ FROM products WHERE id BETWEEN 'P101' AND 'P180'
 UNION ALL
 SELECT 'Seeded batches', COUNT(*)
 FROM product_batches WHERE batch_id LIKE 'SEED-B%'
+UNION ALL
+SELECT 'Second P010-P165 batches', COUNT(*)
+FROM product_batches WHERE batch_id LIKE 'SEED-EXTRA-%'
 UNION ALL
 SELECT 'Updated batches', COUNT(*)
 FROM product_batches

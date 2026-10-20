@@ -192,7 +192,7 @@ function handle_sale(PDO $pdo, array $authUser): void {
     );
     $batchStmt->execute([$productId]);
     $firstBatch = $batchStmt->fetch();
-    if ($firstBatch) {
+    if ($firstBatch && $firstBatch['expiry_date'] !== null) {
         $daysLeft = (strtotime($firstBatch['expiry_date']) - time()) / 86400;
         if ($daysLeft <= 0) {
             json_response([
@@ -334,9 +334,9 @@ function handle_multi_sale(PDO $pdo, array $authUser, array $data, array $items)
             );
             $firstBatchStmt->execute([$productId]);
             $firstBatch = $firstBatchStmt->fetch();
-            if ($firstBatch) {
+            if ($firstBatch && $firstBatch['expiry_date'] !== null) {
                 $daysLeft = (strtotime($firstBatch['expiry_date']) - time()) / 86400;
-                if ($daysLeft <= 0 || $daysLeft <= 60) {
+                if ($daysLeft <= 60) {
                     throw new InvalidArgumentException("Cannot sell \"{$product['name']}\" — batch {$firstBatch['batch_id']} expires soon.");
                 }
             }
@@ -432,7 +432,7 @@ function handle_return(PDO $pdo, array $authUser): void {
     $batchStmt->execute([$saleTxId]);
     $origBatch = $batchStmt->fetch();
     $batchId   = $origBatch['batch_id']    ?? ($productId . '-B1');
-    $expiry    = $origBatch['expiry_date'] ?? date('Y-m-d');
+    $expiry    = $origBatch['expiry_date'] ?? null;
 
     // Fetch product for restock/status sync
     $pStmt = $pdo->prepare('SELECT * FROM products WHERE id = ?');

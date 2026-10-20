@@ -3,7 +3,7 @@ import {
   LayoutDashboard, Package, ShoppingCart, BarChart2, Users,
   Bell, Search, Shield, Pill,
   Moon, Sun, Settings, BellRing, ClipboardList, Landmark,
-  X, ArrowRight, RefreshCw,
+  X, ArrowRight, RefreshCw, Cloud, Copy,
 } from "lucide-react";
 import {
   sortBatchesByExpiry, normalizeProduct, groupCartTransactions,
@@ -43,6 +43,12 @@ export default function Home({ user, onLogout, onUserUpdated }: { user: AuthUser
   const [darkMode, setDarkMode]       = useState(false);
   const [sidebarExpanded, setSidebar] = useState(true);
   const [showSettings, setShowSettings] = useState(false);
+  const [shareStatus, setShareStatus] = useState<ShareStatus>({
+    state: "stopped",
+    url: null,
+    error: null,
+  });
+  const [shareMessage, setShareMessage] = useState("");
 
   // ── Data state (loaded from API) ────────────────────────────────────────────
   const [inventory,     setInventory]     = useState<Product[]>([]);
@@ -115,6 +121,24 @@ export default function Home({ user, onLogout, onUserUpdated }: { user: AuthUser
   }, [isAdmin, isCashier]);
 
   useEffect(() => { loadAll(); }, [loadAll]);
+
+  useEffect(() => {
+    if (!window.smarttrack?.isElectron) return;
+    let active = true;
+    window.smarttrack.getShareStatus().then(status => {
+      if (active && status) setShareStatus(status);
+    });
+    const unsubscribe = window.smarttrack.onShareStatus(status => {
+      if (active) {
+        setShareStatus(status);
+        setShareMessage("");
+      }
+    });
+    return () => {
+      active = false;
+      unsubscribe();
+    };
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -196,7 +220,7 @@ export default function Home({ user, onLogout, onUserUpdated }: { user: AuthUser
     const expired: Product[] = [], within30: Product[] = [], within90: Product[] = [];
     inventory.forEach(p => {
       const batches = sortBatchesByExpiry(p.batches);
-      if (!batches.length) return;
+      if (!batches.length || !batches[0].expiryDate) return;
       const days = (new Date(batches[0].expiryDate).getTime() - now) / 86400000;
       if (days <= 0)   expired.push(p);
       else if (days <= 30)  within30.push(p);
@@ -313,7 +337,7 @@ export default function Home({ user, onLogout, onUserUpdated }: { user: AuthUser
         is_vat_exempt: updated.isVatExempt  ? 1 : (updated.is_vat_exempt ?? 0),
         batches: updated.batches.map(b => ({
           batchId: b.batchId, qty: b.qty,
-          expiryDate: b.expiryDate ?? b.expiry,
+          expiryDate: b.expiryDate ?? b.expiry ?? null,
           receivedDate: b.receivedDate,
           batchTotalCost: b.batchTotalCost ?? null,
           unitCost:       b.unitCost       ?? null,
@@ -520,6 +544,40 @@ export default function Home({ user, onLogout, onUserUpdated }: { user: AuthUser
     loadAll(false);
   };
 
+  const handleStartShare = async () => {
+    setShareMessage("");
+    try {
+      const status = await window.smarttrack?.startShare();
+      if (!status) throw new Error("Unable to start the Cloudflare share link.");
+      setShareStatus(status);
+      if (status.error) setShareMessage(status.error);
+    } catch (error) {
+      setShareMessage(error instanceof Error ? error.message : "Unable to start the Cloudflare share link.");
+    }
+  };
+
+  const handleStopShare = async () => {
+    setShareMessage("");
+    try {
+      const status = await window.smarttrack?.stopShare();
+      if (!status) throw new Error("Unable to stop the Cloudflare share link.");
+      setShareStatus(status);
+    } catch (error) {
+      setShareMessage(error instanceof Error ? error.message : "Unable to stop the Cloudflare share link.");
+    }
+  };
+
+  const handleCopyShareLink = async () => {
+    if (!shareStatus.url) return;
+    try {
+      const result = await window.smarttrack?.copyText(shareStatus.url);
+      if (!result?.ok) throw new Error("Could not copy the share link.");
+      setShareMessage("Link copied to clipboard.");
+    } catch (error) {
+      setShareMessage(error instanceof Error ? error.message : "Could not copy the share link.");
+    }
+  };
+
   const handleStockAlertEditProduct = (product: Product) => {
     setPage("inventory");
     setSelectedProductId(product.id);
@@ -616,6 +674,49 @@ export default function Home({ user, onLogout, onUserUpdated }: { user: AuthUser
               <span className="text-[11px] text-white/50">Collapse panel</span>
               <button onClick={() => setSidebar(false)} className="text-[10px] text-teal-300 font-semibold hover:underline">Hide</button>
             </div>
+            {window.smarttrack?.isElectron && (
+              <div className="border-t border-white/[0.08] pt-2 space-y-2">
+                <div className="flex items-center gap-2 text-white/75">
+                  <Cloud size={13} className="text-sky-300" />
+                  <span className="text-[11px] font-semibold">Share SmartTrack</span>
+                </div>
+                <p className="text-[10px] leading-relaxed text-white/45">
+                  Create a temporary public link. XAMPP must be running.
+                </p>
+                {shareStatus.url && (
+                  <div className="flex items-center gap-1.5">
+                    <span className="min-w-0 flex-1 truncate text-[10px] text-teal-200" title={shareStatus.url}>
+                      {shareStatus.url}
+                    </span>
+                    <button type="button" onClick={handleCopyShareLink} title="Copy share link"
+                      className="flex-shrink-0 rounded-md p-1 text-white/60 hover:bg-white/10 hover:text-white">
+                      <Copy size={12} />
+                    </button>
+                  </div>
+                )}
+                {shareStatus.state === "running" ? (
+                  <button type="button" onClick={handleStopShare}
+                    className="w-full rounded-lg bg-red-500/20 px-2 py-1.5 text-[10px] font-semibold text-red-200 hover:bg-red-500/30">
+                    Stop sharing
+                  </button>
+                ) : (
+                  <button type="button" onClick={handleStartShare}
+                    disabled={shareStatus.state === "starting" || shareStatus.state === "downloading"}
+                    className="w-full rounded-lg bg-teal-400/20 px-2 py-1.5 text-[10px] font-semibold text-teal-200 hover:bg-teal-400/30 disabled:cursor-wait disabled:opacity-60">
+                    {shareStatus.state === "downloading" ? "Downloading Cloudflare..." :
+                      shareStatus.state === "starting" ? "Starting tunnel..." : "Create share link"}
+                  </button>
+                )}
+                <p className="text-[9px] leading-relaxed text-amber-200/70">
+                  Anyone with the link can reach your login page. Share only with trusted people; stop sharing when finished.
+                </p>
+                {(shareMessage || shareStatus.error) && (
+                  <p role="status" className={`text-[10px] leading-relaxed ${shareMessage === "Link copied to clipboard." ? "text-emerald-200" : "text-red-300"}`}>
+                    {shareMessage || shareStatus.error}
+                  </p>
+                )}
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -826,7 +927,7 @@ export default function Home({ user, onLogout, onUserUpdated }: { user: AuthUser
         {returningTx  && <ReturnModal saleTx={returningTx} onClose={() => setReturningTx(null)} onAdd={handleReturn} inventory={inventory} currentUser={user} />}
         {showAddUser  && <UserFormModal onClose={() => setShowAddUser(false)} onSave={handleSaveUser} currentUserRole={user.role} />}
         {editingUser  && <UserFormModal initial={editingUser} onClose={() => setEditingUser(null)} onSave={handleSaveUser} currentUserRole={user.role} />}
-        {viewingInvoice && <InvoiceModal tx={viewingInvoice} settings={receiptSettings} onClose={() => setViewingInvoice(null)} />}
+        {viewingInvoice && <InvoiceModal tx={viewingInvoice} settings={receiptSettings} inventory={inventory} onClose={() => setViewingInvoice(null)} />}
         {showUserProfile && <UserInfoModal 
           user={{
             ...user,

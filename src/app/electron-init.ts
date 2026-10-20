@@ -9,15 +9,27 @@
  */
 
 declare global {
+  interface ShareStatus {
+    state: "stopped" | "starting" | "downloading" | "running";
+    url: string | null;
+    error: string | null;
+  }
+
   interface Window {
     smarttrack?: {
       platform: string;
+      isElectron: boolean;
       getAppInfo: () => Promise<{
         isDev: boolean;
         apiBase: string;
         platform: string;
         version: string;
       }>;
+      getShareStatus: () => Promise<ShareStatus | null>;
+      startShare: () => Promise<ShareStatus | null>;
+      stopShare: () => Promise<ShareStatus | null>;
+      copyText: (text: string) => Promise<{ ok: boolean } | null>;
+      onShareStatus: (callback: (status: ShareStatus) => void) => () => void;
       log: (message: string, data?: unknown) => void;
       error: (message: string, error?: unknown) => void;
     };

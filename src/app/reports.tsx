@@ -308,7 +308,7 @@ export default function ReportsPage({
                       <td className="px-4 py-3 text-xs font-bold text-foreground">{item.stock.toLocaleString()}</td>
                       <td className="px-4 py-3 text-xs text-muted-foreground">{fmt(item.price)}</td>
                       <td className="px-4 py-3 text-xs font-bold text-foreground">{fmt(item.stock * item.price)}</td>
-                      <td className="px-4 py-3 text-xs text-muted-foreground">{item.expiry}</td>
+                      <td className="px-4 py-3 text-xs text-muted-foreground">{item.expiry === "—" ? "" : item.expiry}</td>
                       <td className="px-4 py-3"><StockBadge status={item.status} /></td>
                     </tr>
                   ))}

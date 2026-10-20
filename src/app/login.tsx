@@ -187,7 +187,7 @@ function LoginPage({ onLogin, businessSettings }: {
           </form>
 
           <p className="text-center text-[11px] text-muted-foreground mt-6">
-            SmartTrack v2.1{businessSettings?.businessAddress ? ` · ${businessSettings.businessAddress}` : ""}
+            SmartTrack v2.10.19{businessSettings?.businessAddress ? ` · ${businessSettings.businessAddress}` : ""}
           </p>
         </div>
       </div>
