@@ -308,3 +308,117 @@ INSERT INTO `product_batches` (`batch_id`, `product_id`, `qty`, `expiry_date`, `
 ('BATCH-PRD-116-01', 1116, 3, NULL, '2026-09-16', 600.00, 200.0000, NOW()),
 ('BATCH-PRD-117-01', 1117, 1, NULL, '2026-09-16', 1750.00, 1750.0000, NOW()),
 ('BATCH-PRD-118-01', 1118, 3, '2027-08-31', '2026-09-16', 315.00, 105.0000, NOW());
+
+
+-- ==========================================
+-- 4. INSERT 300 SEPTEMBER 2026 SALES
+-- ==========================================
+-- The first 118 sale groups cover each imported product once. The remaining
+-- groups contain 1-8 distinct products, with one base unit per sale line.
+INSERT INTO `transactions`
+	(`id`, `type`, `sale_group_id`, `product_name`, `product_id`, `qty`, `sale_qty`,
+	 `sale_unit`, `units_per_sale`, `amount`, `discount_amount`, `pre_tax_amount`,
+	 `tax_amount`, `tax_rate`, `staff`, `staff_id`, `status`, `note`, `transacted_at`)
+WITH RECURSIVE sale_numbers (sale_no) AS (
+	SELECT 1
+	UNION ALL
+	SELECT sale_no + 1 FROM sale_numbers WHERE sale_no < 300
+), line_numbers (line_no) AS (
+	SELECT 1
+	UNION ALL
+	SELECT line_no + 1 FROM line_numbers WHERE line_no < 8
+), catalog_products AS (
+	SELECT
+		p.id AS product_id,
+		ROW_NUMBER() OVER (ORDER BY b.batch_id) AS product_no
+	FROM product_batches b
+	JOIN products p ON p.id = b.product_id
+	WHERE b.batch_id LIKE 'BATCH-PRD-%'
+), sale_groups AS (
+	SELECT
+		sale_no,
+		CASE
+			WHEN sale_no <= 118 THEN 1
+			ELSE 1 + MOD(CRC32(CONCAT('SEPT-LINES-', sale_no)), 8)
+		END AS line_count
+	FROM sale_numbers
+), sale_lines AS (
+	SELECT
+		g.sale_no,
+		l.line_no,
+		CASE
+			WHEN g.sale_no <= 118 THEN g.sale_no
+			ELSE 1 + MOD(CRC32(CONCAT('SEPT-PRODUCTS-', g.sale_no)) + l.line_no - 1, 118)
+		END AS product_no
+	FROM sale_groups g
+	JOIN line_numbers l ON l.line_no <= g.line_count
+)
+SELECT
+	CONCAT('SEPTX', LPAD(s.sale_no, 4, '0'), '-', LPAD(s.line_no, 2, '0')),
+	'sale',
+	CONCAT('SEPTX', LPAD(s.sale_no, 4, '0')),
+	p.name,
+	p.id,
+	1,
+	1,
+	'unit',
+	1,
+	p.price,
+	0.00,
+	CASE
+		WHEN p.is_vat_exempt = 1 THEN p.price
+		ELSE ROUND(p.price / 1.12, 2)
+	END,
+	CASE
+		WHEN p.is_vat_exempt = 1 THEN 0.00
+		ELSE ROUND(p.price - (p.price / 1.12), 2)
+	END,
+	CASE WHEN p.is_vat_exempt = 1 THEN 0.0000 ELSE 0.1200 END,
+	'Demo Cashier',
+	NULL,
+	'completed',
+	'Generated September 2026 demo sale',
+	DATE_ADD(
+		DATE_ADD('2026-09-17 08:00:00', INTERVAL MOD(CRC32(CONCAT('SEPT-DATE-', s.sale_no)), 14) DAY),
+		INTERVAL MOD(CRC32(CONCAT('SEPT-TIME-', s.sale_no)), 600) MINUTE
+	)
+FROM sale_lines s
+JOIN catalog_products cp ON cp.product_no = s.product_no
+JOIN products p ON p.id = cp.product_id
+WHERE NOT EXISTS (
+	SELECT 1
+	FROM transactions existing
+	WHERE existing.id = CONCAT('SEPTX', LPAD(s.sale_no, 4, '0'), '-', LPAD(s.line_no, 2, '0'))
+);
+
+-- Record the batch consumed by each seeded sale line.
+INSERT IGNORE INTO `transaction_batches` (`transaction_id`, `batch_id`, `expiry_date`, `qty`)
+SELECT
+	t.id,
+	b.batch_id,
+	b.expiry_date,
+	t.qty
+FROM transactions t
+JOIN product_batches b
+	ON b.product_id = t.product_id
+	AND b.batch_id LIKE 'BATCH-PRD-%'
+WHERE t.id LIKE 'SEPTX%'
+	AND NOT EXISTS (
+		SELECT 1
+		FROM transaction_batches tb
+		WHERE tb.transaction_id = t.id AND tb.batch_id = b.batch_id
+	);
+
+-- Verify group count, line count, and product coverage.
+SELECT
+	COUNT(DISTINCT sale_group_id) AS september_sale_groups,
+	COUNT(*) AS sale_lines,
+	COUNT(DISTINCT product_id) AS products_sold
+FROM transactions
+WHERE id LIKE 'SEPTX%';
+
+SELECT sale_group_id, COUNT(*) AS products_in_sale
+FROM transactions
+WHERE id LIKE 'SEPTX%'
+GROUP BY sale_group_id
+HAVING COUNT(*) < 1 OR COUNT(*) > 8;
