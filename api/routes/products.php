@@ -95,10 +95,18 @@ if ($id) {
         $data = body();
         require_fields($data, ['name', 'category', 'supplier', 'reorder', 'price']);
 
+        $barcode = trim((string)($data['barcode'] ?? ''));
+        $barcodeCheck = $pdo->prepare('SELECT id FROM products WHERE barcode = ? AND id <> ?');
+        $barcodeCheck->execute([$barcode, $id]);
+        if ($barcode !== '' && $barcodeCheck->fetch()) {
+            json_response(['error' => "Barcode '{$barcode}' is already assigned to another product."], 409);
+        }
+
         $pdo->prepare(
-            'UPDATE products SET name=?, category=?, supplier=?, reorder=?, price=?, sale_price=?, unit_label=?, units_per_pack=?, pack_price=?, is_vat_exempt=?, updated_at=NOW()
+            'UPDATE products SET barcode=?, name=?, category=?, supplier=?, reorder=?, price=?, sale_price=?, unit_label=?, units_per_pack=?, pack_price=?, is_vat_exempt=?, updated_at=NOW()
              WHERE id = ?'
         )->execute([
+            $barcode !== '' ? $barcode : null,
             $data['name'], $data['category'], $data['supplier'],
             (int)$data['reorder'], (float)$data['price'],
             isset($data['sale_price']) && $data['sale_price'] !== '' ? (float)$data['sale_price'] : null,
@@ -159,9 +167,9 @@ if ($method === 'GET') {
     $params = [];
 
     if ($search !== '') {
-        $sql    .= ' AND (name LIKE ? OR category LIKE ? OR id LIKE ?)';
+        $sql    .= ' AND (name LIKE ? OR category LIKE ? OR id LIKE ? OR barcode LIKE ?)';
         $like    = "%$search%";
-        $params  = array_merge($params, [$like, $like, $like]);
+        $params  = array_merge($params, [$like, $like, $like, $like]);
     }
     if ($status !== 'all') {
         $sql   .= ' AND status = ?';
@@ -180,20 +188,23 @@ if ($method === 'GET') {
 if ($method === 'POST') {
     require_role(['admin/owner', 'admin', 'inventory_manager']);
     $data = body();
-    require_fields($data, ['id', 'name', 'category', 'supplier', 'reorder', 'price', 'batches']);
+    require_fields($data, ['barcode', 'name', 'category', 'supplier', 'reorder', 'price', 'batches']);
+    $barcode = trim((string)$data['barcode']);
+    if ($barcode === '') {
+        json_response(['error' => 'A barcode is required.'], 422);
+    }
 
-    // Ensure unique ID
-    $check = $pdo->prepare('SELECT id FROM products WHERE id = ?');
-    $check->execute([$data['id']]);
+    $check = $pdo->prepare('SELECT id FROM products WHERE barcode = ?');
+    $check->execute([$barcode]);
     if ($check->fetch()) {
-        json_response(['error' => "Product ID '{$data['id']}' already exists."], 409);
+        json_response(['error' => "Barcode '{$barcode}' is already assigned to a product."], 409);
     }
 
     $pdo->prepare(
-        'INSERT INTO products (id, name, category, supplier, reorder, price, sale_price, unit_label, units_per_pack, pack_price, is_vat_exempt, status)
+        'INSERT INTO products (barcode, name, category, supplier, reorder, price, sale_price, unit_label, units_per_pack, pack_price, is_vat_exempt, status)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "good")'
     )->execute([
-        $data['id'], $data['name'], $data['category'], $data['supplier'],
+        $barcode, $data['name'], $data['category'], $data['supplier'],
         (int)$data['reorder'], (float)$data['price'],
         isset($data['sale_price']) && $data['sale_price'] !== '' ? (float)$data['sale_price'] : null,
         trim((string)($data['unit_label'] ?? 'unit')) ?: 'unit',
@@ -201,6 +212,7 @@ if ($method === 'POST') {
         isset($data['pack_price']) && $data['pack_price'] !== '' ? (float)$data['pack_price'] : null,
         isset($data['is_vat_exempt']) ? (int)$data['is_vat_exempt'] : 0,
     ]);
+    $productId = (string)$pdo->lastInsertId();
 
     // Insert batches with optional batch cost
     $ins = $pdo->prepare(
@@ -213,7 +225,7 @@ if ($method === 'POST') {
                      ? (float)$b['batchTotalCost'] : null;
         $unitCost  = ($totalCost !== null && $qty > 0) ? round($totalCost / $qty, 4) : null;
         $ins->execute([
-            $b['batchId'], $data['id'], $qty,
+            $b['batchId'], $productId, $qty,
             normalize_optional_date($b['expiryDate'] ?? $b['expiry'] ?? null),
             date('Y-m-d', strtotime($b['receivedDate'])),
             $totalCost,
@@ -221,10 +233,10 @@ if ($method === 'POST') {
         ]);
     }
 
-    sync_product_status($data['id']);
+    sync_product_status($productId);
 
     $stmt = $pdo->prepare('SELECT * FROM products WHERE id = ?');
-    $stmt->execute([$data['id']]);
+    $stmt->execute([$productId]);
     json_response(enrich_product($stmt->fetch()), 201);
 }
 

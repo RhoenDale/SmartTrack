@@ -48,7 +48,9 @@ export default function InventoryPage({
       inventory.filter(item => {
         const ms =
           item.name.toLowerCase().includes(search.toLowerCase()) ||
-          item.category.toLowerCase().includes(search.toLowerCase());
+          item.category.toLowerCase().includes(search.toLowerCase()) ||
+          (item.barcode ?? "").toLowerCase().includes(search.toLowerCase()) ||
+          item.id.toLowerCase().includes(search.toLowerCase());
         const mf = statusFilter === "all" || item.status === statusFilter;
         return ms && mf;
       }),
@@ -56,7 +58,7 @@ export default function InventoryPage({
   );
 
   const handleExportCsv = () => {
-    const headers = ["Product", "Category", "Supplier", "Stock", "Reorder At", "Unit Price", "Expiry", "Stock Status"];
+    const headers = ["Product", "Barcode", "ID", "Category", "Supplier", "Stock", "Reorder At", "Unit Price", "Expiry", "Stock Status"];
     const rows = inventory.map(item => {
       const unitsPerPack = Math.max(1, item.unitsPerPack ?? 1);
       const packCount = Math.floor(item.stock / unitsPerPack);
@@ -67,6 +69,8 @@ export default function InventoryPage({
       const earliest = sortBatchesByExpiry(item.batches)[0]?.expiry ?? item.expiry;
       return [
         item.name,
+        item.barcode ?? "",
+        item.id,
         item.category,
         item.supplier,
         stock,
@@ -155,7 +159,7 @@ export default function InventoryPage({
           <table className="w-full">
             <thead className="sticky top-0 z-10 bg-card shadow-sm">
               <tr className="border-b border-border bg-muted/30">
-                {["Product", "Category", "Supplier", "Stock (Packs / Units)", "Reorder At", "Unit Price", "Expiry", "Stock Status", ""].map(h => (
+                {["Product / Barcode", "Category", "Supplier", "Stock (Packs / Units)", "Reorder At", "Unit Price", "Expiry", "Stock Status", ""].map(h => (
                   <th key={h} className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide py-3 text-left px-4 first:px-5">{h}</th>
                 ))}
               </tr>
@@ -174,8 +178,9 @@ export default function InventoryPage({
                   }`}
                 >
                   <td className="px-5 py-3">
+                    {item.barcode && <p className="text-[10px] font-semibold text-primary">{item.barcode}</p>}
                     <p className="text-xs font-bold text-foreground">{item.name}</p>
-                    <p className="text-[10px] text-muted-foreground mt-0.5">{item.id}</p>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">ID {item.id}</p>
                   </td>
                   <td className="px-4 py-3 text-xs text-muted-foreground">{item.category}</td>
                   <td className="px-4 py-3 text-xs text-muted-foreground">{item.supplier}</td>

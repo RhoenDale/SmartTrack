@@ -1,5 +1,20 @@
 # Database Migrations
 
+## Separate Product IDs and Barcodes
+
+Back up the `smarttrack` database, then run
+`separate_product_id_and_barcode.sql` once in phpMyAdmin or with the MySQL CLI.
+The migration changes product IDs to auto-incrementing integers, remaps existing
+batch, transaction, and notification references, and adds a unique nullable
+barcode column. Existing products keep a blank barcode until the actual package
+is scanned or its barcode is entered. Fresh databases created from
+`smarttrack.sql` already use this schema.
+
+Inventory managers scan a product barcode into the first field when adding a
+product. In New Sale, the barcode scanner field is selected by default; common
+USB/Bluetooth scanners that type the code and press Enter work without a special
+device driver.
+
 ## Make batch expiry dates optional
 
 Products and batches without an expiry date can be saved and sold without expiry

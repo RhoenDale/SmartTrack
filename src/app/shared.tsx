@@ -171,16 +171,17 @@ export function SvgBarChart({ data }: { data: { name: string; sold: number }[] }
 
 // ─── Base UI components ───────────────────────────────────────────────────────
 export function FieldInput({
-  label, type = "text", value, onChange, placeholder, required, min, step, helperText,
+  label, type = "text", value, onChange, placeholder, required, min, step, helperText, autoFocus, readOnly, onKeyDown,
 }: {
   label: string; type?: string; value: string | number; onChange: (v: string) => void;
   placeholder?: string; required?: boolean; min?: number; step?: number; helperText?: string;
+  autoFocus?: boolean; readOnly?: boolean; onKeyDown?: (event: React.KeyboardEvent<HTMLInputElement>) => void;
 }) {
   return (
     <div>
       <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">{label}</label>
       <input
-        type={type} value={value} onChange={e => onChange(e.target.value)}
+        type={type} value={value} onChange={e => onChange(e.target.value)} autoFocus={autoFocus} readOnly={readOnly} onKeyDown={onKeyDown}
         placeholder={placeholder} required={required} min={min} step={step}
         className="w-full bg-background border border-border rounded-lg px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all"
       />
@@ -430,20 +431,17 @@ export function NotificationPanel({
 
 // ─── Product Form Modal ───────────────────────────────────────────────────────
 export function ProductFormModal({
-  initial, inventory, categories, onClose, onSave, onAddCategory,
+  initial, categories, onClose, onSave, onAddCategory,
 }: {
   initial?: Product;
-  inventory: Product[];
   categories: string[];
   onClose: () => void;
   onSave: (original: Product | null, updated: Product) => void;
   onAddCategory: (cat: string) => void;
 }) {
   const isEdit = !!initial;
-  const suggestedId = `P${String(inventory.length + 1).padStart(3, "0")}`;
-
   const [form, setForm] = useState({
-    id: initial?.id ?? suggestedId,
+    barcode: initial?.barcode ?? "",
     name: initial?.name ?? "",
     category: initial?.category ?? "",
     supplier: initial?.supplier ?? "",
@@ -474,7 +472,7 @@ export function ProductFormModal({
     const qty = parseInt(newBatchQty, 10);
     if (!qty || qty <= 0) return;
     const batchNum = batches.length + 1;
-    const batchId = `${form.id.trim() || suggestedId}-B${batchNum}`;
+    const batchId = `${initial?.id ?? "NEW"}-B${Date.now()}-${batchNum}`;
     const expiryDate = newBatchExpiry.trim() ? parseExpiry(newBatchExpiry.trim()) : null;
     if (expiryDate && Number.isNaN(expiryDate.getTime())) return;
     const totalCost = newBatchTotalCost.trim() !== "" ? parseFloat(newBatchTotalCost) : null;
@@ -513,7 +511,7 @@ export function ProductFormModal({
     const sortedBatches = sortBatchesFIFO(batches);
     const totalStock = getTotalStock(sortedBatches);
     const updated: Product = {
-      id: form.id.trim(), name: form.name, category: finalCategory, supplier: form.supplier.trim(),
+      id: initial?.id ?? "", barcode: form.barcode.trim(), name: form.name, category: finalCategory, supplier: form.supplier.trim(),
       stock: totalStock, reorder, price, salePrice: salePriceVal,
       unitLabel: form.unitLabel.trim() || "unit", unitsPerPack, packPrice: packPriceVal,
       isVatExempt, is_vat_exempt: isVatExempt ? 1 : 0,
@@ -526,7 +524,17 @@ export function ProductFormModal({
   return (
     <Modal title={isEdit ? "Edit Product" : "Add New Product"} onClose={onClose} wide>
       <form onSubmit={handleSubmit} className="space-y-4">
-        <FieldInput label="Product ID / Barcode" value={form.id} onChange={set("id")} placeholder={suggestedId} required />
+        {isEdit && <FieldInput label="Product ID (auto-generated)" value={initial?.id ?? ""} onChange={() => {}} readOnly />}
+        <FieldInput
+          label="Barcode"
+          value={form.barcode}
+          onChange={set("barcode")}
+          placeholder="Scan or enter barcode"
+          required={!isEdit}
+          autoFocus={!isEdit}
+          onKeyDown={event => { if (event.key === "Enter") event.preventDefault(); }}
+          helperText="Use a USB or Bluetooth scanner, or type the code."
+        />
         <FieldInput label="Product Name" value={form.name} onChange={set("name")} placeholder="e.g. Amoxicillin 500mg" required />
         <FieldInput label="Supplier" value={form.supplier} onChange={set("supplier")} placeholder="e.g. Apex Pharma" required />
         <div className="space-y-2">
@@ -1068,6 +1076,7 @@ export function NewSaleModal({
                     <div key={key} className="space-y-2 rounded-lg border border-border bg-background px-3 py-2.5">
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
+                          {item.product.barcode && <p className="truncate text-[10px] font-semibold text-primary">{item.product.barcode}</p>}
                           <p className="truncate text-xs font-semibold text-foreground">{item.product.name}</p>
                           <p className="text-[10px] text-muted-foreground">{fmt(line.unitPrice)} / {item.saleUnit === "pack" ? "pack" : item.product.unitLabel ?? "unit"}</p>
                         </div>
@@ -2048,14 +2057,16 @@ export function ProductSearchWidget({
   onSelect: (p: Product | null) => void;
   selectedProduct: Product | null;
 }) {
-  const [mode, setMode] = useState<"name" | "id">("name");
+  const [mode, setMode] = useState<"name" | "barcode">("barcode");
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
+  const inputRef = React.useRef<HTMLInputElement>(null);
 
   React.useEffect(() => {
     if (!selectedProduct) {
       setQuery("");
       setOpen(false);
+      inputRef.current?.focus();
     }
   }, [selectedProduct]);
 
@@ -2063,14 +2074,36 @@ export function ProductSearchWidget({
     if (!query.trim()) return [];
     const q = query.toLowerCase();
     return inventory.filter(p =>
-      mode === "name" ? p.name.toLowerCase().includes(q) : p.id.toLowerCase().includes(q)
+      mode === "name"
+        ? p.name.toLowerCase().includes(q)
+        : (p.barcode ?? "").toLowerCase().includes(q)
     ).slice(0, 8);
   }, [query, mode, inventory]);
 
   const selectProduct = (p: Product) => {
     onSelect(p);
-    setQuery(mode === "name" ? p.name : p.id);
+    setQuery(mode === "name" ? p.name : "");
     setOpen(false);
+  };
+
+  const handleQueryChange = (value: string) => {
+    setQuery(value);
+    setOpen(true);
+    if (!value) {
+      onSelect(null);
+      return;
+    }
+    if (mode === "barcode") {
+      const match = inventory.find(product => product.barcode === value.trim());
+      if (match) selectProduct(match);
+    }
+  };
+
+  const handleQueryKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
+    if (event.key !== "Enter" || mode !== "barcode") return;
+    event.preventDefault();
+    const match = inventory.find(product => product.barcode === query.trim());
+    if (match) selectProduct(match);
   };
 
   const clear = () => { onSelect(null); setQuery(""); setOpen(false); };
@@ -2079,18 +2112,20 @@ export function ProductSearchWidget({
     <div>
       <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">Product</label>
       <div className="flex gap-1 mb-2">
-        {(["name", "id"] as const).map(m => (
+        {(["barcode", "name"] as const).map(m => (
           <button key={m} type="button" onClick={() => { setMode(m); setQuery(""); onSelect(null); }}
             className={`px-3 py-1 rounded-lg text-[11px] font-bold transition-all border ${mode === m ? "bg-primary text-primary-foreground border-primary" : "bg-background border-border text-muted-foreground hover:text-foreground"}`}>
-            {m === "name" ? "By Name" : "By ID / Barcode"}
+            {m === "barcode" ? "Scan Barcode" : "By Name"}
           </button>
         ))}
       </div>
       <div className="relative">
-        <input type="text" value={query}
-          onChange={e => { setQuery(e.target.value); setOpen(true); if (!e.target.value) onSelect(null); }}
+        <input ref={inputRef} type="text" value={query}
+          onChange={e => handleQueryChange(e.target.value)}
+          onKeyDown={handleQueryKeyDown}
           onFocus={() => setOpen(true)}
-          placeholder={mode === "name" ? "Search by product name" : "Enter product ID or barcode"}
+          placeholder={mode === "name" ? "Search by product name" : "Scan or enter barcode"}
+          autoFocus={mode === "barcode"}
           className="w-full bg-background border border-border rounded-lg px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all pr-8"
         />
         {query && <button type="button" onClick={clear} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"><_X size={13} /></button>}
@@ -2104,7 +2139,10 @@ export function ProductSearchWidget({
                 className={`w-full flex items-center justify-between px-3 py-2.5 hover:bg-muted/50 transition-colors text-left border-b border-border/40 last:border-b-0 ${expBlock || outOfStock ? "opacity-70" : ""}`}>
                 <div>
                   <div className="flex items-center gap-1.5">
-                    <p className="text-xs font-bold text-foreground">{p.name}</p>
+                    <div className="min-w-0">
+                      {p.barcode && <p className="text-[10px] font-semibold text-primary">{p.barcode}</p>}
+                      <p className="text-xs font-bold text-foreground">{p.name}</p>
+                    </div>
                     {outOfStock && <span className="rounded-full bg-red-100 px-1.5 py-0.5 text-[9px] font-bold text-red-700 dark:bg-red-500/20 dark:text-red-300">OUT OF STOCK</span>}
                     {expBlock && (
                       <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${expBlock.daysLeft <= 0 ? "bg-red-100 text-red-700 dark:bg-red-500/20 dark:text-red-400" : "bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-400"}`}>
@@ -2112,7 +2150,7 @@ export function ProductSearchWidget({
                       </span>
                     )}
                   </div>
-                  <p className="text-[10px] text-muted-foreground">{p.id} &middot; {p.stock} in stock</p>
+                  <p className="text-[10px] text-muted-foreground">ID {p.id} &middot; {p.stock} in stock</p>
                 </div>
                 <div className="flex-shrink-0 ml-2">
                   {outOfStock || expBlock ? (
@@ -2129,6 +2167,7 @@ export function ProductSearchWidget({
       </div>
       {selectedProduct && (
         <div className="mt-2 bg-muted/40 border border-border rounded-xl p-3 text-xs space-y-1">
+          {selectedProduct.barcode && <div className="flex justify-between"><span className="text-muted-foreground">Barcode</span><span className="font-semibold text-foreground">{selectedProduct.barcode}</span></div>}
           <div className="flex justify-between"><span className="text-muted-foreground">Product</span><span className="font-semibold text-foreground">{selectedProduct.name}</span></div>
           <div className="flex justify-between"><span className="text-muted-foreground">ID</span><span className="font-semibold text-foreground">{selectedProduct.id}</span></div>
           <div className="flex justify-between"><span className="text-muted-foreground">Unit Price</span>

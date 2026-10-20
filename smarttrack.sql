@@ -53,7 +53,8 @@ CREATE TABLE IF NOT EXISTS `tax_settings` (
 
 -- ─── Products ─────────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS `products` (
-  `id`           VARCHAR(20)    NOT NULL,
+  `id`           INT UNSIGNED   NOT NULL AUTO_INCREMENT,
+  `barcode`      VARCHAR(64)    NULL,
   `name`         VARCHAR(150)   NOT NULL,
   `category`     VARCHAR(80)    NOT NULL,
   `supplier`     VARCHAR(120)   NOT NULL DEFAULT '',
@@ -67,14 +68,15 @@ CREATE TABLE IF NOT EXISTS `products` (
   `status`       ENUM('good','moderate','low','critical','out_of_stock') NOT NULL DEFAULT 'good',
   `created_at`   DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at`   DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  PRIMARY KEY (`id`)
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_products_barcode` (`barcode`)
 ) ENGINE=InnoDB;
 
 -- ─── Product Batches (FIFO) ───────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS `product_batches` (
   `id`              INT            NOT NULL AUTO_INCREMENT,
   `batch_id`        VARCHAR(30)    NOT NULL UNIQUE,
-  `product_id`      VARCHAR(20)    NOT NULL,
+  `product_id`      INT UNSIGNED   NOT NULL,
   `qty`             INT            NOT NULL DEFAULT 0,
   `expiry_date`     DATE           NULL DEFAULT NULL,
   `received_date`   DATE           NOT NULL,
@@ -102,7 +104,7 @@ CREATE TABLE IF NOT EXISTS `transactions` (
   `type`               ENUM('sale','return','adjustment') NOT NULL,
   `sale_group_id`      VARCHAR(20)   NULL,
   `product_name`       VARCHAR(150)  NOT NULL,
-  `product_id`         VARCHAR(20)   NULL,
+  `product_id`         INT UNSIGNED  NULL,
   `qty`                INT           NOT NULL DEFAULT 0,
   `sale_qty`           INT           NULL DEFAULT NULL,
   `sale_unit`          VARCHAR(20)   NOT NULL DEFAULT 'unit',
@@ -149,7 +151,7 @@ CREATE TABLE IF NOT EXISTS `notifications` (
   `type`       ENUM('alert','order','info') NOT NULL DEFAULT 'info',
   `title`      VARCHAR(200) NOT NULL,
   `body`       TEXT         NOT NULL,
-  `product_id` VARCHAR(20)  NULL,
+  `product_id` INT UNSIGNED NULL,
   `is_read`    TINYINT(1)   NOT NULL DEFAULT 0,
   `created_at` DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
@@ -197,40 +199,40 @@ INSERT INTO `tax_settings` (`setting_key`, `value`, `description`) VALUES
 INSERT INTO `products`
   (`id`,`name`,`category`,`supplier`,`reorder`,`price`,`sale_price`,
    `unit_label`,`units_per_pack`,`pack_price`,`is_vat_exempt`,`status`) VALUES
-('P001','Amoxicillin 500mg',  'Antibiotic',      'Apex Pharma',          50,  8.50, 6.00, 'capsule', 1, NULL,   0,'good'),
-('P002','Paracetamol 500mg',  'Analgesic',       'Medline Distributors', 200, 2.50, NULL, 'tablet',  1, NULL,   1,'good'),
-('P003','Metformin 500mg',    'Antidiabetic',    'PharmaSource',         100, 4.20, NULL, 'tablet',  1, NULL,   1,'low'),
-('P004','Amlodipine 5mg',     'Antihypertensive','Apex Pharma',           80, 6.75, NULL, 'tablet',  1, NULL,   1,'good'),
-('P005','Cetirizine 10mg',    'Antihistamine',   'Healthline Supplies',   60, 5.00, NULL, 'tablet',  1, NULL,   0,'low'),
-('P006','Omeprazole 20mg',    'Antacid',         'GlobeMed Traders',      100, 9.80, NULL, 'capsule', 1, NULL,   0,'good'),
-('P007','Losartan 50mg',      'Antihypertensive','MetroPharm',            80,11.20, NULL, 'tablet',  1, NULL,   1,'moderate'),
-('P008','Ibuprofen 400mg',   'NSAID',           'PharmaSource',          150, 7.30, NULL, 'tablet',  1, NULL,   0,'good'),
-('P009','Salbutamol Inhaler', 'Bronchodilator',  'Medline Distributors',   30,210.00,NULL, 'inhaler', 1, NULL,   0,'critical'),
-('P010','Vitamin C 500mg',    'Supplement',      'Healthline Supplies',    5,  6.50, 6.00, 'tablet', 20, 110.00, 0,'good'),
-('P011','Oral Rehydration Salts','Supplement',   'Medline Distributors',  5, 12.00, NULL, 'sachet', 10, 110.00, 0,'good'),
-('P012','Loperamide 2mg',     'Antidiarrheal',   'PharmaSource',           6,  4.50, NULL, 'tablet', 10,  40.00, 0,'good');
+(1,'Amoxicillin 500mg',  'Antibiotic',      'Apex Pharma',          50,  8.50, 6.00, 'capsule', 1, NULL,   0,'good'),
+(2,'Paracetamol 500mg',  'Analgesic',       'Medline Distributors', 200, 2.50, NULL, 'tablet',  1, NULL,   1,'good'),
+(3,'Metformin 500mg',    'Antidiabetic',    'PharmaSource',         100, 4.20, NULL, 'tablet',  1, NULL,   1,'low'),
+(4,'Amlodipine 5mg',     'Antihypertensive','Apex Pharma',           80, 6.75, NULL, 'tablet',  1, NULL,   1,'good'),
+(5,'Cetirizine 10mg',    'Antihistamine',   'Healthline Supplies',   60, 5.00, NULL, 'tablet',  1, NULL,   0,'low'),
+(6,'Omeprazole 20mg',    'Antacid',         'GlobeMed Traders',      100, 9.80, NULL, 'capsule', 1, NULL,   0,'good'),
+(7,'Losartan 50mg',     'Antihypertensive','MetroPharm',            80,11.20, NULL, 'tablet',  1, NULL,   1,'moderate'),
+(8,'Ibuprofen 400mg',   'NSAID',           'PharmaSource',          150, 7.30, NULL, 'tablet',  1, NULL,   0,'good'),
+(9,'Salbutamol Inhaler', 'Bronchodilator',  'Medline Distributors',   30,210.00,NULL, 'inhaler', 1, NULL,   0,'critical'),
+(10,'Vitamin C 500mg',    'Supplement',      'Healthline Supplies',    5,  6.50, 6.00, 'tablet', 20, 110.00, 0,'good'),
+(11,'Oral Rehydration Salts','Supplement',   'Medline Distributors',  5, 12.00, NULL, 'sachet', 10, 110.00, 0,'good'),
+(12,'Loperamide 2mg',     'Antidiarrheal',   'PharmaSource',           6,  4.50, NULL, 'tablet', 10,  40.00, 0,'good');
 
 -- Product Batches (one batch per product as initial stock)
 INSERT INTO `product_batches` (`batch_id`,`product_id`,`qty`,`expiry_date`,`received_date`,`batch_total_cost`,`unit_cost`) VALUES
-('P001-B1','P001', 284,'2026-08-01','2025-06-01', 1704.00,  6.0000),
-('P002-B1','P002',1240,'2027-03-01','2025-06-01', 1860.00,  1.5000),
-('P003-B1','P003',  38,'2026-11-01','2025-06-01',  114.00,  3.0000),
-('P004-B1','P004', 156,'2027-01-01','2025-06-01',  702.00,  4.5000),
-('P005-B1','P005',  22,'2026-09-01','2025-06-01',   77.00,  3.5000),
-('P006-B1','P006', 203,'2026-12-01','2025-06-01', 1218.00,  6.0000),
-('P007-B1','P007',  89,'2027-04-01','2025-06-01',  623.00,  7.0000),
-('P008-B1','P008', 445,'2027-02-01','2025-06-01', 2225.00,  5.0000),
-('P009-B1','P009',  14,'2027-12-01','2025-06-01', 1680.00,120.0000),
-('P010-B1','P010', 892,'2027-06-01','2025-06-01', 1338.00,  1.5000),
-('P011-B1','P011', 300,'2028-03-31','2026-09-25', 1800.00,  6.0000),
-('P012-B1','P012', 240,'2028-01-31','2026-09-25',  720.00,  3.0000);
+('P001-B1',1, 284,'2026-08-01','2025-06-01', 1704.00,  6.0000),
+('P002-B1',2,1240,'2027-03-01','2025-06-01', 1860.00,  1.5000),
+('P003-B1',3,  38,'2026-11-01','2025-06-01',  114.00,  3.0000),
+('P004-B1',4, 156,'2027-01-01','2025-06-01',  702.00,  4.5000),
+('P005-B1',5,  22,'2026-09-01','2025-06-01',   77.00,  3.5000),
+('P006-B1',6, 203,'2026-12-01','2025-06-01', 1218.00,  6.0000),
+('P007-B1',7,  89,'2027-04-01','2025-06-01',  623.00,  7.0000),
+('P008-B1',8, 445,'2027-02-01','2025-06-01', 2225.00,  5.0000),
+('P009-B1',9,  14,'2027-12-01','2025-06-01', 1680.00,120.0000),
+('P010-B1',10, 892,'2027-06-01','2025-06-01', 1338.00,  1.5000),
+('P011-B1',11, 300,'2028-03-31','2026-09-25', 1800.00,  6.0000),
+('P012-B1',12, 240,'2028-01-31','2026-09-25',  720.00,  3.0000);
 
 -- Add a second batch for the seeded products in the requested P010-P012 range.
 INSERT IGNORE INTO `product_batches`
   (`batch_id`,`product_id`,`qty`,`expiry_date`,`received_date`,`batch_total_cost`,`unit_cost`) VALUES
-('SEED-EXTRA-P010','P010',200,'2029-02-28','2026-09-28', 300.00, 1.5000),
-('SEED-EXTRA-P011','P011',120,'2029-09-30','2026-09-28', 720.00, 6.0000),
-('SEED-EXTRA-P012','P012',100,'2030-04-30','2026-09-28', 300.00, 3.0000);
+('SEED-EXTRA-P010',10,200,'2029-02-28','2026-09-28', 300.00, 1.5000),
+('SEED-EXTRA-P011',11,120,'2029-09-30','2026-09-28', 720.00, 6.0000),
+('SEED-EXTRA-P012',12,100,'2030-04-30','2026-09-28', 300.00, 3.0000);
 
 -- Transactions (with VAT tax breakdown)
 -- VAT-exempt products (P002 Paracetamol, P003 Metformin, P004 Amlodipine, P007 Losartan):
@@ -240,19 +242,19 @@ INSERT IGNORE INTO `product_batches`
 INSERT INTO `transactions`
   (`id`,`type`,`product_name`,`product_id`,`qty`,`amount`,`pre_tax_amount`,`tax_amount`,`tax_rate`,`staff`,`status`,`transacted_at`) VALUES
 -- VAT-inclusive sales (Antibiotic, Antacid, Supplement, NSAID, Bronchodilator)
-('TXN-1201','sale','Amoxicillin 500mg', 'P001',10,  85.00, 75.89,  9.11,0.1200,'M. Santos',   'completed','2025-06-25 09:14:00'),
-('TXN-1203','sale','Omeprazole 20mg',   'P006',14, 137.20,122.50, 14.70,0.1200,'M. Santos',   'completed','2025-06-25 10:45:00'),
-('TXN-1204','sale','Vitamin C 500mg',   'P010',30,  96.00, 85.71, 10.29,0.1200,'A. Reyes',    'completed','2025-06-25 11:12:00'),
-('TXN-9743','sale','Paracetamol 500mg', 'P002', 1,   2.50,  2.50,  0.00,0.0000,'R. Dela Cruz','completed','2026-08-17 20:20:00'),
-('TXN-F843','sale','Metformin 500mg',   'P003', 1,   4.20,  4.20,  0.00,0.0000,'R. Dela Cruz','completed','2026-08-17 20:26:00'),
-('TXN-4D06','sale','Amoxicillin 500mg', 'P001', 5,  30.00, 26.79,  3.21,0.1200,'R. Dela Cruz','completed','2026-08-17 20:42:00'),
+('TXN-1201','sale','Amoxicillin 500mg', 1,10,  85.00, 75.89,  9.11,0.1200,'M. Santos',   'completed','2025-06-25 09:14:00'),
+('TXN-1203','sale','Omeprazole 20mg',   6,14, 137.20,122.50, 14.70,0.1200,'M. Santos',   'completed','2025-06-25 10:45:00'),
+('TXN-1204','sale','Vitamin C 500mg',  10,30,  96.00, 85.71, 10.29,0.1200,'A. Reyes',    'completed','2025-06-25 11:12:00'),
+('TXN-9743','sale','Paracetamol 500mg', 2, 1,   2.50,  2.50,  0.00,0.0000,'R. Dela Cruz','completed','2026-08-17 20:20:00'),
+('TXN-F843','sale','Metformin 500mg',   3, 1,   4.20,  4.20,  0.00,0.0000,'R. Dela Cruz','completed','2026-08-17 20:26:00'),
+('TXN-4D06','sale','Amoxicillin 500mg', 1, 5,  30.00, 26.79,  3.21,0.1200,'R. Dela Cruz','completed','2026-08-17 20:42:00'),
 -- VAT-exempt sales (Antidiabetic, Antihypertensive, Analgesic)
-('TXN-1202','sale','Paracetamol 500mg', 'P002',20,  50.00, 50.00,  0.00,0.0000,'J. Dela Cruz','completed','2025-06-25 09:32:00'),
-('TXN-1205','sale','Amlodipine 5mg',    'P004',28, 189.00,189.00,  0.00,0.0000,'J. Dela Cruz','completed','2025-06-25 12:05:00'),
-('TXN-1206','sale','Losartan 50mg',     'P007',30, 336.00,336.00,  0.00,0.0000,'M. Santos',   'completed','2025-06-25 13:20:00'),
+('TXN-1202','sale','Paracetamol 500mg', 2,20,  50.00, 50.00,  0.00,0.0000,'J. Dela Cruz','completed','2025-06-25 09:32:00'),
+('TXN-1205','sale','Amlodipine 5mg',    4,28, 189.00,189.00,  0.00,0.0000,'J. Dela Cruz','completed','2025-06-25 12:05:00'),
+('TXN-1206','sale','Losartan 50mg',     7,30, 336.00,336.00,  0.00,0.0000,'M. Santos',   'completed','2025-06-25 13:20:00'),
 -- Returns
-('RET-24F7','return','Salbutamol Inhaler','P009',2, 420.00,375.00, 45.00,0.1200,'S. Guko',     'completed','2026-08-18 12:27:00'),
-('RET-7847','return','Amlodipine 5mg',   'P004',1,   6.75,  6.75,  0.00,0.0000,'S. Guko',     'completed','2026-08-17 21:18:00');
+('RET-24F7','return','Salbutamol Inhaler',9,2, 420.00,375.00, 45.00,0.1200,'S. Guko',     'completed','2026-08-18 12:27:00'),
+('RET-7847','return','Amlodipine 5mg',   4,1,   6.75,  6.75,  0.00,0.0000,'S. Guko',     'completed','2026-08-17 21:18:00');
 
 -- Transaction batch audit (FIFO consumed for each sale)
 INSERT INTO `transaction_batches` (`transaction_id`,`batch_id`,`expiry_date`,`qty`) VALUES

@@ -28,6 +28,7 @@ export interface ProductBatch {
 
 export interface Product {
   id:           string;
+  barcode?:     string | null;
   name:         string;
   category:     string;
   supplier:     string;
@@ -221,6 +222,8 @@ export function getReorderUnits(product: Pick<Product, "reorder" | "unitsPerPack
 export function normalizeProduct(p: Product): Product {
   return {
     ...p,
+    id: String(p.id),
+    barcode: p.barcode ?? (p as any).barcode ?? null,
     salePrice:    p.sale_price    ?? p.salePrice    ?? undefined,
     unitLabel:    p.unitLabel ?? (p as any).unit_label ?? "unit",
     unitsPerPack: Number(p.unitsPerPack ?? (p as any).units_per_pack ?? 1),

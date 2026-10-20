@@ -12,8 +12,8 @@ ALTER TABLE transactions
   ADD COLUMN units_per_sale INT NOT NULL DEFAULT 1 AFTER sale_unit;
 
 -- Optional examples:
--- UPDATE products SET unit_label='tablet', units_per_pack=10, pack_price=95.00 WHERE id='P001';
--- UPDATE products SET unit_label='bottle', units_per_pack=6, pack_price=420.00 WHERE id='P002';
+-- UPDATE products SET unit_label='tablet', units_per_pack=10, pack_price=95.00 WHERE id=1;
+-- UPDATE products SET unit_label='bottle', units_per_pack=6, pack_price=420.00 WHERE id=2;
 
 -- Configure pack contents for all existing products.
 -- Only run this when every product uses the same pack size.
@@ -24,9 +24,9 @@ ALTER TABLE transactions
 -- Use product-specific values when box sizes are different.
 -- UPDATE products
 -- SET units_per_pack = CASE id
---     WHEN 'P001' THEN 10
---     WHEN 'P002' THEN 6
---     WHEN 'P003' THEN 20
+--     WHEN 1 THEN 10
+--     WHEN 2 THEN 6
+--     WHEN 3 THEN 20
 --     ELSE units_per_pack
 -- END;
 

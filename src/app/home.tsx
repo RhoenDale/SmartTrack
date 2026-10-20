@@ -248,6 +248,7 @@ export default function Home({ user, onLogout, onUserUpdated }: { user: AuthUser
       if (
         p.name.toLowerCase().includes(q) ||
         p.id.toLowerCase().includes(q) ||
+        (p.barcode ?? "").toLowerCase().includes(q) ||
         p.category.toLowerCase().includes(q) ||
         p.supplier?.toLowerCase().includes(q)
       ) {
@@ -255,7 +256,7 @@ export default function Home({ user, onLogout, onUserUpdated }: { user: AuthUser
           kind: "product",
           id: p.id,
           label: p.name,
-          sub: `${p.category} · ${p.stock} units · ${p.id}`,
+          sub: `${p.barcode ? `${p.barcode} · ` : ""}${p.category} · ${p.stock} units · ID ${p.id}`,
         });
       }
       if (productResults.length >= 20) break;
@@ -327,7 +328,7 @@ export default function Home({ user, onLogout, onUserUpdated }: { user: AuthUser
   const handleSaveProduct = async (original: Product | null, updated: Product) => {
     try {
       const payload = {
-        id: updated.id, name: updated.name, category: updated.category,
+        barcode: updated.barcode ?? "", name: updated.name, category: updated.category,
         supplier: updated.supplier, reorder: updated.reorder,
         price: updated.price,
         sale_price:    updated.salePrice    ?? updated.sale_price    ?? null,
@@ -917,9 +918,9 @@ export default function Home({ user, onLogout, onUserUpdated }: { user: AuthUser
         </div>
 
         {/* Modals */}
-        {showAddProduct && <ProductFormModal inventory={inventory} categories={categories}
+        {showAddProduct && <ProductFormModal categories={categories}
           onClose={() => setShowAddProduct(false)} onSave={handleSaveProduct} onAddCategory={handleAddCategory} />}
-        {editingProduct && <ProductFormModal initial={editingProduct} inventory={inventory} categories={categories}
+        {editingProduct && <ProductFormModal initial={editingProduct} categories={categories}
           onClose={() => setEditingProduct(null)} onSave={handleSaveProduct} onAddCategory={handleAddCategory} />}
         {deletingProduct && <DeleteConfirmModal product={deletingProduct}
           onClose={() => setDeletingProduct(null)} onConfirm={() => handleDeleteProduct(deletingProduct)} />}
