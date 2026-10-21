@@ -243,6 +243,17 @@ function enrich_product(array $product): array {
     $product['stock']      = $stock;
     $product['expiry']     = $earliestExpiry ? date('m/d/Y', strtotime($earliestExpiry)) : '—';
     $product['batches']    = $batchArr;
+    $categoryStmt = $pdo->prepare(
+        'SELECT c.name
+         FROM product_category_map pcm
+         JOIN categories c ON c.id = pcm.category_id
+         WHERE pcm.product_id = ?
+         ORDER BY c.name ASC'
+    );
+    $categoryStmt->execute([$product['id']]);
+    $categories = array_column($categoryStmt->fetchAll(PDO::FETCH_ASSOC), 'name');
+    $product['categories'] = $categories;
+    $product['category'] = implode(', ', $categories);
     $product['price']      = (float)$product['price'];
     $product['sale_price'] = $product['sale_price'] !== null ? (float)$product['sale_price'] : null;
     $product['unit_label'] = $product['unit_label'] ?? 'unit';
@@ -252,4 +263,104 @@ function enrich_product(array $product): array {
     $product['reorder']    = (int)$product['reorder'];
 
     return $product;
+}
+
+/** Validate category names supplied when creating or updating a product. */
+function product_category_names(array $data): array {
+    $input = $data['categories'] ?? ($data['category'] ?? []);
+    if (is_string($input)) $input = preg_split('/\s*\/\s*/u', $input);
+    if (!is_array($input)) {
+        json_response(['error' => 'Categories must be a list of category names.'], 422);
+    }
+
+    $names = [];
+    $seen = [];
+    foreach ($input as $value) {
+        if (!is_string($value)) {
+            json_response(['error' => 'Each category must be a text value.'], 422);
+        }
+        foreach (preg_split('/\s*\/\s*/u', $value) as $name) {
+            $name = trim($name);
+            if ($name === '') continue;
+            if (mb_strlen($name) > 80) {
+                json_response(['error' => 'Category names must be 80 characters or fewer.'], 422);
+            }
+            $key = mb_strtolower($name);
+            if (isset($seen[$key])) continue;
+            $seen[$key] = true;
+            $names[] = $name;
+        }
+    }
+    if (!$names) {
+        json_response(['error' => 'Select or add at least one category.'], 422);
+    }
+    return $names;
+}
+
+/** Replace a product's category links and retain a joined legacy category field. */
+function sync_product_categories(PDO $pdo, string|int $productId, array $names): void {
+    $pdo->prepare('DELETE FROM product_category_map WHERE product_id = ?')->execute([$productId]);
+    $findCategory = $pdo->prepare('SELECT id FROM categories WHERE name = ?');
+    $linkCategory = $pdo->prepare(
+        'INSERT INTO product_category_map (product_id, category_id) VALUES (?, ?)'
+    );
+    foreach ($names as $name) {
+        $pdo->prepare('INSERT IGNORE INTO categories (name) VALUES (?)')->execute([$name]);
+        $findCategory->execute([$name]);
+        $categoryId = $findCategory->fetchColumn();
+        if ($categoryId === false) {
+            throw new RuntimeException("Unable to find saved category '{$name}'.");
+        }
+        $linkCategory->execute([$productId, $categoryId]);
+    }
+}
+
+/** Format a raw transaction row for API output. */
+function format_transaction(array $tx): array {
+    // Use current_staff_name if available (from JOIN), otherwise fall back to staff field
+    $staffName = $tx['current_staff_name'] ?? $tx['staff'];
+
+    // Abbreviate the staff name if it's a full name
+    if (strpos($staffName, ' ') !== false && !strpos($staffName, '.')) {
+        $staffName = staff_abbrev($staffName);
+    }
+
+    $customerVatExempt = false;
+    $customerExemptionType = null;
+    $customerIdNumber = null;
+    if (($tx['type'] ?? '') === 'sale' && !empty($tx['note'])) {
+        if (preg_match('/^Customer (?:VAT exemption|discount): (.+) ID (.+)$/', $tx['note'], $matches)) {
+            $customerVatExempt = true;
+            $customerExemptionType = $matches[1];
+            $customerIdNumber = $matches[2];
+        }
+    }
+
+    return [
+        'id'               => $tx['id'],
+        'type'             => $tx['type'],
+        'saleGroupId'      => $tx['sale_group_id'] ?? null,
+        'product'          => $tx['product_name'],
+        'productId'        => $tx['product_id'],
+        'qty'              => (int)$tx['qty'],
+        'saleQty'          => isset($tx['sale_qty']) && $tx['sale_qty'] !== null ? (int)$tx['sale_qty'] : (int)$tx['qty'],
+        'saleUnit'         => $tx['sale_unit'] ?? 'unit',
+        'unitsPerSale'     => isset($tx['units_per_sale']) ? (int)$tx['units_per_sale'] : 1,
+        'amount'           => (float)$tx['amount'],
+        'discountAmount'   => (float)($tx['discount_amount'] ?? 0),
+        'preTaxAmount'     => isset($tx['pre_tax_amount']) ? (float)$tx['pre_tax_amount'] : null,
+        'taxAmount'        => isset($tx['tax_amount'])     ? (float)$tx['tax_amount']     : null,
+        'taxRate'          => isset($tx['tax_rate'])       ? (float)$tx['tax_rate']       : null,
+        'customerVatExempt' => $customerVatExempt,
+        'customerExemptionType' => $customerExemptionType,
+        'customerIdNumber' => $customerIdNumber,
+        'staff'            => $staffName,
+        'staffId'          => $tx['staff_id'] ?? null,
+        'status'           => $tx['status'],
+        'date'             => date('m/d/Y H:i', strtotime($tx['transacted_at'])),
+        'note'             => $tx['note'] ?? null,
+        'returnedTxId'     => $tx['returned_tx_id'] ?? null,
+        'adjustmentReason' => $tx['adjustment_reason'] ?? null,
+        'damagedQty'       => isset($tx['damaged_qty']) ? (int)$tx['damaged_qty'] : null,
+    ];
 }

@@ -30,6 +30,9 @@ if ($method === 'POST') {
     $data = body();
     require_fields($data, ['name']);
     $name = trim($data['name']);
+    if (str_contains($name, '/')) {
+        json_response(['error' => 'Create each category separately; combined category names are not supported.'], 422);
+    }
 
     // Upsert — ignore if already exists
     $pdo->prepare('INSERT IGNORE INTO categories (name) VALUES (?)')->execute([$name]);

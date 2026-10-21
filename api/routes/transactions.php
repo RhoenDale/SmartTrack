@@ -5,7 +5,7 @@
  *   GET  /transactions              — list all (filter: type, date_from, date_to)
  *   GET  /transactions/{id}         — single transaction
  *   POST /transactions/sale         — record a new sale  (FIFO deduction)
- *   POST /transactions/return       — process a return   (FIFO restock)
+ *   POST /transactions/return       — retired; use /return-requests
  *   POST /transactions/adjustment   — record adjustment  (FIFO deduction)
  *   GET  /transactions/export       — CSV export (admin only)
  */
@@ -63,12 +63,12 @@ if ($id && $sub === null) {
         json_response($tx);
     }
 
-    // POST /transactions/sale | return | adjustment
+    // POST /transactions/sale | return (retired) | adjustment
     if ($method === 'POST') {
         if ($id === 'sale') {
             handle_sale($pdo, $authUser);
         } elseif ($id === 'return') {
-            handle_return($pdo, $authUser);
+            json_response(['error' => 'Use the cashier return request workflow at /return-requests.'], 410);
         } elseif ($id === 'adjustment') {
             handle_adjustment($pdo, $authUser);
         } else {
@@ -397,91 +397,6 @@ function handle_multi_sale(PDO $pdo, array $authUser, array $data, array $items)
     }
 }
 
-function handle_return(PDO $pdo, array $authUser): void {
-    // Admin and Admin/Owner accounts are read-only.
-    if (in_array($authUser['role'], ['admin', 'admin/owner'], true)) {
-        json_response(['error' => 'Admins cannot process returns. Only cashiers and inventory managers have this permission.'], 403);
-    }
-    
-    $data = body();
-    require_fields($data, ['sale_tx_id', 'qty', 'reason']);
-
-    $saleTxId = $data['sale_tx_id'];
-    $qty      = (int)$data['qty'];
-    $reason   = trim($data['reason']);
-
-    if ($qty <= 0)         json_response(['error' => 'Qty must be > 0.'], 422);
-    if ($reason === '')    json_response(['error' => 'Return reason is required.'], 422);
-
-    // Fetch original sale
-    $saleStmt = $pdo->prepare('SELECT * FROM transactions WHERE id = ? AND type = "sale"');
-    $saleStmt->execute([$saleTxId]);
-    $sale = $saleStmt->fetch();
-    if (!$sale) json_response(['error' => 'Original sale transaction not found.'], 404);
-    if ($qty > (int)$sale['qty']) {
-        json_response(['error' => "Cannot return more than sold qty ({$sale['qty']})."], 422);
-    }
-
-    $productId = $sale['product_id'];
-
-    // Fetch original batch for restock
-    $batchStmt = $pdo->prepare(
-        'SELECT batch_id, expiry_date FROM transaction_batches
-         WHERE transaction_id = ? ORDER BY id ASC LIMIT 1'
-    );
-    $batchStmt->execute([$saleTxId]);
-    $origBatch = $batchStmt->fetch();
-    $batchId   = $origBatch['batch_id']    ?? ($productId . '-B1');
-    $expiry    = $origBatch['expiry_date'] ?? null;
-
-    // Fetch product for restock/status sync
-    $pStmt = $pdo->prepare('SELECT * FROM products WHERE id = ?');
-    $pStmt->execute([$productId]);
-    $product = $pStmt->fetch();
-    $soldQty = max((int)$sale['qty'], 1);
-    $unitRefund = (float)$sale['amount'] / $soldQty;
-    $refund = round($unitRefund * $qty, 2);
-
-    // ── VAT on refund — mirror the original sale's tax rate ──────────────────
-    $origVatRate      = isset($sale['tax_rate']) ? (float)$sale['tax_rate'] : 0.12;
-    $retPreTaxAmount  = $origVatRate == 0 ? $refund : round($refund / 1.12, 2);
-    $retTaxAmount     = round($refund - $retPreTaxAmount, 2);
-
-    $pdo->beginTransaction();
-    try {
-        fifo_restock($productId, $qty, $batchId, $expiry);
-
-        $retId = gen_tx_id('RET');
-        $pdo->prepare(
-            'INSERT INTO transactions
-             (id, type, product_name, product_id, qty, amount, pre_tax_amount, tax_amount, tax_rate,
-              staff, staff_id, status, note, returned_tx_id, transacted_at)
-             VALUES (?, "return", ?, ?, ?, ?, ?, ?, ?, ?, ?, "completed", ?, ?, NOW())'
-        )->execute([
-            $retId, $sale['product_name'], $productId,
-            $qty, $refund, $retPreTaxAmount, $retTaxAmount, $origVatRate,
-            staff_abbrev($authUser['name']), $authUser['id'],
-            $reason, $saleTxId,
-        ]);
-
-        sync_product_status($productId);
-        $pdo->commit();
-
-        $stmt = $pdo->prepare('SELECT * FROM transactions WHERE id = ?');
-        $stmt->execute([$retId]);
-        $tx = format_transaction($stmt->fetch());
-
-        $pStmt->execute([$productId]);
-        json_response([
-            'transaction' => $tx,
-            'product'     => enrich_product($pStmt->fetch()),
-        ], 201);
-    } catch (Exception $e) {
-        $pdo->rollBack();
-        json_response(['error' => $e->getMessage()], 422);
-    }
-}
-
 function handle_adjustment(PDO $pdo, array $authUser): void {
     $data = body();
     require_fields($data, ['product_id', 'qty', 'reason', 'adjust_type']);
@@ -538,52 +453,4 @@ function handle_adjustment(PDO $pdo, array $authUser): void {
     }
 }
 
-/** Format a raw transaction row for API output. */
-function format_transaction(array $tx): array {
-    // Use current_staff_name if available (from JOIN), otherwise fall back to staff field
-    $staffName = $tx['current_staff_name'] ?? $tx['staff'];
-    
-    // Abbreviate the staff name if it's a full name
-    if (strpos($staffName, ' ') !== false && !strpos($staffName, '.')) {
-        $staffName = staff_abbrev($staffName);
-    }
-
-    $customerVatExempt = false;
-    $customerExemptionType = null;
-    $customerIdNumber = null;
-    if (($tx['type'] ?? '') === 'sale' && !empty($tx['note'])) {
-            if (preg_match('/^Customer (?:VAT exemption|discount): (.+) ID (.+)$/', $tx['note'], $matches)) {
-            $customerVatExempt = true;
-            $customerExemptionType = $matches[1];
-            $customerIdNumber = $matches[2];
-        }
-    }
-    
-    return [
-        'id'               => $tx['id'],
-        'type'             => $tx['type'],
-        'saleGroupId'      => $tx['sale_group_id'] ?? null,
-        'product'          => $tx['product_name'],
-        'productId'        => $tx['product_id'],
-        'qty'              => (int)$tx['qty'],
-        'saleQty'          => isset($tx['sale_qty']) && $tx['sale_qty'] !== null ? (int)$tx['sale_qty'] : (int)$tx['qty'],
-        'saleUnit'         => $tx['sale_unit'] ?? 'unit',
-        'unitsPerSale'     => isset($tx['units_per_sale']) ? (int)$tx['units_per_sale'] : 1,
-        'amount'           => (float)$tx['amount'],
-        'discountAmount'   => (float)($tx['discount_amount'] ?? 0),
-        'preTaxAmount'     => isset($tx['pre_tax_amount']) ? (float)$tx['pre_tax_amount'] : null,
-        'taxAmount'        => isset($tx['tax_amount'])     ? (float)$tx['tax_amount']     : null,
-        'taxRate'          => isset($tx['tax_rate'])       ? (float)$tx['tax_rate']       : null,
-        'customerVatExempt' => $customerVatExempt,
-        'customerExemptionType' => $customerExemptionType,
-        'customerIdNumber' => $customerIdNumber,
-        'staff'            => $staffName,
-        'staffId'          => $tx['staff_id'] ?? null,
-        'status'           => $tx['status'],
-        'date'             => date('m/d/Y H:i', strtotime($tx['transacted_at'])),
-        'note'             => $tx['note'] ?? null,
-        'returnedTxId'     => $tx['returned_tx_id'] ?? null,
-        'adjustmentReason' => $tx['adjustment_reason'] ?? null,
-        'damagedQty'       => isset($tx['damaged_qty']) ? (int)$tx['damaged_qty'] : null,
-    ];
-}
+// format_transaction() is defined in helpers.php

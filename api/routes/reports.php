@@ -60,11 +60,16 @@ switch ($tab) {
     // ── Stock alerts report ───────────────────────────────────────────────────
     case 'stock':
         $rows = $pdo->query(
-            "SELECT p.id, p.name, p.category, p.reorder, p.status,
+            "SELECT p.id, p.name,
+                    COALESCE((SELECT GROUP_CONCAT(c.name ORDER BY c.name SEPARATOR ', ')
+                              FROM product_category_map pcm
+                              JOIN categories c ON c.id = pcm.category_id
+                              WHERE pcm.product_id = p.id), '') AS category,
+                    p.reorder, p.status,
                     COALESCE(SUM(b.qty),0) AS stock
              FROM products p
              LEFT JOIN product_batches b ON b.product_id = p.id AND b.qty > 0
-             GROUP BY p.id, p.name, p.category, p.reorder, p.status
+             GROUP BY p.id, p.name, p.reorder, p.status
              ORDER BY FIELD(p.status,'out_of_stock','critical','low','moderate','good')"
         )->fetchAll(PDO::FETCH_ASSOC);
 
@@ -101,12 +106,17 @@ switch ($tab) {
     // ── Full inventory report ─────────────────────────────────────────────────
     case 'inventory':
         $rows = $pdo->query(
-            "SELECT p.id, p.name, p.category, p.price, p.status,
+            "SELECT p.id, p.name,
+                    COALESCE((SELECT GROUP_CONCAT(c.name ORDER BY c.name SEPARATOR ', ')
+                              FROM product_category_map pcm
+                              JOIN categories c ON c.id = pcm.category_id
+                              WHERE pcm.product_id = p.id), '') AS category,
+                    p.price, p.status,
                     COALESCE(SUM(b.qty),0) AS stock,
                     MIN(b.expiry_date)     AS earliest_expiry
              FROM products p
              LEFT JOIN product_batches b ON b.product_id = p.id AND b.qty > 0
-             GROUP BY p.id, p.name, p.category, p.price, p.status
+             GROUP BY p.id, p.name, p.price, p.status
              ORDER BY p.id ASC"
         )->fetchAll(PDO::FETCH_ASSOC);
 

@@ -1,6 +1,6 @@
 // ─── Shared utilities, UI components and small modals used across pages ───────
 import React from "react";
-import { X, ArrowUpRight, ArrowDownRight, Package, Trash2, Eye, EyeOff, AlertTriangle, ShieldAlert } from "lucide-react";
+import { X, ArrowUpRight, ArrowDownRight, Package, Trash2, Eye, EyeOff, AlertTriangle, ShieldAlert, CircleCheck } from "lucide-react";
 import { getReorderUnits, type Product, type StockStatus, type Transaction, type TxStatus, type TxType } from "./data";
 import type { ReceiptSettings } from "./api";
 
@@ -56,7 +56,7 @@ export function SvgAreaChart({
   yFormatter = (v: number) => String(v),
 }: {
   data: Record<string, any>[];
-  lines: { key: string; color: string; name: string }[];
+  lines: { key: string; color: string; name: string; axis?: "left" | "right" }[];
   yFormatter?: (v: number) => string;
 }) {
   const [hoveredIndex, setHoveredIndex] = React.useState<number | null>(null);
@@ -71,11 +71,17 @@ export function SvgAreaChart({
   }
 
   const W = 500; const H = 200;
-  const pad = { t: 8, r: 8, b: 24, l: 46 };
+  const hasRightAxis = lines.some(line => line.axis === "right");
+  const pad = { t: 8, r: hasRightAxis ? 42 : 8, b: 24, l: 46 };
   const cw = W - pad.l - pad.r; const ch = H - pad.t - pad.b;
-  
-  const allVals = data.flatMap(d => lines.map(l => Number(d[l.key]) || 0));
-  const maxV = Math.max(...allVals, 1) * 1.08; // Ensure maxV is at least 1 to avoid division by zero
+  const maxForAxis = (axis: "left" | "right") => Math.max(
+    ...data.flatMap(d => lines
+      .filter(line => (line.axis ?? "left") === axis)
+      .map(line => Number(d[line.key]) || 0)),
+    1
+  ) * 1.08;
+  const leftMax = maxForAxis("left");
+  const rightMax = hasRightAxis ? maxForAxis("right") : leftMax;
   
   // Safe calculation for x position
   const xs = (i: number) => {
@@ -83,7 +89,8 @@ export function SvgAreaChart({
     return pad.l + (i / (data.length - 1)) * cw;
   };
   
-  const ys = (v: number) => pad.t + ch - (v / maxV) * ch;
+  const ys = (v: number, axis: "left" | "right" = "left") =>
+    pad.t + ch - (v / (axis === "right" ? rightMax : leftMax)) * ch;
   
   return (
     <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-full" style={{ overflow: "visible" }}>
@@ -92,7 +99,12 @@ export function SvgAreaChart({
         return (
           <g key={t}>
             <line x1={pad.l} y1={y} x2={W - pad.r} y2={y} stroke="currentColor" strokeOpacity={0.06} strokeDasharray="3 3" />
-            <text x={pad.l - 4} y={y + 3} textAnchor="end" fontSize={9} fill="currentColor" opacity={0.45}>{yFormatter(maxV * (1 - t))}</text>
+            <text x={pad.l - 4} y={y + 3} textAnchor="end" fontSize={9} fill="currentColor" opacity={0.45}>{yFormatter(leftMax * (1 - t))}</text>
+            {hasRightAxis && (
+              <text x={W - pad.r + 5} y={y + 3} textAnchor="start" fontSize={9} fill="currentColor" opacity={0.45}>
+                {yFormatter(rightMax * (1 - t))}
+              </text>
+            )}
           </g>
         );
       })}
@@ -100,7 +112,8 @@ export function SvgAreaChart({
         <text key={String(d.day ?? d.month ?? i)} x={xs(i)} y={H - 5} textAnchor="middle" fontSize={10} fill="currentColor" opacity={0.45}>{d.day ?? d.month}</text>
       ))}
       {lines.map(line => {
-        const pts = data.map((d, i) => [xs(i), ys(Number(d[line.key]) || 0)] as [number, number]);
+        const axis = line.axis ?? "left";
+        const pts = data.map((d, i) => [xs(i), ys(Number(d[line.key]) || 0, axis)] as [number, number]);
         const linePts = pts.map(p => p.join(",")).join(" ");
         const areaPts = [`${xs(0)},${pad.t + ch}`, ...pts.map(p => p.join(",")), `${xs(data.length - 1)},${pad.t + ch}`].join(" ");
         return (
@@ -114,7 +127,10 @@ export function SvgAreaChart({
         const tooltipWidth = 132;
         const tooltipHeight = 22 + lines.length * 15;
         const tooltipX = Math.max(2, Math.min(W - tooltipWidth - 2, xs(i) + 10));
-        const tooltipY = Math.max(2, Math.min(H - tooltipHeight - 2, ys(Math.max(...lines.map(line => Number(d[line.key]) || 0))) - tooltipHeight / 2));
+        const tooltipAnchorY = Math.min(...lines.map(line =>
+          ys(Number(d[line.key]) || 0, line.axis ?? "left")
+        ));
+        const tooltipY = Math.max(2, Math.min(H - tooltipHeight - 2, tooltipAnchorY - tooltipHeight / 2));
         const hoverWidth = data.length === 1 ? cw : i === 0 ? (xs(1) - xs(0)) / 2 : i === data.length - 1 ? (xs(i) - xs(i - 1)) / 2 : (xs(i + 1) - xs(i - 1)) / 2;
         return (
           <g key={`hover-${String(d.day ?? d.month ?? i)}`}>
@@ -443,7 +459,6 @@ export function ProductFormModal({
   const [form, setForm] = useState({
     barcode: initial?.barcode ?? "",
     name: initial?.name ?? "",
-    category: initial?.category ?? "",
     supplier: initial?.supplier ?? "",
     reorder: initial?.reorder != null ? String(initial.reorder) : "",
     price: initial?.price != null ? String(initial.price) : "",
@@ -456,6 +471,9 @@ export function ProductFormModal({
     !!(initial?.isVatExempt ?? initial?.is_vat_exempt)
   );
   const [customCategory, setCustomCategory] = useState("");
+  const [selectedCategories, setSelectedCategories] = useState<string[]>(
+    initial?.categories?.length ? initial.categories : (initial?.category ? initial.category.split(",").map(c => c.trim()).filter(Boolean) : [])
+  );
   const set = (k: keyof typeof form) => (v: string) => setForm(f => ({ ...f, [k]: v }));
 
   const [batches, setBatches] = useState<ProductBatch[]>(initial?.batches ?? []);
@@ -463,9 +481,26 @@ export function ProductFormModal({
   const [newBatchExpiry, setNewBatchExpiry] = useState("");
   const [newBatchTotalCost, setNewBatchTotalCost] = useState("");
 
-  const handleCategoryChange = (v: string) => {
-    set("category")(v);
-    if (v !== "__other__") setCustomCategory("");
+  const toggleCategory = (category: string) => {
+    setSelectedCategories(current =>
+      current.includes(category) ? current.filter(item => item !== category) : [...current, category]
+    );
+  };
+
+  const handleAddCustomCategory = () => {
+    const newCategories = customCategory.split("/").map(category => category.trim()).filter(Boolean);
+    if (newCategories.length === 0) return;
+    setSelectedCategories(current => {
+      const selected = new Set(current.map(category => category.toLocaleLowerCase()));
+      return [...current, ...newCategories.filter(category => {
+        const key = category.toLocaleLowerCase();
+        if (selected.has(key)) return false;
+        selected.add(key);
+        return true;
+      })];
+    });
+    newCategories.forEach(onAddCategory);
+    setCustomCategory("");
   };
 
   const handleAddBatch = () => {
@@ -503,15 +538,21 @@ export function ProductFormModal({
     const salePriceVal = form.salePrice.trim() !== "" ? parseFloat(form.salePrice) : undefined;
     const unitsPerPack = Math.max(1, parseInt(form.unitsPerPack, 10) || 1);
     const packPriceVal = form.packPrice.trim() !== "" ? parseFloat(form.packPrice) : undefined;
-    let finalCategory = form.category;
-    if (form.category === "__other__" && customCategory.trim()) {
-      finalCategory = customCategory.trim();
-      onAddCategory(finalCategory);
-    } else if (form.category === "__other__") return;
+    const finalCategories = selectedCategories.map(category => category.trim()).filter(Boolean);
+    if (customCategory.trim()) {
+      const customCategories = customCategory.split("/").map(category => category.trim()).filter(Boolean);
+      for (const custom of customCategories) {
+        if (!finalCategories.some(category => category.toLocaleLowerCase() === custom.toLocaleLowerCase())) {
+          finalCategories.push(custom);
+        }
+        onAddCategory(custom);
+      }
+    }
+    if (finalCategories.length === 0) return;
     const sortedBatches = sortBatchesFIFO(batches);
     const totalStock = getTotalStock(sortedBatches);
     const updated: Product = {
-      id: initial?.id ?? "", barcode: form.barcode.trim(), name: form.name, category: finalCategory, supplier: form.supplier.trim(),
+      id: initial?.id ?? "", barcode: form.barcode.trim(), name: form.name, category: finalCategories.join(", "), categories: finalCategories, supplier: form.supplier.trim(),
       stock: totalStock, reorder, price, salePrice: salePriceVal,
       unitLabel: form.unitLabel.trim() || "unit", unitsPerPack, packPrice: packPriceVal,
       isVatExempt, is_vat_exempt: isVatExempt ? 1 : 0,
@@ -538,18 +579,25 @@ export function ProductFormModal({
         <FieldInput label="Product Name" value={form.name} onChange={set("name")} placeholder="e.g. Amoxicillin 500mg" required />
         <FieldInput label="Supplier" value={form.supplier} onChange={set("supplier")} placeholder="e.g. Apex Pharma" required />
         <div className="space-y-2">
-          <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">Category</label>
-          <select value={form.category} onChange={e => handleCategoryChange(e.target.value)} required
-            className="w-full bg-background border border-border rounded-lg px-3 py-2.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all">
-            <option value="">Select</option>
-            {categories.map(c => <option key={c} value={c}>{c}</option>)}
-            <option value="__other__">Other (custom)</option>
-          </select>
-          {form.category === "__other__" && (
+          <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">Categories (select all that apply)</label>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-36 overflow-y-auto rounded-lg border border-border p-3">
+            {categories.map(category => (
+              <label key={category} className="flex items-center gap-2 text-sm text-foreground">
+                <input type="checkbox" checked={selectedCategories.includes(category)} onChange={() => toggleCategory(category)} />
+                {category}
+              </label>
+            ))}
+            {categories.length === 0 && <p className="text-xs text-muted-foreground">Add a custom category below.</p>}
+          </div>
+          <div className="flex gap-2">
             <input type="text" value={customCategory} onChange={e => setCustomCategory(e.target.value)}
-              placeholder="Enter custom category name" required
-              className="w-full bg-background border border-border rounded-lg px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all" />
-          )}
+              onKeyDown={event => { if (event.key === "Enter") { event.preventDefault(); handleAddCustomCategory(); } }}
+              placeholder="Add a custom category"
+              className="min-w-0 flex-1 bg-background border border-border rounded-lg px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all" />
+            <button type="button" onClick={handleAddCustomCategory} disabled={!customCategory.trim()}
+              className="rounded-lg border border-border px-3 py-2 text-sm font-semibold text-foreground disabled:opacity-50">Add</button>
+          </div>
+          {selectedCategories.length === 0 && <p className="text-xs text-muted-foreground">Select or add at least one category.</p>}
         </div>
         <FieldInput
           label={parseInt(form.unitsPerPack, 10) > 1 ? "Reorder Point (packs/boxes)" : `Reorder Point (${form.unitLabel.trim() || "units"})`}
@@ -1229,36 +1277,60 @@ export function ReturnModal({
 }: {
   saleTx: Transaction;
   onClose: () => void;
-  onAdd: (t: Transaction, productId: string, qty: number) => void;
+  onAdd: (t: Transaction, productId: string, qty: number) => Promise<void>;
   inventory: Product[];
   currentUser: import("./data").AuthUser;
 }) {
   const saleItems = saleTx.cartItems?.length ? saleTx.cartItems : [saleTx];
   const [selectedSaleItemId, setSelectedSaleItemId] = useState(saleItems[0].id);
   const selectedSaleItem = saleItems.find(item => item.id === selectedSaleItemId) ?? saleItems[0];
-  const product = inventory.find(p => p.id === selectedSaleItem.productId) ?? null;
+  const product = inventory.find(p => String(p.id) === String(selectedSaleItem.productId)) ?? null;
   const [qty, setQty] = useState("1");
   const [reason, setReason] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState("");
+  const [submitted, setSubmitted] = useState(false);
   const qtyNum = parseInt(qty) || 0;
   const unitPrice = selectedSaleItem.qty > 0 ? selectedSaleItem.amount / selectedSaleItem.qty : product ? (product.salePrice ?? product.price) : 0;
   const refund = qtyNum * unitPrice;
   const maxQty = selectedSaleItem.qty;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!product || qtyNum <= 0 || qtyNum > maxQty || !reason.trim()) return;
+    if (!selectedSaleItem.productId || qtyNum <= 0 || qtyNum > maxQty || !reason.trim() || submitting) return;
     const tx: Transaction = {
       id: `RET-${Date.now().toString().slice(-4)}`, type: "return", product: selectedSaleItem.product,
       qty: qtyNum, amount: refund, staff: staffAbbrev(currentUser.name), date: nowDateStr(),
       status: "completed", productId: selectedSaleItem.productId, note: reason, returnedTxId: selectedSaleItem.id,
     };
-    onAdd(tx, selectedSaleItem.productId!, qtyNum);
-    onClose();
+    setSubmitting(true);
+    setSubmitError("");
+    try {
+      await onAdd(tx, selectedSaleItem.productId, qtyNum);
+      setSubmitted(true);
+    } catch (error) {
+      setSubmitError(error instanceof Error ? error.message : "Return request failed.");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
     <Modal title="Process Return" onClose={onClose} wide>
       <form onSubmit={handleSubmit} className="space-y-4">
+        {submitted ? (
+          <div className="py-3 text-center">
+            <CircleCheck size={52} className="mx-auto mb-4 text-emerald-500" />
+            <h3 className="text-lg font-bold text-foreground">Return submitted successfully</h3>
+            <p className="mx-auto mt-2 max-w-sm text-sm text-muted-foreground">
+              The refund has been recorded. An inventory manager will inspect the product and decide whether it can be restocked or must be marked broken.
+            </p>
+            <button type="button" onClick={onClose} className="mt-6 w-full rounded-xl bg-emerald-600 py-2.5 text-sm font-bold text-white hover:bg-emerald-700">
+              Done
+            </button>
+          </div>
+        ) : (
+          <>
         <div className="bg-muted/40 border border-border rounded-xl p-3 text-xs space-y-1.5">
           <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1">Returning from Sale</p>
           <div className="flex justify-between"><span className="text-muted-foreground">Transaction</span><span className="font-semibold text-foreground">{saleTx.id}</span></div>
@@ -1285,12 +1357,15 @@ export function ReturnModal({
             <span className="text-lg font-bold text-orange-600 dark:text-orange-400">{fmt(refund)}</span>
           </div>
         )}
-        <p className="text-[11px] text-muted-foreground">Returned items will be restocked automatically.</p>
+        <p className="text-[11px] text-muted-foreground">The refund is recorded now. An inventory manager will inspect the item and decide whether to restock it or mark it broken.</p>
+        {submitError && <p role="alert" className="text-xs text-destructive">{submitError}</p>}
         <div className="flex gap-3 pt-2">
-          <button type="button" onClick={onClose} className="flex-1 py-2.5 border border-border rounded-xl text-sm font-semibold text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-all">Cancel</button>
-          <button type="submit" disabled={!product || qtyNum <= 0 || qtyNum > maxQty || !reason.trim()}
-            className="flex-1 py-2.5 bg-orange-500 text-white rounded-xl text-sm font-bold hover:opacity-90 transition-opacity disabled:opacity-50">Process Return</button>
+          <button type="button" onClick={onClose} disabled={submitting} className="flex-1 py-2.5 border border-border rounded-xl text-sm font-semibold text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-all disabled:opacity-50">Cancel</button>
+          <button type="submit" disabled={!selectedSaleItem.productId || qtyNum <= 0 || qtyNum > maxQty || !reason.trim() || submitting}
+            className="flex-1 py-2.5 bg-orange-500 text-white rounded-xl text-sm font-bold hover:opacity-90 transition-opacity disabled:opacity-50">{submitting ? "Submitting…" : "Submit Return & Refund"}</button>
         </div>
+          </>
+        )}
       </form>
     </Modal>
   );

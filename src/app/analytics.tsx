@@ -19,6 +19,9 @@ export default function AnalyticsPage({
   const [scope, setScope] = useState("all");
   const [smaData, setSmaData] = useState<Awaited<ReturnType<typeof analyticsApi.sma>> | null>(null);
   const [smaLoading, setSmaLoading] = useState(true);
+  const [categoryData, setCategoryData] = useState<Awaited<ReturnType<typeof analyticsApi.categorySales>>>([]);
+  const [categorySalesLoading, setCategorySalesLoading] = useState(true);
+  const [categorySalesError, setCategorySalesError] = useState(false);
 
   const scopeFilter = useMemo(() => {
     if (scope.startsWith("product:")) return { productId: scope.slice(8) };
@@ -35,6 +38,20 @@ export default function AnalyticsPage({
       .finally(() => { if (active) setSmaLoading(false); });
     return () => { active = false; };
   }, [scopeFilter]);
+
+  useEffect(() => {
+    let active = true;
+    setCategorySalesLoading(true);
+    setCategorySalesError(false);
+    analyticsApi.categorySales()
+      .then(data => { if (active) setCategoryData(data); })
+      .catch(error => {
+        console.error("Category sales chart load failed:", error);
+        if (active) setCategorySalesError(true);
+      })
+      .finally(() => { if (active) setCategorySalesLoading(false); });
+    return () => { active = false; };
+  }, [transactions, inventory]);
 
   const monthlyDemand = useMemo(() => getMonthlyDemand(transactions), [transactions]);
   const demandValues = monthlyDemand.map(d => d.demand);
@@ -79,22 +96,12 @@ export default function AnalyticsPage({
 
   const smaChartData = smaData?.chartData ?? [];
   const scopeLabel = scope === "all" ? "All products" : scope.replace("product:", "").replace("category:", "");
-  const categories = useMemo(() => Array.from(new Set(inventory.map(product => product.category))).sort(), [inventory]);
-
-  // Compute category breakdown from live transactions
-  const categoryData = useMemo(() => {
-    const map = new Map<string, number>();
-    transactions.filter(t => t.type === "sale").forEach(t => {
-      const prod = inventory.find(p => p.id === t.productId);
-      const cat = prod?.category ?? "Other";
-      map.set(cat, (map.get(cat) ?? 0) + t.qty);
-    });
-    const total = Array.from(map.values()).reduce((s, v) => s + v, 0) || 1;
-    return Array.from(map.entries())
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 5)
-      .map(([name, qty]) => ({ name, value: Math.round((qty / total) * 100) }));
-  }, [transactions, inventory]);
+  const categories = useMemo(
+    () => Array.from(new Set(inventory.flatMap(product =>
+      product.categories?.length ? product.categories : product.category.split(",").map(category => category.trim()).filter(Boolean)
+    ))).sort(),
+    [inventory]
+  );
 
   const perf = useMemo(() => {
     const map: Record<string, { name: string; cat: string; units: number; rev: number }> = {};
@@ -159,8 +166,8 @@ export default function AnalyticsPage({
         ))}
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
-        <div className="xl:col-span-2 bg-card border border-border rounded-xl p-5 shadow-sm">
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 items-start">
+        <div className="xl:col-span-2 bg-card border border-border rounded-xl p-5 shadow-sm h-[420px]">
           <div className="flex items-center justify-between mb-4">
             <div>
               <h3 className="text-sm font-bold text-foreground">Supply vs. Demand + SMA Forecast</h3>
@@ -169,10 +176,10 @@ export default function AnalyticsPage({
             <div className="flex items-center gap-3 text-[11px] text-muted-foreground flex-wrap">
               <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-teal-500 inline-block" />Supply</span>
               <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-violet-500 inline-block" />Demand</span>
-              <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-sky-400 inline-block" />SMA-3</span>
+              <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-orange-500 inline-block" />SMA-3</span>
             </div>
           </div>
-          <div className="text-foreground" style={{ height: 220 }}>
+          <div className="text-foreground" style={{ height: 300 }}>
             {smaLoading ? (
               <div className="w-full h-full flex items-center justify-center text-sm text-muted-foreground">Loading database analytics…</div>
             ) : smaChartData.length === 0 ? (
@@ -181,42 +188,54 @@ export default function AnalyticsPage({
               <SvgAreaChart
                 data={smaChartData}
                 lines={[
-                  { key: "supply", color: "#0d9488", name: "Supply" },
+                  { key: "supply", color: "#0d9488", name: "Supply", axis: "right" },
                   { key: "demand", color: "#8b5cf6", name: "Demand" },
-                  { key: "sma3", color: "#38bdf8", name: "SMA-3" },
+                  { key: "sma3", color: "#f97316", name: "SMA-3" },
                 ]}
                 yFormatter={v => v > 999 ? `${(v / 1000).toFixed(1)}k` : String(Math.round(v))}
               />
             )}
           </div>
         </div>
-        <div className="bg-card border border-border rounded-xl p-5 shadow-sm">
+        <div className="bg-card border border-border rounded-xl p-5 shadow-sm h-[420px] flex flex-col min-h-0">
           <div className="mb-4">
             <h3 className="text-sm font-bold text-foreground">Sales by Category</h3>
-            <p className="text-[11px] text-muted-foreground mt-0.5">Based on transaction records</p>
+            <p className="text-[11px] text-muted-foreground mt-0.5">Sales for products assigned to each category</p>
           </div>
-          <ResponsiveContainer width="100%" height={170}>
-            <PieChart>
-              <Pie data={categoryData} cx="50%" cy="50%" innerRadius={48} outerRadius={70} paddingAngle={3} dataKey="value">
-                {categoryData.map((_, i) => <Cell key={`cell-${i}`} fill={PIE_COLORS[i]} />)}
-              </Pie>
-              <Tooltip
-                formatter={(v: any) => `${v}%`}
-                contentStyle={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: "8px", fontSize: "11px", color: "var(--foreground)" }}
-              />
-            </PieChart>
-          </ResponsiveContainer>
-          <div className="space-y-2 mt-2">
+          <div className="h-[170px] flex-shrink-0">
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                {categoryData.length > 0 && (
+                  <>
+                    <Pie data={categoryData} cx="50%" cy="50%" innerRadius={48} outerRadius={70} paddingAngle={3} dataKey="value">
+                      {categoryData.map((_, i) => <Cell key={`cell-${i}`} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
+                    </Pie>
+                    <Tooltip
+                      formatter={(v: number) => `${v}%`}
+                      contentStyle={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: "8px", fontSize: "11px", color: "var(--foreground)" }}
+                    />
+                  </>
+                )}
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
+          {categorySalesLoading ? (
+            <p className="text-xs text-muted-foreground text-center">Loading category sales…</p>
+          ) : categorySalesError ? (
+            <p className="text-xs text-destructive text-center">Unable to load category sales.</p>
+          ) : categoryData.length === 0 ? (
+            <p className="text-xs text-muted-foreground text-center">No sales data available.</p>
+          ) : <div className="space-y-2 mt-2 flex-1 min-h-0 overflow-y-auto pr-1">
             {categoryData.map((cat, i) => (
               <div key={cat.name} className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <span className="w-2 h-2 rounded-sm flex-shrink-0" style={{ backgroundColor: PIE_COLORS[i] }} />
+                  <span className="w-2 h-2 rounded-sm flex-shrink-0" style={{ backgroundColor: PIE_COLORS[i % PIE_COLORS.length] }} />
                   <span className="text-xs text-muted-foreground">{cat.name}</span>
                 </div>
                 <span className="text-xs font-bold text-foreground">{cat.value}%</span>
               </div>
             ))}
-          </div>
+          </div>}
         </div>
       </div>
 

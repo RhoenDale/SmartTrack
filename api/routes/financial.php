@@ -207,13 +207,14 @@ switch ($tab) {
         if ($dateTo)   { $where .= ' AND DATE(t.transacted_at) <= ?'; $params[] = $dateTo;   }
 
         $stmt = $pdo->prepare(
-            "SELECT COALESCE(p.category, 'Uncategorized') AS category,
+            "SELECT c.name AS category,
                     SUM(t.amount) AS revenue,
-                    SUM(t.qty)    AS units
+                    SUM(t.qty) AS units
              FROM transactions t
-             LEFT JOIN products p ON p.id = t.product_id
+             JOIN product_category_map pcm ON pcm.product_id = t.product_id
+             JOIN categories c ON c.id = pcm.category_id
              $where
-             GROUP BY COALESCE(p.category, 'Uncategorized')
+             GROUP BY c.id, c.name
              ORDER BY revenue DESC"
         );
         $stmt->execute($params);
@@ -338,13 +339,16 @@ switch ($tab) {
             "SELECT
                 t.product_id,
                 t.product_name,
-                COALESCE(p.category, 'Uncategorized') AS category,
+                COALESCE((SELECT GROUP_CONCAT(c.name ORDER BY c.name SEPARATOR ', ')
+                          FROM product_category_map pcm
+                          JOIN categories c ON c.id = pcm.category_id
+                          WHERE pcm.product_id = p.id), 'Uncategorized') AS category,
                 SUM(t.qty)                             AS units_sold,
                 SUM(t.amount)                          AS revenue
              FROM transactions t
              LEFT JOIN products p ON p.id = t.product_id
              $where
-             GROUP BY t.product_id, t.product_name, p.category
+             GROUP BY t.product_id, t.product_name, p.id
              ORDER BY revenue DESC"
         );
         $revStmt->execute($params);

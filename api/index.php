@@ -64,6 +64,7 @@ try {
         case 'products':     require __DIR__ . '/routes/products.php';     break;
         case 'categories':   require __DIR__ . '/routes/categories.php';   break;
         case 'transactions': require __DIR__ . '/routes/transactions.php'; break;
+        case 'return-requests': require __DIR__ . '/routes/return_requests.php'; break;
         case 'users':        require __DIR__ . '/routes/users.php';        break;
         case 'settings':     require __DIR__ . '/routes/settings.php';     break;
         case 'notifications':require __DIR__ . '/routes/notifications.php';break;
@@ -77,6 +78,6 @@ try {
     }
 } catch (PDOException $e) {
     json_response(['error' => 'Database error: ' . $e->getMessage()], 500);
-} catch (Exception $e) {
+} catch (Throwable $e) {
     json_response(['error' => $e->getMessage()], 500);
 }

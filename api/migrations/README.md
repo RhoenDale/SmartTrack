@@ -1,5 +1,35 @@
 # Database Migrations
 
+## Multiple Categories per Product
+
+Products can be assigned one or more categories. For an existing database, run
+`add_multiple_product_categories.sql` once in phpMyAdmin or with the MySQL CLI
+before deploying the updated app. The migration splits legacy labels on `/`,
+creates separate category records and product links, then removes the old
+`products.category` column. For example, `Vitamin / Supplement` becomes two
+assignments, `Vitamin` and `Supplement`. Back up the database before running
+the migration. Fresh databases created from `smarttrack.sql` already use the
+normalized link table and do not need this migration. This migration is a
+one-time conversion and must not be run again after the legacy column is dropped.
+
+Each sale is attributed to every category assigned to its product. A product
+assigned to both `Vitamin` and `Supplement` therefore contributes its sales to
+both category totals. The chart shows each category separately and normalizes
+the category totals into percentages; category totals can overlap when products
+have multiple categories.
+
+## Return Inspection Queue
+
+For an existing database, back up the `smarttrack` database and run
+`add_return_dispositions.sql` once in phpMyAdmin or with the MySQL CLI before
+deploying the updated app. Fresh databases created from `smarttrack.sql`
+already include the required table. Cashiers can submit returns and record the
+refund immediately; inventory managers then use the Returns page to mark each
+returned item as restocked or broken. Restocked items are added back to
+inventory only after the manager confirms their condition. The Returns page is
+available to inventory managers and admins; admins can review requests and
+their disposition status but cannot process them.
+
 ## Separate Product IDs and Barcodes
 
 Back up the `smarttrack` database, then run

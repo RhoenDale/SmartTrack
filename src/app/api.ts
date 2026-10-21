@@ -227,9 +227,6 @@ export const transactionsApi = {
       products?: import('./data').Product[];
     }>(
       '/transactions/sale', data),
-  return:     (data: { sale_tx_id: string; qty: number; reason: string }) =>
-    post<{ transaction: import('./data').Transaction; product: import('./data').Product }>(
-      '/transactions/return', data),
   adjustment: (data: { product_id: string; qty: number; reason: string; adjust_type: 'damage' | 'correction' }) =>
     post<{ transaction: import('./data').Transaction; product: import('./data').Product }>(
       '/transactions/adjustment', data),
@@ -238,6 +235,28 @@ export const transactionsApi = {
     const url   = `${API_BASE}/transactions/export${token ? `?token=${token}` : ''}`;
     window.open(url, '_blank');
   },
+};
+
+export type ReturnRequest = {
+  returnTxId: string;
+  saleTxId: string;
+  productId: string;
+  product: string;
+  qty: number;
+  refund: number;
+  reason: string;
+  cashier: string;
+  createdAt: string;
+  disposition: 'pending' | 'restocked' | 'broken';
+  processedAt: string | null;
+};
+
+export const returnRequestsApi = {
+  list: () => get<ReturnRequest[]>('/return-requests'),
+  submit: (data: { sale_tx_id: string; qty: number; reason: string }) =>
+    post<{ transaction: import('./data').Transaction; disposition: 'pending' }>('/return-requests', data),
+  setDisposition: (returnTxId: string, disposition: 'restocked' | 'broken') =>
+    put<{ message: string; product: import('./data').Product }>(`/return-requests/${returnTxId}`, { disposition }),
 };
 
 // ─── Users ────────────────────────────────────────────────────────────────────

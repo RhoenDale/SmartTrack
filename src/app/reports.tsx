@@ -39,7 +39,6 @@ export default function ReportsPage({
   }, [transactions, dateFrom, dateTo]);
 
   const sales = filteredTransactions.filter(t => t.type === "sale");
-  const purchases = filteredTransactions.filter(t => t.type === "return");
   const returns = filteredTransactions.filter(t => t.type === "return");
   const totalRevenue = sales.reduce((s, t) => s + t.amount, 0);
   const totalReturns = returns.reduce((s, t) => s + t.amount, 0);
@@ -144,10 +143,9 @@ export default function ReportsPage({
 
       {activeTab === "sales" && (
         <div className="space-y-4">
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             {[
               { label: "Total Revenue", value: fmt(totalRevenue), color: "text-emerald-600 dark:text-emerald-400" },
-              { label: "Returns / Refunds", value: fmt(totalReturns), color: "text-orange-600 dark:text-orange-400" },
               { label: "Net Revenue", value: fmt(netRevenue), color: "text-primary" },
               { label: "Total Returns", value: fmt(totalReturns), color: "text-violet-600 dark:text-violet-400" },
             ].map(c => (
@@ -157,10 +155,9 @@ export default function ReportsPage({
               </div>
             ))}
           </div>
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {[
               { label: "Sales", count: sales.length, color: "text-emerald-600 dark:text-emerald-400" },
-              { label: "Purchase Orders", count: purchases.length, color: "text-violet-600 dark:text-violet-400" },
               { label: "Returns", count: returns.length, color: "text-orange-600 dark:text-orange-400" },
             ].map(c => (
               <div key={c.label} className="bg-card border border-border rounded-xl p-4 shadow-sm text-center">

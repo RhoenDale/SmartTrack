@@ -68,7 +68,13 @@ WHERE `type` = 'adjustment';
 -- Adjust this list to match your actual BIR Certificate of VAT Exemption.
 UPDATE `products`
 SET `is_vat_exempt` = 1
-WHERE `category` IN ('Analgesic', 'Antidiabetic', 'Antihypertensive');
+WHERE EXISTS (
+  SELECT 1
+  FROM `product_category_map` pcm
+  JOIN `categories` c ON c.id = pcm.category_id
+  WHERE pcm.product_id = products.id
+    AND c.name IN ('Analgesic', 'Antidiabetic', 'Antihypertensive')
+);
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- Verification queries (run after migration):
@@ -78,5 +84,9 @@ WHERE `category` IN ('Analgesic', 'Antidiabetic', 'Antihypertensive');
 -- SELECT id, amount, pre_tax_amount, tax_amount, tax_rate
 -- FROM transactions LIMIT 10;
 --
--- SELECT id, name, category, is_vat_exempt FROM products;
+-- SELECT p.id, p.name, GROUP_CONCAT(c.name ORDER BY c.name SEPARATOR ', ') AS categories, p.is_vat_exempt
+-- FROM products p
+-- LEFT JOIN product_category_map pcm ON pcm.product_id = p.id
+-- LEFT JOIN categories c ON c.id = pcm.category_id
+-- GROUP BY p.id, p.name, p.is_vat_exempt;
 -- ─────────────────────────────────────────────────────────────────────────────

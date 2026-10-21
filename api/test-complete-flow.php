@@ -104,7 +104,7 @@ try {
     }
     
     // ─── STEP 5: Fetch Categories ────────────────────────────────────────
-    $stmt = db()->query('SELECT DISTINCT category FROM products ORDER BY category ASC');
+    $stmt = db()->query('SELECT name FROM categories ORDER BY name ASC');
     $categories = $stmt->fetchAll(PDO::FETCH_COLUMN);
     
     $results['step_5_categories'] = [

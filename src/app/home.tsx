@@ -3,7 +3,7 @@ import {
   LayoutDashboard, Package, ShoppingCart, BarChart2, Users,
   Bell, Search, Shield, Pill,
   Moon, Sun, Settings, BellRing, ClipboardList, Landmark,
-  X, ArrowRight, RefreshCw, Cloud, Copy,
+  X, ArrowRight, RefreshCw, Cloud, Copy, ClipboardCheck,
 } from "lucide-react";
 import {
   sortBatchesByExpiry, normalizeProduct, groupCartTransactions,
@@ -17,7 +17,7 @@ import {
   initials,
 } from "./shared";
 import {
-  productsApi, categoriesApi, transactionsApi, dashboardApi,
+  productsApi, categoriesApi, transactionsApi, returnRequestsApi, dashboardApi,
   usersApi, notificationsApi, receiptSettingsApi,
   type CashierDashboardSummary,
   type ReceiptSettings,
@@ -28,6 +28,7 @@ import TransactionsPage from "./transactions";
 import AnalyticsPage  from "./analytics";
 import StockAlertsPage from "./stockalerts";
 import ReportsPage    from "./reports";
+import ReturnsPage    from "./returns";
 import UsersPage      from "./users";
 import FinancialPage  from "./financial";
 
@@ -210,6 +211,7 @@ export default function Home({ user, onLogout, onUserUpdated }: { user: AuthUser
   // Guard: redirect non-admin away from admin-only pages
   useEffect(() => {
     if (!isAdmin && (page === "users" || page === "financial")) setPage(defaultPage());
+    if (!isAdmin && !isInventoryManager && page === "returns") setPage(defaultPage());
     if (isInventoryManager && page === "transactions") setPage("inventory");
   }, [isAdmin, isCashier, isInventoryManager, page]);
 
@@ -328,7 +330,8 @@ export default function Home({ user, onLogout, onUserUpdated }: { user: AuthUser
   const handleSaveProduct = async (original: Product | null, updated: Product) => {
     try {
       const payload = {
-        barcode: updated.barcode ?? "", name: updated.name, category: updated.category,
+        barcode: updated.barcode ?? "", name: updated.name,
+        categories: updated.categories ?? updated.category.split(",").map(category => category.trim()).filter(Boolean),
         supplier: updated.supplier, reorder: updated.reorder,
         price: updated.price,
         sale_price:    updated.salePrice    ?? updated.sale_price    ?? null,
@@ -418,18 +421,16 @@ export default function Home({ user, onLogout, onUserUpdated }: { user: AuthUser
   };
 
   const handleReturn = async (tx: Transaction, _productId: string, qty: number) => {
-    try {
-      // tx is the return TX built in ReturnModal — returnedTxId is the sale ID
-      const res = await transactionsApi.return({
-        sale_tx_id: tx.returnedTxId!,
-        qty,
-        reason: tx.note ?? "",
-      });
-      setTransactions(prev => [res.transaction, ...prev]);
-      setInventory(prev => prev.map(p => p.id === res.product.id ? normalizeProduct(res.product) : p));
-    } catch (e: unknown) {
-      alert(e instanceof Error ? e.message : "Return failed.");
-    }
+    const res = await returnRequestsApi.submit({
+      sale_tx_id: tx.returnedTxId!,
+      qty,
+      reason: tx.note ?? "",
+    });
+    setTransactions(prev => [res.transaction, ...prev]);
+  };
+
+  const handleReturnDispositionComplete = async () => {
+    await loadAll(false);
   };
 
   const handleAdjustment = async (tx: Transaction, productId: string, qty: number) => {
@@ -593,6 +594,7 @@ export default function Home({ user, onLogout, onUserUpdated }: { user: AuthUser
     { id: "analytics",    icon: BarChart2,       label: "Analytics" },
     { id: "stock-alerts", icon: BellRing,        label: "Stock Alerts", badge: totalAlertBadge },
     { id: "reports",      icon: ClipboardList,   label: "Reports" },
+    { id: "returns",      icon: ClipboardCheck,  label: "Returns" },
     { id: "financial",    icon: Landmark,        label: "Financial" },
     { id: "users",        icon: Users,           label: "Users" },
   ];
@@ -602,6 +604,7 @@ export default function Home({ user, onLogout, onUserUpdated }: { user: AuthUser
     { id: "analytics",    icon: BarChart2,       label: "Analytics" },
     { id: "stock-alerts", icon: BellRing,        label: "Stock Alerts", badge: totalAlertBadge },
     { id: "reports",      icon: ClipboardList,   label: "Reports" },
+    { id: "returns",      icon: ClipboardCheck,  label: "Returns" },
   ];
   const cashierNav: typeof adminNav = [
     { id: "dashboard",    icon: LayoutDashboard, label: "Dashboard" },
@@ -906,12 +909,15 @@ export default function Home({ user, onLogout, onUserUpdated }: { user: AuthUser
               onDeleteProduct={setDeletingProduct} onAddCategory={handleAddCategory}
               selectedProductId={selectedProductId} hoveredProductId={hoveredNotifPid} 
               userRole={user.role} />}
-            {page === "transactions" && <TransactionsPage user={user} transactions={transactions} inventory={inventory} currentUser={user}
+            {page === "transactions" && <TransactionsPage user={user} transactions={transactions} inventory={inventory}
               selectedTransactionId={selectedTransactionId}
               onAddSale={() => setShowAddSale(true)} onAddReturn={setReturningTx} onViewInvoice={setViewingInvoice} />}
             {page === "analytics"    && <AnalyticsPage inventory={inventory} transactions={transactions} />}
             {page === "stock-alerts" && <StockAlertsPage inventory={inventory} onGoToInventory={() => setPage("inventory")} onEditProduct={handleStockAlertEditProduct} userRole={user.role} />}
             {page === "reports"      && <ReportsPage inventory={inventory} transactions={transactions} user={user} />}
+            {page === "returns" && (isAdmin || isInventoryManager) && (
+              <ReturnsPage user={user} onDispositionComplete={handleReturnDispositionComplete} />
+            )}
             {page === "financial"    && isAdmin && <FinancialPage user={user} />}
             {page === "users"        && isAdmin && <UsersPage staff={staff} currentUserId={user.id} currentUserRole={user.role} onAddUser={() => setShowAddUser(true)} onEditUser={setEditingUser} onDeleteUser={handleDeleteUser} onToggleStatus={handleToggleStatus} onResetPassword={handleAdminResetPassword} onCreatePassword={handleAdminCreatePassword} />}
           </main>

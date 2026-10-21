@@ -56,7 +56,6 @@ CREATE TABLE IF NOT EXISTS `products` (
   `id`           INT UNSIGNED   NOT NULL AUTO_INCREMENT,
   `barcode`      VARCHAR(64)    NULL,
   `name`         VARCHAR(150)   NOT NULL,
-  `category`     VARCHAR(80)    NOT NULL,
   `supplier`     VARCHAR(120)   NOT NULL DEFAULT '',
   `reorder`      INT            NOT NULL DEFAULT 0,
   `price`        DECIMAL(10,2)  NOT NULL DEFAULT 0.00  COMMENT 'VAT-inclusive selling price',
@@ -96,6 +95,18 @@ CREATE TABLE IF NOT EXISTS `categories` (
   `id`   INT         NOT NULL AUTO_INCREMENT,
   `name` VARCHAR(80) NOT NULL UNIQUE,
   PRIMARY KEY (`id`)
+) ENGINE=InnoDB;
+
+-- ─── Product Categories (many-to-many) ────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS `product_category_map` (
+  `product_id`   INT UNSIGNED NOT NULL,
+  `category_id`  INT          NOT NULL,
+  PRIMARY KEY (`product_id`, `category_id`),
+  KEY `idx_product_category_category` (`category_id`),
+  CONSTRAINT `fk_product_category_product`
+    FOREIGN KEY (`product_id`) REFERENCES `products`(`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_product_category_category`
+    FOREIGN KEY (`category_id`) REFERENCES `categories`(`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
 -- ─── Transactions ─────────────────────────────────────────────────────────────
@@ -143,6 +154,32 @@ CREATE TABLE IF NOT EXISTS `transaction_batches` (
   KEY `idx_txbatch_tx` (`transaction_id`),
   CONSTRAINT `fk_txbatch_tx`
     FOREIGN KEY (`transaction_id`) REFERENCES `transactions`(`id`) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+-- ─── Return Dispositions ──────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS `return_dispositions` (
+  `return_tx_id`   VARCHAR(20) NOT NULL,
+  `sale_tx_id`     VARCHAR(20) NOT NULL,
+  `product_id`     INT UNSIGNED NOT NULL,
+  `qty`            INT NOT NULL,
+  `reason`         TEXT NOT NULL,
+  `batch_id`       VARCHAR(30) NULL,
+  `expiry_date`    DATE NULL,
+  `disposition`    ENUM('pending','restocked','broken') NOT NULL DEFAULT 'pending',
+  `processed_by`   VARCHAR(20) NULL,
+  `processed_at`   DATETIME NULL,
+  `created_at`     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`return_tx_id`),
+  KEY `idx_return_disposition_status` (`disposition`, `created_at`),
+  KEY `idx_return_disposition_sale` (`sale_tx_id`),
+  CONSTRAINT `fk_return_disposition_tx`
+    FOREIGN KEY (`return_tx_id`) REFERENCES `transactions`(`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_return_disposition_sale`
+    FOREIGN KEY (`sale_tx_id`) REFERENCES `transactions`(`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_return_disposition_product`
+    FOREIGN KEY (`product_id`) REFERENCES `products`(`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_return_disposition_user`
+    FOREIGN KEY (`processed_by`) REFERENCES `users`(`id`) ON DELETE SET NULL
 ) ENGINE=InnoDB;
 
 -- ─── Notifications ────────────────────────────────────────────────────────────
@@ -197,20 +234,32 @@ INSERT INTO `tax_settings` (`setting_key`, `value`, `description`) VALUES
 
 -- Products  (is_vat_exempt: Analgesics, Antidiabetics, Antihypertensives = 1 per BIR guidelines)
 INSERT INTO `products`
-  (`id`,`name`,`category`,`supplier`,`reorder`,`price`,`sale_price`,
+  (`id`,`name`,`supplier`,`reorder`,`price`,`sale_price`,
    `unit_label`,`units_per_pack`,`pack_price`,`is_vat_exempt`,`status`) VALUES
-(1,'Amoxicillin 500mg',  'Antibiotic',      'Apex Pharma',          50,  8.50, 6.00, 'capsule', 1, NULL,   0,'good'),
-(2,'Paracetamol 500mg',  'Analgesic',       'Medline Distributors', 200, 2.50, NULL, 'tablet',  1, NULL,   1,'good'),
-(3,'Metformin 500mg',    'Antidiabetic',    'PharmaSource',         100, 4.20, NULL, 'tablet',  1, NULL,   1,'low'),
-(4,'Amlodipine 5mg',     'Antihypertensive','Apex Pharma',           80, 6.75, NULL, 'tablet',  1, NULL,   1,'good'),
-(5,'Cetirizine 10mg',    'Antihistamine',   'Healthline Supplies',   60, 5.00, NULL, 'tablet',  1, NULL,   0,'low'),
-(6,'Omeprazole 20mg',    'Antacid',         'GlobeMed Traders',      100, 9.80, NULL, 'capsule', 1, NULL,   0,'good'),
-(7,'Losartan 50mg',     'Antihypertensive','MetroPharm',            80,11.20, NULL, 'tablet',  1, NULL,   1,'moderate'),
-(8,'Ibuprofen 400mg',   'NSAID',           'PharmaSource',          150, 7.30, NULL, 'tablet',  1, NULL,   0,'good'),
-(9,'Salbutamol Inhaler', 'Bronchodilator',  'Medline Distributors',   30,210.00,NULL, 'inhaler', 1, NULL,   0,'critical'),
-(10,'Vitamin C 500mg',    'Supplement',      'Healthline Supplies',    5,  6.50, 6.00, 'tablet', 20, 110.00, 0,'good'),
-(11,'Oral Rehydration Salts','Supplement',   'Medline Distributors',  5, 12.00, NULL, 'sachet', 10, 110.00, 0,'good'),
-(12,'Loperamide 2mg',     'Antidiarrheal',   'PharmaSource',           6,  4.50, NULL, 'tablet', 10,  40.00, 0,'good');
+(1,'Amoxicillin 500mg',  'Apex Pharma',          50,  8.50, 6.00, 'capsule', 1, NULL,   0,'good'),
+(2,'Paracetamol 500mg',  'Medline Distributors', 200, 2.50, NULL, 'tablet',  1, NULL,   1,'good'),
+(3,'Metformin 500mg',    'PharmaSource',         100, 4.20, NULL, 'tablet',  1, NULL,   1,'low'),
+(4,'Amlodipine 5mg',     'Apex Pharma',           80, 6.75, NULL, 'tablet',  1, NULL,   1,'good'),
+(5,'Cetirizine 10mg',    'Healthline Supplies',   60, 5.00, NULL, 'tablet',  1, NULL,   0,'low'),
+(6,'Omeprazole 20mg',    'GlobeMed Traders',      100, 9.80, NULL, 'capsule', 1, NULL,   0,'good'),
+(7,'Losartan 50mg',      'MetroPharm',             80,11.20, NULL, 'tablet',  1, NULL,   1,'moderate'),
+(8,'Ibuprofen 400mg',   'PharmaSource',          150, 7.30, NULL, 'tablet',  1, NULL,   0,'good'),
+(9,'Salbutamol Inhaler', 'Medline Distributors',   30,210.00,NULL, 'inhaler', 1, NULL,   0,'critical'),
+(10,'Vitamin C 500mg',    'Healthline Supplies',    5,  6.50, 6.00, 'tablet', 20, 110.00, 0,'good'),
+(11,'Oral Rehydration Salts','Medline Distributors',5, 12.00, NULL, 'sachet', 10, 110.00, 0,'good'),
+(12,'Loperamide 2mg',    'PharmaSource',            6,  4.50, NULL, 'tablet', 10,  40.00, 0,'good');
+
+INSERT IGNORE INTO `product_category_map` (`product_id`, `category_id`)
+SELECT product_id, id FROM (
+  SELECT 1 AS product_id, 'Antibiotic' AS category_name UNION ALL
+  SELECT 2, 'Analgesic' UNION ALL SELECT 3, 'Antidiabetic' UNION ALL
+  SELECT 4, 'Antihypertensive' UNION ALL SELECT 5, 'Antihistamine' UNION ALL
+  SELECT 6, 'Antacid' UNION ALL SELECT 7, 'Antihypertensive' UNION ALL
+  SELECT 8, 'NSAID' UNION ALL SELECT 9, 'Bronchodilator' UNION ALL
+  SELECT 10, 'Supplement' UNION ALL SELECT 11, 'Supplement' UNION ALL
+  SELECT 12, 'Antidiarrheal'
+) seeded_categories
+JOIN `categories` ON `categories`.`name` = seeded_categories.category_name;
 
 -- Product Batches (one batch per product as initial stock)
 INSERT INTO `product_batches` (`batch_id`,`product_id`,`qty`,`expiry_date`,`received_date`,`batch_total_cost`,`unit_cost`) VALUES

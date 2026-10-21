@@ -62,7 +62,26 @@ INSERT IGNORE INTO `categories` (`name`) VALUES
 -- ==========================================
 -- 2. INSERT PRODUCTS
 -- ==========================================
-INSERT INTO `products` (`id`, `name`, `category`, `supplier`, `reorder`, `price`, `sale_price`, `unit_label`, `units_per_pack`, `pack_price`, `is_vat_exempt`, `status`, `created_at`, `updated_at`) VALUES
+DROP TEMPORARY TABLE IF EXISTS `tmp_seed_products`;
+DROP TEMPORARY TABLE IF EXISTS `tmp_seed_category_parts`;
+CREATE TEMPORARY TABLE `tmp_seed_products` (
+  `id` INT UNSIGNED NOT NULL PRIMARY KEY,
+  `name` VARCHAR(150) NOT NULL,
+  `category_text` VARCHAR(160) NOT NULL,
+  `supplier` VARCHAR(120) NOT NULL,
+  `reorder` INT NOT NULL,
+  `price` DECIMAL(10,2) NOT NULL,
+  `sale_price` DECIMAL(10,2) NULL,
+  `unit_label` VARCHAR(30) NOT NULL,
+  `units_per_pack` INT NOT NULL,
+  `pack_price` DECIMAL(10,2) NULL,
+  `is_vat_exempt` TINYINT(1) NOT NULL,
+  `status` ENUM('good','moderate','low','critical','out_of_stock') NOT NULL,
+  `created_at` DATETIME NOT NULL,
+  `updated_at` DATETIME NOT NULL
+) ENGINE=InnoDB;
+
+INSERT INTO `tmp_seed_products` (`id`, `name`, `category_text`, `supplier`, `reorder`, `price`, `sale_price`, `unit_label`, `units_per_pack`, `pack_price`, `is_vat_exempt`, `status`, `created_at`, `updated_at`) VALUES
 (1001, 'ALDOMET 250MG TAB 500''', 'Antihypertensive', 'LOURDES PHARMACY', 10, 26.00, NULL, 'tablet', 1, NULL, 0, 'good', NOW(), NOW()),
 (1002, 'ALLERKID 2.5MG DROPS 10ML 1''', 'Antihistamine / Anti-allergy', 'LOURDES PHARMACY', 10, 225.00, NULL, 'bottle', 1, NULL, 0, 'good', NOW(), NOW()),
 (1003, 'APLOSYN OTIC SOLN 5 ML 1''', 'Otic Preparation (Ear Drops)', 'LOURDES PHARMACY', 10, 450.00, NULL, 'bottle', 1, NULL, 0, 'good', NOW(), NOW()),
@@ -181,6 +200,66 @@ INSERT INTO `products` (`id`, `name`, `category`, `supplier`, `reorder`, `price`
 (1116, 'MAY 100% SPARKLING RED GRAPE JUICE 750MLX12', 'Beverage / Grape Juice', 'LOURDES PHARMACY', 10, 230.00, NULL, 'bottle', 1, NULL, 0, 'good', NOW(), NOW()),
 (1117, 'MOTT''S 100% APPLE JUICE32OZX12', 'Beverage / Apple Juice', 'LOURDES PHARMACY', 10, 2000.00, NULL, 'bottle', 1, NULL, 0, 'good', NOW(), NOW()),
 (1118, 'ASCORBIC ACID CEELIN 100MG/ML DROPS 30ML', 'Vitamin / Supplement', 'LOURDES PHARMACY', 10, 120.00, NULL, 'bottle', 1, NULL, 0, 'good', NOW(), NOW());
+
+INSERT INTO `products`
+  (`id`, `name`, `supplier`, `reorder`, `price`, `sale_price`, `unit_label`, `units_per_pack`, `pack_price`, `is_vat_exempt`, `status`, `created_at`, `updated_at`)
+SELECT `id`, `name`, `supplier`, `reorder`, `price`, `sale_price`, `unit_label`, `units_per_pack`, `pack_price`, `is_vat_exempt`, `status`, `created_at`, `updated_at`
+FROM `tmp_seed_products`;
+
+CREATE TEMPORARY TABLE `tmp_seed_category_parts` (
+  `product_id` INT UNSIGNED NOT NULL,
+  `name`       VARCHAR(80) NOT NULL,
+  PRIMARY KEY (`product_id`, `name`)
+) ENGINE=InnoDB;
+
+INSERT IGNORE INTO `tmp_seed_category_parts` (`product_id`, `name`)
+WITH RECURSIVE category_parts AS (
+  SELECT
+    `id` AS product_id,
+    TRIM(SUBSTRING_INDEX(`category_text`, '/', 1)) AS name,
+    CASE
+      WHEN LOCATE('/', `category_text`) > 0
+      THEN SUBSTRING(`category_text`, LOCATE('/', `category_text`) + 1)
+      ELSE ''
+    END AS remaining
+  FROM `tmp_seed_products`
+
+  UNION ALL
+
+  SELECT
+    product_id,
+    TRIM(SUBSTRING_INDEX(remaining, '/', 1)) AS name,
+    CASE
+      WHEN LOCATE('/', remaining) > 0
+      THEN SUBSTRING(remaining, LOCATE('/', remaining) + 1)
+      ELSE ''
+    END AS remaining
+  FROM category_parts
+  WHERE remaining <> ''
+)
+SELECT product_id, name
+FROM category_parts
+WHERE name <> '';
+
+INSERT INTO `categories` (`name`)
+SELECT DISTINCT parts.`name`
+FROM `tmp_seed_category_parts` parts
+WHERE NOT EXISTS (
+  SELECT 1 FROM `categories` c WHERE c.`name` = parts.`name`
+);
+
+INSERT IGNORE INTO `product_category_map` (`product_id`, `category_id`)
+SELECT parts.product_id, c.id
+FROM `tmp_seed_category_parts` parts
+JOIN `categories` c ON c.name = parts.name;
+
+DELETE c
+FROM `categories` c
+LEFT JOIN `product_category_map` pcm ON pcm.category_id = c.id
+WHERE c.name LIKE '%/%' AND pcm.category_id IS NULL;
+
+DROP TEMPORARY TABLE `tmp_seed_category_parts`;
+DROP TEMPORARY TABLE `tmp_seed_products`;
 
 -- UPC confirmed for Appebon Kid Syrup 120ml: https://www.unilab.com.ph/products/appebon-kid?variant=syrup-120ml
 UPDATE `products` SET `barcode` = '688201280348' WHERE `id` = 1004;

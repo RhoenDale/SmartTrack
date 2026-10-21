@@ -93,7 +93,8 @@ if ($id) {
     if ($method === 'PUT') {
         require_role(['admin/owner', 'admin', 'inventory_manager']);
         $data = body();
-        require_fields($data, ['name', 'category', 'supplier', 'reorder', 'price']);
+        require_fields($data, ['name', 'supplier', 'reorder', 'price']);
+        $categoryNames = product_category_names($data);
 
         $barcode = trim((string)($data['barcode'] ?? ''));
         $barcodeCheck = $pdo->prepare('SELECT id FROM products WHERE barcode = ? AND id <> ?');
@@ -103,11 +104,11 @@ if ($id) {
         }
 
         $pdo->prepare(
-            'UPDATE products SET barcode=?, name=?, category=?, supplier=?, reorder=?, price=?, sale_price=?, unit_label=?, units_per_pack=?, pack_price=?, is_vat_exempt=?, updated_at=NOW()
+            'UPDATE products SET barcode=?, name=?, supplier=?, reorder=?, price=?, sale_price=?, unit_label=?, units_per_pack=?, pack_price=?, is_vat_exempt=?, updated_at=NOW()
              WHERE id = ?'
         )->execute([
             $barcode !== '' ? $barcode : null,
-            $data['name'], $data['category'], $data['supplier'],
+            $data['name'], $data['supplier'],
             (int)$data['reorder'], (float)$data['price'],
             isset($data['sale_price']) && $data['sale_price'] !== '' ? (float)$data['sale_price'] : null,
             trim((string)($data['unit_label'] ?? 'unit')) ?: 'unit',
@@ -116,6 +117,7 @@ if ($id) {
             isset($data['is_vat_exempt']) ? (int)$data['is_vat_exempt'] : 0,
             $id,
         ]);
+        sync_product_categories($pdo, $id, $categoryNames);
 
         // Replace batches if provided — preserving batch cost data
         if (!empty($data['batches']) && is_array($data['batches'])) {
@@ -167,7 +169,11 @@ if ($method === 'GET') {
     $params = [];
 
     if ($search !== '') {
-        $sql    .= ' AND (name LIKE ? OR category LIKE ? OR id LIKE ? OR barcode LIKE ?)';
+        $sql    .= ' AND (name LIKE ? OR id LIKE ? OR barcode LIKE ? OR EXISTS (
+            SELECT 1 FROM product_category_map pcm
+            JOIN categories c ON c.id = pcm.category_id
+            WHERE pcm.product_id = products.id AND c.name LIKE ?
+        ))';
         $like    = "%$search%";
         $params  = array_merge($params, [$like, $like, $like, $like]);
     }
@@ -188,7 +194,8 @@ if ($method === 'GET') {
 if ($method === 'POST') {
     require_role(['admin/owner', 'admin', 'inventory_manager']);
     $data = body();
-    require_fields($data, ['barcode', 'name', 'category', 'supplier', 'reorder', 'price', 'batches']);
+    require_fields($data, ['barcode', 'name', 'supplier', 'reorder', 'price', 'batches']);
+    $categoryNames = product_category_names($data);
     $barcode = trim((string)$data['barcode']);
     if ($barcode === '') {
         json_response(['error' => 'A barcode is required.'], 422);
@@ -201,10 +208,10 @@ if ($method === 'POST') {
     }
 
     $pdo->prepare(
-        'INSERT INTO products (barcode, name, category, supplier, reorder, price, sale_price, unit_label, units_per_pack, pack_price, is_vat_exempt, status)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "good")'
+        'INSERT INTO products (barcode, name, supplier, reorder, price, sale_price, unit_label, units_per_pack, pack_price, is_vat_exempt, status)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "good")'
     )->execute([
-        $barcode, $data['name'], $data['category'], $data['supplier'],
+        $barcode, $data['name'], $data['supplier'],
         (int)$data['reorder'], (float)$data['price'],
         isset($data['sale_price']) && $data['sale_price'] !== '' ? (float)$data['sale_price'] : null,
         trim((string)($data['unit_label'] ?? 'unit')) ?: 'unit',
@@ -213,6 +220,7 @@ if ($method === 'POST') {
         isset($data['is_vat_exempt']) ? (int)$data['is_vat_exempt'] : 0,
     ]);
     $productId = (string)$pdo->lastInsertId();
+    sync_product_categories($pdo, $productId, $categoryNames);
 
     // Insert batches with optional batch cost
     $ins = $pdo->prepare(

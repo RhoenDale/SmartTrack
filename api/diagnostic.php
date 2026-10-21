@@ -62,7 +62,14 @@ try {
 
 // ─── 5. Sample Products ──────────────────────────────────────────────────────
 try {
-    $stmt = $pdo->query("SELECT id, name, category FROM products LIMIT 3");
+    $stmt = $pdo->query(
+        "SELECT p.id, p.name,
+                (SELECT GROUP_CONCAT(c.name ORDER BY c.name SEPARATOR ', ')
+                 FROM product_category_map pcm
+                 JOIN categories c ON c.id = pcm.category_id
+                 WHERE pcm.product_id = p.id) AS category
+         FROM products p LIMIT 3"
+    );
     $sampleProducts = $stmt->fetchAll(PDO::FETCH_ASSOC);
     $diagnostics['sample_products'] = $sampleProducts ?: ['status' => 'no_products_found'];
 } catch (Exception $e) {

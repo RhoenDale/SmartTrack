@@ -43,7 +43,14 @@ switch ($method . ':' . $action) {
                       WHERE t.type = 'sale'";
         $demandParams = [];
         if ($productId !== '') { $demandSql .= ' AND t.product_id = ?'; $demandParams[] = $productId; }
-        if ($category !== '') { $demandSql .= ' AND p.category = ?'; $demandParams[] = $category; }
+        if ($category !== '') {
+            $demandSql .= ' AND EXISTS (
+                SELECT 1 FROM product_category_map pcm
+                JOIN categories c ON c.id = pcm.category_id
+                WHERE pcm.product_id = p.id AND c.name = ?
+            )';
+            $demandParams[] = $category;
+        }
         $demandSql .= " GROUP BY DATE_FORMAT(t.transacted_at, '%Y-%m') ORDER BY MIN(t.transacted_at) ASC";
         $demandStmt = $pdo->prepare($demandSql);
         $demandStmt->execute($demandParams);
@@ -57,7 +64,14 @@ switch ($method . ':' . $action) {
                       WHERE 1=1";
         $supplyParams = [];
         if ($productId !== '') { $supplySql .= ' AND b.product_id = ?'; $supplyParams[] = $productId; }
-        if ($category !== '') { $supplySql .= ' AND p.category = ?'; $supplyParams[] = $category; }
+        if ($category !== '') {
+            $supplySql .= ' AND EXISTS (
+                SELECT 1 FROM product_category_map pcm
+                JOIN categories c ON c.id = pcm.category_id
+                WHERE pcm.product_id = p.id AND c.name = ?
+            )';
+            $supplyParams[] = $category;
+        }
         $supplySql .= " GROUP BY DATE_FORMAT(b.received_date, '%Y-%m') ORDER BY MIN(b.received_date) ASC";
         $supplyStmt = $pdo->prepare($supplySql);
         $supplyStmt->execute($supplyParams);
@@ -111,12 +125,17 @@ switch ($method . ':' . $action) {
     // ── EOQ Reorder Recommendations ───────────────────────────────────────────
     case 'GET:eoq':
         $lowStock = $pdo->query(
-            "SELECT p.id, p.name, p.category, p.reorder, p.price,
+            "SELECT p.id, p.name,
+                    COALESCE((SELECT GROUP_CONCAT(c.name ORDER BY c.name SEPARATOR ', ')
+                              FROM product_category_map pcm
+                              JOIN categories c ON c.id = pcm.category_id
+                              WHERE pcm.product_id = p.id), '') AS category,
+                    p.reorder, p.price,
                     COALESCE(SUM(b.qty),0) AS stock
              FROM products p
              LEFT JOIN product_batches b ON b.product_id = p.id AND b.qty > 0
              WHERE p.status IN ('out_of_stock','critical','low')
-             GROUP BY p.id, p.name, p.category, p.reorder, p.price"
+             GROUP BY p.id, p.name, p.reorder, p.price"
         )->fetchAll(PDO::FETCH_ASSOC);
 
         $monthCount = (int)$pdo->query(
@@ -156,13 +175,16 @@ switch ($method . ':' . $action) {
     case 'GET:performance':
         $stmt = $pdo->query(
             "SELECT t.product_name AS name,
-                    p.category,
+                    COALESCE((SELECT GROUP_CONCAT(c.name ORDER BY c.name SEPARATOR ', ')
+                              FROM product_category_map pcm
+                              JOIN categories c ON c.id = pcm.category_id
+                              WHERE pcm.product_id = p.id), '—') AS category,
                     SUM(t.qty)    AS units_sold,
                     SUM(t.amount) AS revenue
              FROM transactions t
              LEFT JOIN products p ON p.id = t.product_id
              WHERE t.type = 'sale'
-             GROUP BY t.product_name, p.category
+             GROUP BY t.product_name, p.id
              ORDER BY revenue DESC"
         );
         $rows   = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -187,28 +209,23 @@ switch ($method . ':' . $action) {
     // ── Category Sales (pie) ──────────────────────────────────────────────────
     case 'GET:category-sales':
         $stmt = $pdo->query(
-            "SELECT p.category AS name, SUM(t.qty) AS value
+            "SELECT c.name AS name, SUM(t.qty) AS units
              FROM transactions t
-             JOIN products p ON p.id = t.product_id
+             JOIN product_category_map pcm ON pcm.product_id = t.product_id
+             JOIN categories c ON c.id = pcm.category_id
              WHERE t.type = 'sale'
-             GROUP BY p.category
-             ORDER BY value DESC"
+             GROUP BY c.id, c.name
+             ORDER BY units DESC"
         );
         $rows  = $stmt->fetchAll(PDO::FETCH_ASSOC);
-        $total = array_sum(array_column($rows, 'value'));
-        if ($total == 0) {
-            // Fallback to static seed distribution
-            json_response([
-                ['name' => 'Antibiotics',      'value' => 28],
-                ['name' => 'Analgesics',        'value' => 22],
-                ['name' => 'Antihypertensive',  'value' => 18],
-                ['name' => 'Supplements',       'value' => 15],
-                ['name' => 'Others',            'value' => 17],
-            ]);
+        $total = array_sum(array_column($rows, 'units'));
+        if ($total <= 0) {
+            json_response([]);
+            break;
         }
         $pie = array_map(fn($r) => [
             'name'  => $r['name'],
-            'value' => (int)round(((int)$r['value'] / $total) * 100),
+            'value' => round(((float)$r['units'] / $total) * 100, 1),
         ], $rows);
         json_response($pie);
         break;

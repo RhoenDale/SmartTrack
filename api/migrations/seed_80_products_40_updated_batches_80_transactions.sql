@@ -7,7 +7,7 @@ START TRANSACTION;
 
 -- Add 80 demo products with stable numeric IDs 13-92 after the 12 base products.
 INSERT IGNORE INTO products
-  (id, name, category, supplier, reorder, price, sale_price,
+  (id, name, supplier, reorder, price, sale_price,
    unit_label, units_per_pack, pack_price, is_vat_exempt, status)
 WITH RECURSIVE seq(n) AS (
   SELECT 1
@@ -31,17 +31,6 @@ SELECT
     ' ', 50 + MOD(n * 25, 450),
     CASE WHEN MOD(n - 1, 9) = 7 THEN 'mcg' ELSE 'mg' END
   ),
-  CASE MOD(n - 1, 9)
-    WHEN 0 THEN 'Antibiotic'
-    WHEN 1 THEN 'Analgesic'
-    WHEN 2 THEN 'Antidiabetic'
-    WHEN 3 THEN 'Antihypertensive'
-    WHEN 4 THEN 'Antihistamine'
-    WHEN 5 THEN 'Antacid'
-    WHEN 6 THEN 'NSAID'
-    WHEN 7 THEN 'Bronchodilator'
-    ELSE 'Supplement'
-  END,
   CONCAT('Demo Supplier ', LPAD(MOD(n - 1, 8) + 1, 2, '0')),
   CASE
     WHEN n <= 65 THEN 30
@@ -62,6 +51,27 @@ SELECT
     ELSE 'critical'
   END
 FROM seq;
+
+-- Link the demo products to normalized category records.
+INSERT IGNORE INTO product_category_map (product_id, category_id)
+WITH RECURSIVE seq(n) AS (
+  SELECT 1
+  UNION ALL
+  SELECT n + 1 FROM seq WHERE n < 80
+)
+SELECT n + 12, c.id
+FROM seq
+JOIN categories c ON c.name = CASE MOD(n - 1, 9)
+  WHEN 0 THEN 'Antibiotic'
+  WHEN 1 THEN 'Analgesic'
+  WHEN 2 THEN 'Antidiabetic'
+  WHEN 3 THEN 'Antihypertensive'
+  WHEN 4 THEN 'Antihistamine'
+  WHEN 5 THEN 'Antacid'
+  WHEN 6 THEN 'NSAID'
+  WHEN 7 THEN 'Bronchodilator'
+  ELSE 'Supplement'
+END;
 
 -- Give every product one batch so no product is empty. Quantities intentionally
 -- favor healthy stock and mirror each product's status.

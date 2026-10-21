@@ -1,7 +1,7 @@
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export type UserRole    = "admin/owner" | "admin" | "inventory_manager" | "cashier";
-export type Page        = "dashboard" | "inventory" | "transactions" | "analytics" | "users" | "stock-alerts" | "reports" | "financial";
+export type Page        = "dashboard" | "inventory" | "transactions" | "analytics" | "users" | "stock-alerts" | "reports" | "returns" | "financial";
 export type StockStatus = "out_of_stock" | "critical" | "low" | "moderate" | "good";
 export type TxStatus    = "completed";
 export type TxType      = "sale" | "return" | "adjustment";
@@ -31,6 +31,7 @@ export interface Product {
   barcode?:     string | null;
   name:         string;
   category:     string;
+  categories?:  string[];
   supplier:     string;
   stock:        number;      // computed: sum of batch qty
   reorder:      number;

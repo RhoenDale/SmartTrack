@@ -16,12 +16,17 @@ $tab = $id ?? 'all';
 
 // Fetch all products with computed stock and earliest expiry
 $rows = $pdo->query(
-    "SELECT p.id, p.name, p.category, p.reorder, p.price, p.status,
+    "SELECT p.id, p.name,
+            COALESCE((SELECT GROUP_CONCAT(c.name ORDER BY c.name SEPARATOR ', ')
+                      FROM product_category_map pcm
+                      JOIN categories c ON c.id = pcm.category_id
+                      WHERE pcm.product_id = p.id), '') AS category,
+            p.reorder, p.price, p.status,
             COALESCE(SUM(b.qty),0) AS stock,
             MIN(b.expiry_date)     AS earliest_expiry
      FROM products p
      LEFT JOIN product_batches b ON b.product_id = p.id AND b.qty > 0
-     GROUP BY p.id, p.name, p.category, p.reorder, p.price, p.status"
+     GROUP BY p.id, p.name, p.reorder, p.price, p.status"
 )->fetchAll(PDO::FETCH_ASSOC);
 
 $now = time();

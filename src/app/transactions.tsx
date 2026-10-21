@@ -7,7 +7,6 @@ export default function TransactionsPage({
   user,
   transactions,
   inventory,
-  currentUser,
   selectedTransactionId,
   onAddSale,
   onAddReturn,
@@ -16,7 +15,6 @@ export default function TransactionsPage({
   user: AuthUser;
   transactions: Transaction[];
   inventory: Product[];
-  currentUser: AuthUser;
   selectedTransactionId: string | null;
   onAddSale: () => void;
   onAddReturn: (tx: Transaction) => void;
@@ -81,7 +79,7 @@ export default function TransactionsPage({
   const allReturnsAmt  = allReturns.reduce((s, t) => s + t.amount, 0);
   const isAdmin = user.role === "admin" || user.role === "admin/owner";
   const canModify = !isAdmin; // Admins cannot add sales or returns
-
+  const isCashier = user.role === "cashier";
   const handleExport = () => {
     const columns = ["Transaction ID", "Product", "Qty", "Amount", "Staff", "Date", "Type", "Status"];
     const rows = filtered.map(tx => [
@@ -236,7 +234,7 @@ export default function TransactionsPage({
                       >
                         <Printer size={13} />
                       </button>
-                      {canModify && tx.type === "sale" && (
+                      {isCashier && tx.type === "sale" && (
                         <button
                           onClick={() => onAddReturn(tx)}
                           className="rounded-full border border-orange-300 bg-orange-50 px-3 py-1.5 text-[11px] font-semibold text-orange-700 hover:bg-orange-100 hover:border-orange-400 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-orange-400/30"
@@ -269,7 +267,6 @@ export default function TransactionsPage({
           </table>
         </div>
       </div>
-
       {viewingReason && <ViewReasonModal tx={viewingReason} onClose={() => setViewingReason(null)} />}
     </div>
   );
