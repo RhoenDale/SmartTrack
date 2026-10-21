@@ -28,7 +28,7 @@ const fs   = require('node:fs');
 const path = require('node:path');
 const http = require('node:http');
 const https = require('node:https');
-const { spawn } = require('node:child_process');
+const { spawn, exec } = require('node:child_process');
 
 // ─── Environment ──────────────────────────────────────────────────────────────
 const DEV_SERVER_URL  = process.env.ELECTRON_START_URL || null;
@@ -48,6 +48,184 @@ let cloudflared = null;
 let shareUrl    = null;
 let shareState  = 'stopped';
 let shareStartPromise = null;
+
+// ─── XAMPP auto-start ─────────────────────────────────────────────────────────
+const XAMPP_DIR = 'C:\\xampp';
+
+/**
+ * Run a shell command and resolve with { code, stdout, stderr }.
+ * Never rejects — errors are captured in `code` / `stderr`.
+ */
+function runCmd(cmd) {
+  return new Promise((resolve) => {
+    exec(cmd, { windowsHide: true }, (error, stdout, stderr) => {
+      resolve({ code: error ? error.code : 0, stdout: stdout || '', stderr: stderr || '' });
+    });
+  });
+}
+
+/** Returns true if the named Windows service is currently running. */
+async function isServiceRunning(serviceName) {
+  const { stdout } = await runCmd(`sc query "${serviceName}"`);
+  return stdout.includes('RUNNING');
+}
+
+/**
+ * Start a Windows service via `net start` if it isn't already running.
+ * Returns true on success / already-running, false on failure.
+ */
+async function ensureService(serviceName) {
+  if (await isServiceRunning(serviceName)) {
+    log(`Service already running: ${serviceName}`);
+    return true;
+  }
+  log(`Starting service: ${serviceName}`);
+  const { code, stderr } = await runCmd(`net start "${serviceName}"`);
+  if (code !== 0) {
+    log(`net start "${serviceName}" failed (code ${code})`, stderr.trim());
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Probe the local API once. Returns true when it responds with db connected.
+ */
+function probeApi() {
+  return new Promise((resolve) => {
+    const req = http.get(`${API_BASE}/diagnostic`, { timeout: 3000 }, (res) => {
+      let body = '';
+      res.on('data', (c) => { body += c; });
+      res.on('end', () => {
+        try {
+          const json = JSON.parse(body);
+          resolve(res.statusCode === 200 && json?.database?.status === 'connected');
+        } catch { resolve(false); }
+      });
+    });
+    req.on('error', () => resolve(false));
+    req.on('timeout', () => { req.destroy(); resolve(false); });
+  });
+}
+
+/**
+ * Wait up to `maxMs` for the API to become ready, polling every `intervalMs`.
+ */
+async function waitForApi(maxMs = 30000, intervalMs = 1500) {
+  const deadline = Date.now() + maxMs;
+  while (Date.now() < deadline) {
+    if (await probeApi()) return true;
+    await new Promise((r) => setTimeout(r, intervalMs));
+  }
+  return false;
+}
+
+/**
+ * Show a non-blocking splash message box while XAMPP services start.
+ * Closes automatically when the returned `close()` is called.
+ */
+function showStartingSplash() {
+  // We can't close a showMessageBox programmatically, so we use a minimal
+  // BrowserWindow as a splash overlay instead.
+  const splash = new BrowserWindow({
+    width: 420,
+    height: 180,
+    frame: false,
+    resizable: false,
+    alwaysOnTop: true,
+    center: true,
+    backgroundColor: '#0f172a',
+    icon: ICON_PATH,
+    webPreferences: { nodeIntegration: false, contextIsolation: true },
+  });
+
+  const html = `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8"/>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: #0f172a; color: #f8fafc;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    height: 100vh; gap: 16px; padding: 24px;
+  }
+  h2 { font-size: 17px; font-weight: 600; }
+  p  { font-size: 13px; color: #94a3b8; text-align: center; }
+  .spinner {
+    width: 32px; height: 32px; border: 3px solid #334155;
+    border-top-color: #f97316; border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+  <div class="spinner"></div>
+  <h2>Starting SmartTrack…</h2>
+  <p>Waiting for Apache &amp; MySQL to start.<br/>This only takes a moment.</p>
+</body>
+</html>`;
+
+  splash.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+  splash.setMenu(null);
+  return {
+    close: () => { if (!splash.isDestroyed()) splash.close(); },
+  };
+}
+
+/**
+ * Main entry point for XAMPP auto-start.
+ * Tries Windows services first, then falls back to xampp_start.exe.
+ * Returns true if the API is ready, false otherwise.
+ */
+async function ensureXamppRunning() {
+  // Quick check — if already running, do nothing.
+  if (await probeApi()) {
+    log('XAMPP API already reachable — skipping auto-start.');
+    return true;
+  }
+
+  log('API not reachable — attempting to start XAMPP services…');
+  const splash = showStartingSplash();
+
+  try {
+    // Try Windows service names used by XAMPP installer
+    const apacheStarted = await ensureService('Apache2.4');
+    const mysqlStarted  = await ensureService('mysql');
+
+    if (!apacheStarted || !mysqlStarted) {
+      // Fallback: try xampp_start.exe (portable XAMPP)
+      const xamppStart = path.join(XAMPP_DIR, 'xampp_start.exe');
+      if (fs.existsSync(xamppStart)) {
+        log('Falling back to xampp_start.exe');
+        spawn(xamppStart, [], { detached: true, windowsHide: true, stdio: 'ignore' }).unref();
+      } else {
+        log('xampp_start.exe not found — services may not start.');
+      }
+    }
+
+    log('Waiting for API to become ready…');
+    const ready = await waitForApi(35000, 1500);
+    if (ready) {
+      log('XAMPP API is ready.');
+    } else {
+      log('XAMPP API did not become ready in time.');
+      dialog.showMessageBoxSync({
+        type:    'warning',
+        title:   'SmartTrack — XAMPP Not Ready',
+        message: 'Could not start Apache or MySQL automatically.',
+        detail:  'Please open XAMPP Control Panel and start Apache and MySQL manually, then relaunch SmartTrack.',
+        buttons: ['OK'],
+      });
+    }
+    return ready;
+  } finally {
+    splash.close();
+  }
+}
 
 // ─── Logging ──────────────────────────────────────────────────────────────────
 function log(label, data) {
@@ -721,11 +899,17 @@ function createWindow() {
 }
 
 // ─── App lifecycle ────────────────────────────────────────────────────────────
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   log('App ready');
   setupSession();
   registerIpcHandlers();
   buildAppMenu();
+
+  // Auto-start XAMPP Apache + MySQL before showing the main window
+  if (!IS_DEV) {
+    await ensureXamppRunning();
+  }
+
   createWindow();
   setupTray();
 
