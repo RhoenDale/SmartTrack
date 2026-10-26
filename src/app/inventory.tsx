@@ -227,15 +227,6 @@ export default function InventoryPage({
                       ) : (
                         <span className="text-foreground">{fmt(item.price)}</span>
                       )}
-                      {item.isVatExempt || item.is_vat_exempt ? (
-                        <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/20 w-fit">
-                          VAT-EXEMPT
-                        </span>
-                      ) : (
-                        <span className="text-[9px] text-muted-foreground/60">
-                          incl. 12% VAT
-                        </span>
-                      )}
                     </div>
                   </td>
                   <td className="px-4 py-3 text-xs text-muted-foreground">

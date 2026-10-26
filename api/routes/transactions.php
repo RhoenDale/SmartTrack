@@ -164,13 +164,12 @@ function handle_sale(PDO $pdo, array $authUser): void {
     $shelfAmount = round($salePrice * $saleQty, 2);
     $amount      = $shelfAmount;
 
-    $isProductVatExempt = (int)($product['is_vat_exempt'] ?? 0) === 1;
-    if ($isProductVatExempt) {
-        $vatRate      = 0.0;
-        $preTaxAmount = $amount;
-        $taxAmount    = 0.0;
-    } elseif ($customerVatExempt) {
-        $amount       = round($shelfAmount / 1.12, 2);
+    $isProductVatExempt = false; // VAT-exempt is a sale-level flag (SC/PWD), not per product
+    if ($customerVatExempt) {
+        // SC/PWD discount: remove VAT (÷1.12), then 20% off the pre-tax amount
+        $discountBase = round($shelfAmount / 1.12, 2);
+        $discountAmount = round($discountBase * 0.20, 2);
+        $amount       = round($discountBase - $discountAmount, 2);
         $vatRate      = 0.0;
         $preTaxAmount = $amount;
         $taxAmount    = 0.0;
@@ -297,28 +296,25 @@ function handle_multi_sale(PDO $pdo, array $authUser, array $data, array $items)
 
             $unitsPerSale = $saleUnit === 'pack' ? max(1, (int)$product['units_per_pack']) : 1;
             $qty = $saleQty * $unitsPerSale;
-            $isProductVatExempt = (int)($product['is_vat_exempt'] ?? 0) === 1;
-            $applyCustomerDiscount = array_key_exists('apply_customer_discount', $item)
-                ? (!empty($item['apply_customer_discount']) && !$isProductVatExempt)
-                : ($customerVatExempt && !$isProductVatExempt);
+    $isProductVatExempt = false; // VAT-exempt is now a sale-level flag (SC/PWD), not per product
+    $applyCustomerDiscount = array_key_exists('apply_customer_discount', $item)
+        ? !empty($item['apply_customer_discount'])
+        : $customerVatExempt;
             $unitPrice   = $product['sale_price'] !== null ? (float)$product['sale_price'] : (float)$product['price'];
             $salePrice   = $saleUnit === 'pack' && $product['pack_price'] !== null
                 ? (float)$product['pack_price'] : ($saleUnit === 'pack' ? $unitPrice * $unitsPerSale : $unitPrice);
             $shelfAmount = round($salePrice * $saleQty, 2);
             $discountAmount = 0.0;
-            if ($isProductVatExempt) {
-                $amount       = $shelfAmount;
-                $vatRate      = 0.0;
-                $preTaxAmount = $amount;
-                $taxAmount    = 0.0;
-            } elseif ($applyCustomerDiscount) {
-                $discountBase = round($shelfAmount / 1.12, 2);
+            if ($applyCustomerDiscount) {
+                // SC/PWD discount: remove VAT (÷1.12), then 20% off the pre-tax amount
+                $discountBase   = round($shelfAmount / 1.12, 2);
                 $discountAmount = round($discountBase * 0.20, 2);
-                $amount       = round($discountBase - $discountAmount, 2);
-                $vatRate      = 0.0;
-                $preTaxAmount = $amount;
-                $taxAmount    = 0.0;
+                $amount         = round($discountBase - $discountAmount, 2);
+                $vatRate        = 0.0;
+                $preTaxAmount   = $amount;
+                $taxAmount      = 0.0;
             } else {
+                // Standard 12% VAT
                 $amount       = $shelfAmount;
                 $vatRate      = 0.12;
                 $preTaxAmount = round($amount / 1.12, 2);

@@ -373,7 +373,7 @@ export function ViewReasonModal({ tx, onClose }: { tx: Transaction; onClose: () 
 
 // ─── Notification Panel ───────────────────────────────────────────────────────
 import { useRef, useEffect, useState, useMemo } from "react";
-import { AlertTriangle as _AlertTriangle, FileText as _FileText, Check as _Check, CheckCheck, RefreshCw, X as _X } from "lucide-react";
+import { AlertTriangle as _AlertTriangle, FileText as _FileText, Check as _Check, CheckCheck, RefreshCw, X as _X, ShoppingCart } from "lucide-react";
 import { sortBatchesFIFO, sortBatchesByExpiry, deductFIFO, getTotalStock, getEarliestExpiry, parseExpiry, formatExpiryString, ROLES, ROLE_LABELS, computeTax, VAT_RATE_LABEL, type Notification, type ProductBatch } from "./data";
 
 export function NotificationPanel({
@@ -467,9 +467,6 @@ export function ProductFormModal({
     unitsPerPack: initial?.unitsPerPack != null && initial.unitsPerPack > 1 ? String(initial.unitsPerPack) : "",
     packPrice: initial?.packPrice != null ? String(initial.packPrice) : "",
   });
-  const [isVatExempt, setIsVatExempt] = useState<boolean>(
-    !!(initial?.isVatExempt ?? initial?.is_vat_exempt)
-  );
   const [customCategory, setCustomCategory] = useState("");
   const [selectedCategories, setSelectedCategories] = useState<string[]>(
     initial?.categories?.length ? initial.categories : (initial?.category ? initial.category.split(",").map(c => c.trim()).filter(Boolean) : [])
@@ -555,7 +552,6 @@ export function ProductFormModal({
       id: initial?.id ?? "", barcode: form.barcode.trim(), name: form.name, category: finalCategories.join(", "), categories: finalCategories, supplier: form.supplier.trim(),
       stock: totalStock, reorder, price, salePrice: salePriceVal,
       unitLabel: form.unitLabel.trim() || "unit", unitsPerPack, packPrice: packPriceVal,
-      isVatExempt, is_vat_exempt: isVatExempt ? 1 : 0,
       expiry: getEarliestExpiry(sortedBatches), status: computeStatus(totalStock, reorder, unitsPerPack), batches: sortedBatches,
     };
     onSave(initial ?? null, updated);
@@ -627,32 +623,19 @@ export function ProductFormModal({
           <FieldInput label={`Pack/Box Price (${PESO})`} type="number" value={form.packPrice} onChange={set("packPrice")} placeholder="Optional" min={0} step={0.01} helperText="Optional whole-pack price" />
         </div>
 
-        {/* VAT-exempt toggle */}
-        <div className="flex items-center justify-between bg-muted/30 border border-border rounded-xl px-4 py-3">
-          <div>
-            <p className="text-xs font-semibold text-foreground">VAT-Exempt Product</p>
-            <p className="text-[10px] text-muted-foreground mt-0.5">
-              e.g. essential medicines for Senior Citizens / PWD (BIR RA 10963)
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={() => setIsVatExempt(v => !v)}
-            className={`relative w-10 h-5.5 rounded-full transition-colors duration-200 flex-shrink-0 ${isVatExempt ? "bg-emerald-500" : "bg-muted"}`}
-            style={{ width: 40, height: 22 }}
-          >
-            <span className={`absolute top-0.5 left-0.5 w-[18px] h-[18px] rounded-full bg-white shadow transition-transform duration-200 ${isVatExempt ? "translate-x-[18px]" : "translate-x-0"}`} />
-          </button>
+        {/* VAT info — all products are VAT-inclusive by default; exemption applied at sale time for SC/PWD */}
+        <div className="flex items-center gap-2 rounded-xl border border-border bg-muted/20 px-4 py-2.5 text-[11px] text-muted-foreground">
+          <span>All prices are VAT-inclusive (12%). SC/PWD exemption is applied during checkout, not per product.</span>
         </div>
 
-        {/* Live VAT breakdown */}
+        {/* Live VAT breakdown — always standard 12% */}
         {parseFloat(form.price) > 0 && (() => {
           const activePrice = parseFloat(form.salePrice || form.price) || parseFloat(form.price) || 0;
-          const breakdown = computeTax(activePrice, isVatExempt);
+          const breakdown = computeTax(activePrice, false);
           return (
             <div className="bg-sky-50 dark:bg-sky-500/10 border border-sky-200 dark:border-sky-500/20 rounded-xl px-4 py-3 space-y-1.5">
               <p className="text-[10px] font-bold text-sky-700 dark:text-sky-400 uppercase tracking-wide">
-                VAT Breakdown — {isVatExempt ? "VAT-Exempt" : `${VAT_RATE_LABEL} Standard VAT`}
+                VAT Breakdown — {VAT_RATE_LABEL} Standard VAT
               </p>
               <div className="space-y-1 text-xs">
                 <div className="flex justify-between">
@@ -664,10 +647,8 @@ export function ProductFormModal({
                   <span className="font-semibold text-foreground tabular-nums">{PESO}{breakdown.preTax.toFixed(2)}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className={`${isVatExempt ? "text-muted-foreground/60" : "text-muted-foreground"}`}>
-                    VAT ({isVatExempt ? "Exempt" : VAT_RATE_LABEL})
-                  </span>
-                  <span className={`tabular-nums font-semibold ${isVatExempt ? "text-muted-foreground/60" : "text-sky-600 dark:text-sky-400"}`}>
+                  <span className="text-muted-foreground">VAT ({VAT_RATE_LABEL})</span>
+                  <span className="tabular-nums font-semibold text-sky-600 dark:text-sky-400">
                     {PESO}{breakdown.tax.toFixed(2)}
                   </span>
                 </div>
@@ -862,7 +843,7 @@ export function ExpiryBlockDialog({
 
 const CUSTOMER_EXEMPTION_TYPES = ["Senior Citizen", "PWD", "Other Qualified ID"] as const;
 type CustomerExemptionType = typeof CUSTOMER_EXEMPTION_TYPES[number];
-type SaleCartItem = { product: Product; qty: number; saleQty: number; saleUnit: "unit" | "pack"; applyCustomerDiscount: boolean };
+type SaleCartItem = { product: Product; qty: number; saleQty: number; saleUnit: "unit" | "pack" };
 const roundCurrency = (value: number) => Math.round(value * 100) / 100;
 
 export function NewSaleModal({
@@ -883,6 +864,8 @@ export function NewSaleModal({
   const [editingCartQty, setEditingCartQty] = useState("");
   const [expiryBlock, setExpiryBlock] = useState<{ batchId: string; daysLeft: number } | null>(null);
   const [stockLimit, setStockLimit] = useState<{ product: Product; requested: number; available: number } | null>(null);
+  const [confirmDialog, setConfirmDialog] = useState(false);
+  const [applyDiscount, setApplyDiscount] = useState(false);
   const [customerExemptionType, setCustomerExemptionType] = useState<CustomerExemptionType>("Senior Citizen");
   const [customerIdNumber, setCustomerIdNumber] = useState("");
 
@@ -894,13 +877,9 @@ export function NewSaleModal({
   const packPrice = selectedProduct?.packPrice ?? null;
   const selectedPrice = saleUnit === "pack" && packPrice != null ? packPrice : saleUnit === "pack" ? unitPrice * unitsPerPack : unitPrice;
   const shelfTotal = roundCurrency(selectedPrice * qtyNum);
-  const productVatExempt = !!(selectedProduct?.isVatExempt ?? selectedProduct?.is_vat_exempt);
-  const taxBreakdown = selectedProduct ? (() => {
-    if (productVatExempt) return computeTax(shelfTotal, true);
-    return computeTax(shelfTotal, false);
-  })() : null;
-  const customerVatExempt = cart.some(item => item.applyCustomerDiscount);
-  const customerExemptionMissing = customerVatExempt && customerIdNumber.trim() === "";
+  const taxBreakdown = selectedProduct ? computeTax(shelfTotal, false) : null;
+  const customerVatExempt = applyDiscount;
+  const customerExemptionMissing = applyDiscount && customerIdNumber.trim() === "";
 
   React.useEffect(() => {
     if (selectedProduct && !expiryBlock) quantityInputRef.current?.focus();
@@ -943,7 +922,7 @@ export function NewSaleModal({
         next[existingIndex] = { ...next[existingIndex], qty: baseQty, saleQty: qtyNum, saleUnit };
         return next;
       }
-      return [...prev, { product: selectedProduct, qty: baseQty, saleQty: qtyNum, saleUnit, applyCustomerDiscount: false }];
+      return [...prev, { product: selectedProduct, qty: baseQty, saleQty: qtyNum, saleUnit }];
     });
     setSelectedProduct(null);
     setQty("");
@@ -952,17 +931,14 @@ export function NewSaleModal({
 
   const getCartLineAmounts = (item: SaleCartItem) => {
     const price = item.product.salePrice ?? item.product.price;
-    const unitPrice = item.saleUnit === "pack" && item.product.packPrice != null ? item.product.packPrice : item.saleUnit === "pack" ? price * (item.product.unitsPerPack ?? 1) : price;
-    const shelfTotal = roundCurrency(unitPrice * item.saleQty);
-    const productVatExempt = !!(item.product.isVatExempt ?? item.product.is_vat_exempt);
-    const appliesDiscount = item.applyCustomerDiscount && !productVatExempt;
-    const discountBase = appliesDiscount ? roundCurrency(shelfTotal / 1.12) : 0;
-    const vatRemoved = appliesDiscount ? roundCurrency(shelfTotal - discountBase) : 0;
-    const discountAmount = roundCurrency(discountBase * 0.2);
-    const total = appliesDiscount
-      ? roundCurrency(discountBase - discountAmount)
-      : shelfTotal;
-    return { unitPrice, shelfTotal, vatRemoved, discountAmount, total, productVatExempt };
+    const lineUnitPrice = item.saleUnit === "pack" && item.product.packPrice != null ? item.product.packPrice : item.saleUnit === "pack" ? price * (item.product.unitsPerPack ?? 1) : price;
+    const shelfTotal = roundCurrency(lineUnitPrice * item.saleQty);
+    // Discount applies to ALL products in the sale when applyDiscount is on
+    const discountBase = applyDiscount ? roundCurrency(shelfTotal / 1.12) : 0;
+    const vatRemoved = applyDiscount ? roundCurrency(shelfTotal - discountBase) : 0;
+    const discountAmount = applyDiscount ? roundCurrency(discountBase * 0.2) : 0;
+    const total = applyDiscount ? roundCurrency(discountBase - discountAmount) : shelfTotal;
+    return { unitPrice: lineUnitPrice, shelfTotal, vatRemoved, discountAmount, total };
   };
   const cartTotal = cart.reduce((sum, item) => sum + getCartLineAmounts(item).total, 0);
 
@@ -1001,41 +977,44 @@ export function NewSaleModal({
     }
     const itemsToSubmit = cart.length > 0 ? cart : selectedProduct ? [{ product: selectedProduct, qty: qtyNum, saleQty: qtyNum, saleUnit }] : [];
     if (itemsToSubmit.length === 0) return;
-    const hasDiscountedItems = itemsToSubmit.some(item => "applyCustomerDiscount" in item && item.applyCustomerDiscount);
-    if (hasDiscountedItems && customerIdNumber.trim() === "") return;
+    if (customerExemptionMissing) return;
+    // Show confirmation dialog before completing the sale
+    setConfirmDialog(true);
+  };
+
+  const doSubmit = () => {
+    setConfirmDialog(false);
+    const itemsToSubmit = cart.length > 0 ? cart : selectedProduct ? [{ product: selectedProduct, qty: qtyNum, saleQty: qtyNum, saleUnit }] : [];
+    if (itemsToSubmit.length === 0) return;
+    if (customerExemptionMissing) return;
 
     const salePayload = itemsToSubmit.map(item => ({
       product_id: item.product.id,
       qty: item.saleUnit === "pack" ? item.saleQty * (item.product.unitsPerPack ?? 1) : item.saleQty,
       sale_qty: item.saleQty,
       sale_unit: item.saleUnit,
-      apply_customer_discount: "applyCustomerDiscount" in item && item.applyCustomerDiscount,
     }));
 
     const first = itemsToSubmit[0];
-    const firstCartLine = "applyCustomerDiscount" in first ? first : {
-      ...first,
-      applyCustomerDiscount: false,
-    };
-    const firstLineAmounts = getCartLineAmounts(firstCartLine);
-    const firstProductExempt = !!(first.product.isVatExempt ?? first.product.is_vat_exempt);
-    const isFirstLineTaxExempt = firstProductExempt || firstCartLine.applyCustomerDiscount;
-    const firstTaxBreakdown = isFirstLineTaxExempt
+    const firstLineAmounts = getCartLineAmounts(first);
+    const firstTaxBreakdown = applyDiscount
       ? { total: firstLineAmounts.total, preTax: firstLineAmounts.total, tax: 0, rate: 0, isExempt: true }
       : computeTax(firstLineAmounts.shelfTotal, false);
 
-    const note = hasDiscountedItems
+    const note = applyDiscount
       ? `Customer discount: ${customerExemptionType} ID ${customerIdNumber.trim()}`
       : undefined;
 
     const tx: Transaction = {
       id: `TXN-${Date.now().toString().slice(-4)}`, type: "sale", product: first.product.name,
-      qty: salePayload[0]?.qty ?? 0, saleQty: first.saleQty, saleUnit: first.saleUnit, unitsPerSale: first.saleUnit === "pack" ? (first.product.unitsPerPack ?? 1) : 1, amount: firstLineAmounts.total,
+      qty: salePayload[0]?.qty ?? 0, saleQty: first.saleQty, saleUnit: first.saleUnit,
+      unitsPerSale: first.saleUnit === "pack" ? (first.product.unitsPerPack ?? 1) : 1,
+      amount: firstLineAmounts.total,
       discountAmount: firstLineAmounts.discountAmount,
       preTaxAmount: firstTaxBreakdown.preTax, taxAmount: firstTaxBreakdown.tax, taxRate: firstTaxBreakdown.rate,
-      customerVatExempt,
-      customerExemptionType: customerVatExempt ? customerExemptionType : null,
-      customerIdNumber: customerVatExempt ? customerIdNumber.trim() : null,
+      customerVatExempt: applyDiscount,
+      customerExemptionType: applyDiscount ? customerExemptionType : null,
+      customerIdNumber: applyDiscount ? customerIdNumber.trim() : null,
       staff: staffAbbrev(currentUser.name), date: nowDateStr(),
       status: "completed", productId: first.product.id, note,
     };
@@ -1050,6 +1029,45 @@ export function NewSaleModal({
 
   return (
     <>
+      {confirmDialog && (
+        <div className="fixed inset-0 z-[10001] flex items-center justify-center bg-black/60 p-4">
+          <div className="w-full max-w-sm space-y-4 rounded-2xl border border-border bg-card p-6 shadow-2xl animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex flex-col items-center gap-3">
+              <div className="w-14 h-14 rounded-full flex items-center justify-center bg-primary/10">
+                <ShoppingCart size={26} className="text-primary" />
+              </div>
+              <h2 className="text-base font-bold text-foreground text-center">Confirm Sale?</h2>
+            </div>
+            <div className="bg-muted/40 border border-border rounded-xl p-3 space-y-1.5 text-xs">
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Items</span>
+                <span className="font-semibold text-foreground">
+                  {cart.length > 0 ? `${cart.length} product${cart.length !== 1 ? "s" : ""}` : "1 product"}
+                </span>
+              </div>
+              <div className="flex justify-between border-t border-border pt-1.5">
+                <span className="text-muted-foreground font-semibold">Total</span>
+                <span className="font-bold text-primary text-sm">
+                  {fmt(cart.length > 0 ? cartTotal : shelfTotal)}
+                </span>
+              </div>
+            </div>
+            <p className="text-xs text-muted-foreground text-center leading-relaxed">
+              Once confirmed, this sale will be recorded and stock will be deducted.
+            </p>
+            <div className="flex gap-2 pt-1">
+              <button type="button" onClick={() => setConfirmDialog(false)}
+                className="flex-1 py-2.5 border border-border rounded-xl text-sm font-semibold text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-all">
+                Edit Sale
+              </button>
+              <button type="button" onClick={doSubmit}
+                className="flex-1 py-2.5 bg-primary text-primary-foreground rounded-xl text-sm font-bold hover:opacity-90 transition-opacity">
+                Complete Sale
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {stockLimit && (
         <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/50 p-4">
           <div className="w-full max-w-sm space-y-4 rounded-2xl border border-border bg-card p-6 text-center shadow-2xl">
@@ -1108,6 +1126,13 @@ export function NewSaleModal({
                 if (selectedProduct && requested > selectedProduct.stock) {
                   setStockLimit({ product: selectedProduct, requested, available: selectedProduct.stock });
                 }
+              }} onKeyDown={e => {
+                if (e.key !== "Enter") return;
+                e.preventDefault();
+                e.stopPropagation();
+                if (selectedProduct && qtyNum > 0) {
+                  addCurrentToCart();
+                }
               }} className="w-full rounded-lg border border-border bg-background px-3 py-2.5 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30" />
             </div>
             {cart.length > 0 && (
@@ -1121,7 +1146,7 @@ export function NewSaleModal({
                   const line = getCartLineAmounts(item);
                   const isEditing = editingCartKey === key;
                   return (
-                    <div key={key} className="space-y-2 rounded-lg border border-border bg-background px-3 py-2.5">
+                    <div key={key} className="space-y-1.5 rounded-lg border border-border bg-background px-3 py-2.5">
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
                           {item.product.barcode && <p className="truncate text-[10px] font-semibold text-primary">{item.product.barcode}</p>}
@@ -1147,15 +1172,10 @@ export function NewSaleModal({
                           )}
                         </div>
                       </div>
-                      <label className={`flex items-center gap-2 text-[10px] ${line.productVatExempt ? "text-muted-foreground" : "text-foreground"}`}>
-                        <input type="checkbox" checked={item.applyCustomerDiscount} disabled={line.productVatExempt} onChange={e => setCart(prev => prev.map(entry => entry === item ? { ...entry, applyCustomerDiscount: e.target.checked } : entry))} />
-                        Apply 20% ID discount
-                        {line.productVatExempt && <span>(product already VAT-exempt)</span>}
-                      </label>
-                      {item.applyCustomerDiscount && !line.productVatExempt && (
-                        <div className="space-y-0.5 text-[10px] text-orange-700 dark:text-orange-300">
+                      {applyDiscount && (
+                        <div className="space-y-0.5 text-[10px] text-orange-700 dark:text-orange-300 border-t border-border/60 pt-1.5">
                           <p>VAT removed: −{fmt(line.vatRemoved)}</p>
-                          <p>ID discount (20%): −{fmt(line.discountAmount)}</p>
+                          <p>SC/PWD discount (20%): −{fmt(line.discountAmount)}</p>
                         </div>
                       )}
                       <div className="flex justify-between border-t border-border pt-1.5 text-[11px]">
@@ -1183,41 +1203,42 @@ export function NewSaleModal({
           </div>
 
           <div className="space-y-4">
-            {customerVatExempt && (
-              <div className='border border-border rounded-xl px-4 py-3 space-y-3 bg-muted/20'>
+            {/* SC/PWD Discount Panel — always visible */}
+            <div className="border border-border rounded-xl px-4 py-3 space-y-3 bg-muted/20">
+              <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-xs font-semibold text-foreground">Customer ID for line discounts</p>
-                  <p className="mt-0.5 text-[10px] text-muted-foreground">20% discount applies only to checked cart lines. VAT is removed on those lines.</p>
+                  <p className="text-xs font-semibold text-foreground">SC / PWD Discount</p>
+                  <p className="mt-0.5 text-[10px] text-muted-foreground">Removes VAT + 20% off for all products in this sale.</p>
                 </div>
-                <div className="grid grid-cols-1 gap-3">
-                    <div>
-                      <label className="block text-[10px] text-muted-foreground mb-1">ID Type</label>
-                      <select
-                        value={customerExemptionType}
-                        onChange={e => setCustomerExemptionType(e.target.value as CustomerExemptionType)}
-                        className='w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all'
-                      >
-                        {CUSTOMER_EXEMPTION_TYPES.map(type => <option key={type} value={type}>{type}</option>)}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-[10px] text-muted-foreground mb-1">ID Number</label>
-                      <input
-                        type="text"
-                        value={customerIdNumber}
-                        onChange={e => setCustomerIdNumber(e.target.value)}
-                        placeholder="Enter ID number"
-                        className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all"
-                      />
-                    </div>
-                </div>
-                {customerExemptionMissing && (
-                    <p className="text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1">
-                    <_AlertTriangle size={11} /> Customer ID number is required for the selected discount.
-                  </p>
-                )}
+                <button type="button" onClick={() => { setApplyDiscount(v => !v); if (applyDiscount) setCustomerIdNumber(""); }}
+                  className={`relative rounded-full transition-colors duration-200 flex-shrink-0 ${applyDiscount ? "bg-primary" : "bg-muted"}`}
+                  style={{ width: 40, height: 22 }}>
+                  <span className={`absolute top-0.5 left-0.5 w-[18px] h-[18px] rounded-full bg-white shadow transition-transform duration-200 ${applyDiscount ? "translate-x-[18px]" : "translate-x-0"}`} />
+                </button>
               </div>
-            )}
+              {applyDiscount && (
+                <div className="space-y-2">
+                  <div>
+                    <label className="block text-[10px] text-muted-foreground mb-1">ID Type</label>
+                    <select value={customerExemptionType} onChange={e => setCustomerExemptionType(e.target.value as CustomerExemptionType)}
+                      className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all">
+                      {CUSTOMER_EXEMPTION_TYPES.map(type => <option key={type} value={type}>{type}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] text-muted-foreground mb-1">ID Number <span className="text-red-500">*</span></label>
+                    <input type="text" value={customerIdNumber} onChange={e => setCustomerIdNumber(e.target.value)}
+                      placeholder="Enter ID number"
+                      className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all" />
+                  </div>
+                  {customerExemptionMissing && (
+                    <p className="text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1">
+                      <_AlertTriangle size={11} /> ID number is required to apply the discount.
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
 
             {selectedProduct && (
               <button type="button" onClick={addCurrentToCart} className="w-full py-2.5 bg-amber-500 text-white rounded-xl text-sm font-bold hover:opacity-90 transition-opacity disabled:opacity-50" disabled={qtyNum <= 0 || !!expiryBlock}>
@@ -1228,7 +1249,7 @@ export function NewSaleModal({
             {shelfTotal > 0 && taxBreakdown && (
               <div className="bg-sky-50 dark:bg-sky-500/10 border border-sky-200 dark:border-sky-500/20 rounded-xl px-4 py-3 space-y-1.5">
                 <p className="text-[10px] font-bold text-sky-700 dark:text-sky-400 uppercase tracking-wide">
-                  Price Breakdown — {taxBreakdown.isExempt ? "VAT-Exempt" : `${VAT_RATE_LABEL} VAT Inclusive`}
+                  Price Breakdown — {applyDiscount ? "SC/PWD Discount Applied" : `${VAT_RATE_LABEL} VAT Inclusive`}
                 </p>
                 <div className="space-y-1 text-xs">
                   <div className="flex justify-between">
@@ -1240,10 +1261,8 @@ export function NewSaleModal({
                     <span className="tabular-nums text-foreground">{fmt(taxBreakdown.preTax)}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className={taxBreakdown.isExempt ? "text-muted-foreground/60" : "text-muted-foreground"}>
-                      VAT ({taxBreakdown.isExempt ? "Exempt" : VAT_RATE_LABEL})
-                    </span>
-                    <span className={`tabular-nums font-semibold ${taxBreakdown.isExempt ? "text-muted-foreground/60" : "text-sky-600 dark:text-sky-400"}`}>
+                    <span className="text-muted-foreground">VAT ({applyDiscount ? "Exempt" : VAT_RATE_LABEL})</span>
+                    <span className={`tabular-nums font-semibold ${applyDiscount ? "text-muted-foreground/60" : "text-sky-600 dark:text-sky-400"}`}>
                       {fmt(taxBreakdown.tax)}
                     </span>
                   </div>
@@ -1957,17 +1976,17 @@ export function InvoiceModal({ tx, settings, inventory, onClose }: {
     return { discountAmount, vatRemoved, listedTotal };
   };
   const vatableSales = lineBreakdowns.reduce((sum, line) => sum + (line.isExempt ? 0 : line.preTax), 0);
-  const exemptSales = lineBreakdowns.reduce((sum, line) => sum + (line.isExempt ? line.preTax : 0), 0);
+  const discountedSales = lineBreakdowns.reduce((sum, line) => sum + (line.isExempt ? line.preTax : 0), 0);
   const taxAmt = lineBreakdowns.reduce((sum, line) => sum + line.tax, 0);
-  const vatLabel = taxAmt > 0 ? "VAT (12%)" : "VAT-Exempt";
-  const customerExemptionText =
+  const vatLabel = taxAmt > 0 ? "VAT (12%)" : "VAT (0.00)";
+  // SC/PWD discount text shown on receipt
+  const customerDiscountText =
     tx.type === "sale" && tx.customerVatExempt
-      ? `${tx.customerExemptionType ?? "Qualified ID"} ID ${tx.customerIdNumber ?? ""}`.trim()
-      : tx.type === "sale" && tx.note?.startsWith("Customer VAT exemption: ")
-        ? tx.note.replace("Customer VAT exemption: ", "")
-        : tx.type === "sale" && tx.note?.startsWith("Customer discount: ")
-          ? tx.note.replace("Customer discount: ", "")
+      ? `${tx.customerExemptionType ?? "Qualified ID"} · ID No. ${tx.customerIdNumber ?? ""}`.trim()
+      : tx.type === "sale" && (tx.note?.startsWith("Customer VAT exemption: ") || tx.note?.startsWith("Customer discount: "))
+        ? tx.note.replace("Customer VAT exemption: ", "").replace("Customer discount: ", "")
         : "";
+  const customerExemptionText = customerDiscountText; // keep alias for receipt HTML template
   const escapeReceiptHtml = (value: string) =>
     value.replace(/[&<>"']/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch] ?? ch));
   const businessName = settings?.businessName.trim() ?? "";
@@ -1975,8 +1994,8 @@ export function InvoiceModal({ tx, settings, inventory, onClose }: {
   const businessPhone = settings?.businessPhone.trim() ?? "";
   const businessTin = settings?.businessTin.trim() ?? "";
   const receiptNumber = settings?.orPrefix ? `${settings.orPrefix}${tx.id}` : tx.id;
-  const customerExemptionHtml = customerExemptionText
-    ? `<div class="bold">Customer ID:</div><div style="word-break:break-word">${escapeReceiptHtml(customerExemptionText)}</div><div class="dashes"></div>`
+  const customerExemptionHtml = customerDiscountText
+    ? `<div class="bold">SC/PWD Discount:</div><div style="word-break:break-word">${escapeReceiptHtml(customerDiscountText)}</div><div class="dashes"></div>`
     : "";
 
   const handlePrint = () => {
@@ -2020,7 +2039,7 @@ export function InvoiceModal({ tx, settings, inventory, onClose }: {
       }).join("")}
       <div class="dashes"></div>
       <div class="row"><span>Vatable Sales</span><span>${P}${vatableSales.toFixed(2)}</span></div>
-      <div class="row"><span>VAT-Exempt Sales</span><span>${P}${exemptSales.toFixed(2)}</span></div>
+      <div class="row"><span>SC/PWD Discounted</span><span>${P}${discountedSales.toFixed(2)}</span></div>
       <div class="row"><span>Zero-Rated Sales</span><span>${P}0.00</span></div>
       <div class="row"><span>${vatLabel}</span><span>${P}${taxAmt.toFixed(2)}</span></div>
       <div class="dashes"></div>
@@ -2090,10 +2109,10 @@ export function InvoiceModal({ tx, settings, inventory, onClose }: {
             <div style={{ borderTop: "1px dashed #000", margin: "6px 0" }} />
             {/* BIR-required VAT breakdown lines */}
             {[
-              ["Vatable Sales",    vatableSales.toFixed(2)],
-              ["VAT-Exempt Sales", exemptSales.toFixed(2)],
-              ["Zero-Rated Sales", "0.00"],
-              [vatLabel,           taxAmt.toFixed(2)],
+              ["Vatable Sales",      vatableSales.toFixed(2)],
+              ["SC/PWD Discounted",  discountedSales.toFixed(2)],
+              ["Zero-Rated Sales",   "0.00"],
+              [vatLabel,             taxAmt.toFixed(2)],
             ].map(([k, v]) => (
               <div key={k} style={{ display: "flex", justifyContent: "space-between", marginBottom: 2, fontSize: 11 }}>
                 <span>{k}</span><span>{P}{v}</span>
@@ -2175,8 +2194,10 @@ export function ProductSearchWidget({
   };
 
   const handleQueryKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
-    if (event.key !== "Enter" || mode !== "barcode") return;
+    if (event.key !== "Enter") return;
     event.preventDefault();
+    event.stopPropagation(); // never let Enter from the barcode input reach the form
+    if (mode !== "barcode") return;
     const match = inventory.find(product => product.barcode === query.trim());
     if (match) selectProduct(match);
   };

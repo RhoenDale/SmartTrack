@@ -249,6 +249,9 @@ export type ReturnRequest = {
   createdAt: string;
   disposition: 'pending' | 'restocked' | 'broken';
   processedAt: string | null;
+  saleUnit: 'unit' | 'pack';
+  unitsPerSale: number;
+  returnType: 'return' | 'adjustment';
 };
 
 export const returnRequestsApi = {
@@ -257,6 +260,8 @@ export const returnRequestsApi = {
     post<{ transaction: import('./data').Transaction; disposition: 'pending' }>('/return-requests', data),
   setDisposition: (returnTxId: string, disposition: 'restocked' | 'broken') =>
     put<{ message: string; product: import('./data').Product }>(`/return-requests/${returnTxId}`, { disposition }),
+  reportBroken: (data: { product_id: string; qty: number; reason: string }) =>
+    post<{ message: string; product: import('./data').Product }>('/return-requests/broken', data),
 };
 
 // ─── Users ────────────────────────────────────────────────────────────────────

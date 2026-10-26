@@ -63,7 +63,6 @@ CREATE TABLE IF NOT EXISTS `products` (
   `unit_label`   VARCHAR(30)    NOT NULL DEFAULT 'unit',
   `units_per_pack` INT          NOT NULL DEFAULT 1,
   `pack_price`   DECIMAL(10,2)  NULL DEFAULT NULL,
-  `is_vat_exempt` TINYINT(1)   NOT NULL DEFAULT 0      COMMENT '1=VAT-exempt, 0=standard 12% VAT',
   `status`       ENUM('good','moderate','low','critical','out_of_stock') NOT NULL DEFAULT 'good',
   `created_at`   DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at`   DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -232,22 +231,22 @@ INSERT INTO `tax_settings` (`setting_key`, `value`, `description`) VALUES
   ('business_address', 'Tangub City, Misamis Occidental', 'Business address on receipts'),
   ('or_prefix',        'OR-',                             'Official Receipt prefix');
 
--- Products  (is_vat_exempt: Analgesics, Antidiabetics, Antihypertensives = 1 per BIR guidelines)
+-- Products (all products are standard 12% VAT; SC/PWD exemption is applied at sale time)
 INSERT INTO `products`
   (`id`,`name`,`supplier`,`reorder`,`price`,`sale_price`,
-   `unit_label`,`units_per_pack`,`pack_price`,`is_vat_exempt`,`status`) VALUES
-(1,'Amoxicillin 500mg',  'Apex Pharma',          50,  8.50, 6.00, 'capsule', 1, NULL,   0,'good'),
-(2,'Paracetamol 500mg',  'Medline Distributors', 200, 2.50, NULL, 'tablet',  1, NULL,   1,'good'),
-(3,'Metformin 500mg',    'PharmaSource',         100, 4.20, NULL, 'tablet',  1, NULL,   1,'low'),
-(4,'Amlodipine 5mg',     'Apex Pharma',           80, 6.75, NULL, 'tablet',  1, NULL,   1,'good'),
-(5,'Cetirizine 10mg',    'Healthline Supplies',   60, 5.00, NULL, 'tablet',  1, NULL,   0,'low'),
-(6,'Omeprazole 20mg',    'GlobeMed Traders',      100, 9.80, NULL, 'capsule', 1, NULL,   0,'good'),
-(7,'Losartan 50mg',      'MetroPharm',             80,11.20, NULL, 'tablet',  1, NULL,   1,'moderate'),
-(8,'Ibuprofen 400mg',   'PharmaSource',          150, 7.30, NULL, 'tablet',  1, NULL,   0,'good'),
-(9,'Salbutamol Inhaler', 'Medline Distributors',   30,210.00,NULL, 'inhaler', 1, NULL,   0,'critical'),
-(10,'Vitamin C 500mg',    'Healthline Supplies',    5,  6.50, 6.00, 'tablet', 20, 110.00, 0,'good'),
-(11,'Oral Rehydration Salts','Medline Distributors',5, 12.00, NULL, 'sachet', 10, 110.00, 0,'good'),
-(12,'Loperamide 2mg',    'PharmaSource',            6,  4.50, NULL, 'tablet', 10,  40.00, 0,'good');
+   `unit_label`,`units_per_pack`,`pack_price`,`status`) VALUES
+(1,'Amoxicillin 500mg',  'Apex Pharma',          50,  8.50, 6.00, 'capsule', 1, NULL,   'good'),
+(2,'Paracetamol 500mg',  'Medline Distributors', 200, 2.50, NULL, 'tablet',  1, NULL,   'good'),
+(3,'Metformin 500mg',    'PharmaSource',         100, 4.20, NULL, 'tablet',  1, NULL,   'low'),
+(4,'Amlodipine 5mg',     'Apex Pharma',           80, 6.75, NULL, 'tablet',  1, NULL,   'good'),
+(5,'Cetirizine 10mg',    'Healthline Supplies',   60, 5.00, NULL, 'tablet',  1, NULL,   'low'),
+(6,'Omeprazole 20mg',    'GlobeMed Traders',      100, 9.80, NULL, 'capsule', 1, NULL,   'good'),
+(7,'Losartan 50mg',      'MetroPharm',             80,11.20, NULL, 'tablet',  1, NULL,   'moderate'),
+(8,'Ibuprofen 400mg',   'PharmaSource',          150, 7.30, NULL, 'tablet',  1, NULL,   'good'),
+(9,'Salbutamol Inhaler', 'Medline Distributors',   30,210.00,NULL, 'inhaler', 1, NULL,   'critical'),
+(10,'Vitamin C 500mg',    'Healthline Supplies',    5,  6.50, 6.00, 'tablet', 20, 110.00, 'good'),
+(11,'Oral Rehydration Salts','Medline Distributors',5, 12.00, NULL, 'sachet', 10, 110.00, 'good'),
+(12,'Loperamide 2mg',    'PharmaSource',            6,  4.50, NULL, 'tablet', 10,  40.00, 'good');
 
 INSERT IGNORE INTO `product_category_map` (`product_id`, `category_id`)
 SELECT product_id, id FROM (
@@ -283,27 +282,22 @@ INSERT IGNORE INTO `product_batches`
 ('SEED-EXTRA-P011',11,120,'2029-09-30','2026-09-28', 720.00, 6.0000),
 ('SEED-EXTRA-P012',12,100,'2030-04-30','2026-09-28', 300.00, 3.0000);
 
--- Transactions (with VAT tax breakdown)
--- VAT-exempt products (P002 Paracetamol, P003 Metformin, P004 Amlodipine, P007 Losartan):
---   pre_tax_amount = amount, tax_amount = 0, tax_rate = 0
--- VAT-inclusive products (P001 Amoxicillin, P006 Omeprazole, P010 Vitamin C etc.):
---   pre_tax_amount = amount / 1.12, tax_amount = amount - pre_tax_amount, tax_rate = 0.12
+-- Transactions (all with standard 12% VAT; SC/PWD discount applied at sale time when applicable)
 INSERT INTO `transactions`
   (`id`,`type`,`product_name`,`product_id`,`qty`,`amount`,`pre_tax_amount`,`tax_amount`,`tax_rate`,`staff`,`status`,`transacted_at`) VALUES
--- VAT-inclusive sales (Antibiotic, Antacid, Supplement, NSAID, Bronchodilator)
+-- Sales (all VAT-inclusive at 12%)
 ('TXN-1201','sale','Amoxicillin 500mg', 1,10,  85.00, 75.89,  9.11,0.1200,'M. Santos',   'completed','2025-06-25 09:14:00'),
+('TXN-1202','sale','Paracetamol 500mg', 2,20,  50.00, 44.64,  5.36,0.1200,'J. Dela Cruz','completed','2025-06-25 09:32:00'),
 ('TXN-1203','sale','Omeprazole 20mg',   6,14, 137.20,122.50, 14.70,0.1200,'M. Santos',   'completed','2025-06-25 10:45:00'),
 ('TXN-1204','sale','Vitamin C 500mg',  10,30,  96.00, 85.71, 10.29,0.1200,'A. Reyes',    'completed','2025-06-25 11:12:00'),
-('TXN-9743','sale','Paracetamol 500mg', 2, 1,   2.50,  2.50,  0.00,0.0000,'R. Dela Cruz','completed','2026-08-17 20:20:00'),
-('TXN-F843','sale','Metformin 500mg',   3, 1,   4.20,  4.20,  0.00,0.0000,'R. Dela Cruz','completed','2026-08-17 20:26:00'),
+('TXN-1205','sale','Amlodipine 5mg',    4,28, 189.00,168.75, 20.25,0.1200,'J. Dela Cruz','completed','2025-06-25 12:05:00'),
+('TXN-1206','sale','Losartan 50mg',     7,30, 336.00,300.00, 36.00,0.1200,'M. Santos',   'completed','2025-06-25 13:20:00'),
+('TXN-9743','sale','Paracetamol 500mg', 2, 1,   2.50,  2.23,  0.27,0.1200,'R. Dela Cruz','completed','2026-08-17 20:20:00'),
+('TXN-F843','sale','Metformin 500mg',   3, 1,   4.20,  3.75,  0.45,0.1200,'R. Dela Cruz','completed','2026-08-17 20:26:00'),
 ('TXN-4D06','sale','Amoxicillin 500mg', 1, 5,  30.00, 26.79,  3.21,0.1200,'R. Dela Cruz','completed','2026-08-17 20:42:00'),
--- VAT-exempt sales (Antidiabetic, Antihypertensive, Analgesic)
-('TXN-1202','sale','Paracetamol 500mg', 2,20,  50.00, 50.00,  0.00,0.0000,'J. Dela Cruz','completed','2025-06-25 09:32:00'),
-('TXN-1205','sale','Amlodipine 5mg',    4,28, 189.00,189.00,  0.00,0.0000,'J. Dela Cruz','completed','2025-06-25 12:05:00'),
-('TXN-1206','sale','Losartan 50mg',     7,30, 336.00,336.00,  0.00,0.0000,'M. Santos',   'completed','2025-06-25 13:20:00'),
 -- Returns
 ('RET-24F7','return','Salbutamol Inhaler',9,2, 420.00,375.00, 45.00,0.1200,'S. Guko',     'completed','2026-08-18 12:27:00'),
-('RET-7847','return','Amlodipine 5mg',   4,1,   6.75,  6.75,  0.00,0.0000,'S. Guko',     'completed','2026-08-17 21:18:00');
+('RET-7847','return','Amlodipine 5mg',   4,1,   6.75,  6.03,  0.72,0.1200,'S. Guko',     'completed','2026-08-17 21:18:00');
 
 -- Transaction batch audit (FIFO consumed for each sale)
 INSERT INTO `transaction_batches` (`transaction_id`,`batch_id`,`expiry_date`,`qty`) VALUES

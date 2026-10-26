@@ -49,6 +49,10 @@ let shareUrl    = null;
 let shareState  = 'stopped';
 let shareStartPromise = null;
 
+// Track which services/processes SmartTrack started so we only stop those.
+const startedServices = new Set();   // Windows service names we net-started
+const startedProcesses = [];         // child processes (httpd.exe / mysqld.exe) we spawned
+
 // ─── XAMPP auto-start ─────────────────────────────────────────────────────────
 const XAMPP_DIR = 'C:\\xampp';
 
@@ -70,23 +74,6 @@ async function isServiceRunning(serviceName) {
   return stdout.includes('RUNNING');
 }
 
-/**
- * Start a Windows service via `net start` if it isn't already running.
- * Returns true on success / already-running, false on failure.
- */
-async function ensureService(serviceName) {
-  if (await isServiceRunning(serviceName)) {
-    log(`Service already running: ${serviceName}`);
-    return true;
-  }
-  log(`Starting service: ${serviceName}`);
-  const { code, stderr } = await runCmd(`net start "${serviceName}"`);
-  if (code !== 0) {
-    log(`net start "${serviceName}" failed (code ${code})`, stderr.trim());
-    return false;
-  }
-  return true;
-}
 
 /**
  * Probe the local API once. Returns true when it responds with db connected.
@@ -177,35 +164,142 @@ function showStartingSplash() {
 }
 
 /**
- * Main entry point for XAMPP auto-start.
- * Tries Windows services first, then falls back to xampp_start.exe.
+ * Start Apache independently. Tries the Windows service first,
+ * then falls back to launching httpd.exe directly.
+ */
+async function ensureApacheRunning() {
+  // Try the Windows service (XAMPP installer registers "Apache2.4")
+  for (const svcName of ['Apache2.4', 'Apache2', 'Apache']) {
+    if (await isServiceRunning(svcName)) {
+      log(`Apache service already running (${svcName})`);
+      return true;
+    }
+    const { code } = await runCmd(`net start "${svcName}"`);
+    if (code === 0) {
+      log(`Apache service started (${svcName})`);
+      startedServices.add(svcName);
+      return true;
+    }
+  }
+
+  // Fallback: launch httpd.exe directly (portable XAMPP)
+  const httpdPath = path.join(XAMPP_DIR, 'apache', 'bin', 'httpd.exe');
+  if (fs.existsSync(httpdPath)) {
+    log('Launching httpd.exe directly');
+    const child = spawn(httpdPath, [], { detached: true, windowsHide: true, stdio: 'ignore' });
+    child.unref();
+    startedProcesses.push({ name: 'httpd', process: child, exe: httpdPath });
+    return true;
+  }
+
+  log('Could not start Apache — no service or httpd.exe found.');
+  return false;
+}
+
+/**
+ * Start MySQL independently. Tries the Windows service first,
+ * then falls back to launching mysqld.exe directly.
+ */
+async function ensureMysqlRunning() {
+  // Try the Windows service (XAMPP installer registers "mysql")
+  for (const svcName of ['mysql', 'MySQL', 'MySQL80', 'MySQL57']) {
+    if (await isServiceRunning(svcName)) {
+      log(`MySQL service already running (${svcName})`);
+      return true;
+    }
+    const { code } = await runCmd(`net start "${svcName}"`);
+    if (code === 0) {
+      log(`MySQL service started (${svcName})`);
+      startedServices.add(svcName);
+      return true;
+    }
+  }
+
+  // Fallback: launch mysqld.exe directly (portable XAMPP)
+  const mysqldPath = path.join(XAMPP_DIR, 'mysql', 'bin', 'mysqld.exe');
+  if (fs.existsSync(mysqldPath)) {
+    log('Launching mysqld.exe directly');
+    const child = spawn(mysqldPath, ['--defaults-file=' + path.join(XAMPP_DIR, 'mysql', 'bin', 'my.ini')],
+      { detached: true, windowsHide: true, stdio: 'ignore' });
+    child.unref();
+    startedProcesses.push({ name: 'mysqld', process: child, exe: mysqldPath });
+    return true;
+  }
+
+  log('Could not start MySQL — no service or mysqld.exe found.');
+  return false;
+}
+
+/**
+ * Stop all Apache and MySQL services/processes that SmartTrack started.
+ * Uses `net stop` for Windows services and kills spawned processes.
+ * Runs synchronously-ish via execSync so it completes before the process exits.
+ */
+function stopXamppServices() {
+  if (startedServices.size === 0 && startedProcesses.length === 0) {
+    log('No XAMPP services were started by SmartTrack — nothing to stop.');
+    return;
+  }
+
+  log('Stopping XAMPP services started by SmartTrack…');
+
+  // Stop Windows services (synchronous so they finish before app exits)
+  for (const svcName of startedServices) {
+    try {
+      require('node:child_process').execSync(`net stop "${svcName}"`, { windowsHide: true, timeout: 15000 });
+      log(`Service stopped: ${svcName}`);
+    } catch (err) {
+      log(`Failed to stop service "${svcName}"`, err.message);
+    }
+  }
+  startedServices.clear();
+
+  // Kill any directly-spawned processes (portable XAMPP fallback)
+  for (const entry of startedProcesses) {
+    try {
+      // For mysqld use mysqladmin shutdown for a clean stop
+      if (entry.name === 'mysqld') {
+        const mysqladmin = path.join(XAMPP_DIR, 'mysql', 'bin', 'mysqladmin.exe');
+        if (fs.existsSync(mysqladmin)) {
+          require('node:child_process').execSync(
+            `"${mysqladmin}" -u root shutdown`,
+            { windowsHide: true, timeout: 10000 }
+          );
+          log('MySQL shut down via mysqladmin');
+        } else {
+          entry.process.kill();
+          log('mysqld process killed');
+        }
+      } else {
+        entry.process.kill();
+        log(`${entry.name} process killed`);
+      }
+    } catch (err) {
+      log(`Failed to stop ${entry.name}`, err.message);
+    }
+  }
+  startedProcesses.length = 0;
+}
+
+/**
+ * Starts Apache and MySQL independently so one already-running service
+ * does not block the other from starting.
  * Returns true if the API is ready, false otherwise.
  */
 async function ensureXamppRunning() {
-  // Quick check — if already running, do nothing.
+  // Quick check — if already fully running, skip everything.
   if (await probeApi()) {
     log('XAMPP API already reachable — skipping auto-start.');
     return true;
   }
 
-  log('API not reachable — attempting to start XAMPP services…');
+  log('API not reachable — attempting to start Apache and MySQL independently…');
   const splash = showStartingSplash();
 
   try {
-    // Try Windows service names used by XAMPP installer
-    const apacheStarted = await ensureService('Apache2.4');
-    const mysqlStarted  = await ensureService('mysql');
-
-    if (!apacheStarted || !mysqlStarted) {
-      // Fallback: try xampp_start.exe (portable XAMPP)
-      const xamppStart = path.join(XAMPP_DIR, 'xampp_start.exe');
-      if (fs.existsSync(xamppStart)) {
-        log('Falling back to xampp_start.exe');
-        spawn(xamppStart, [], { detached: true, windowsHide: true, stdio: 'ignore' }).unref();
-      } else {
-        log('xampp_start.exe not found — services may not start.');
-      }
-    }
+    // Start both services independently (parallel) so MySQL already running
+    // does not prevent Apache from being started, and vice-versa.
+    await Promise.all([ensureApacheRunning(), ensureMysqlRunning()]);
 
     log('Waiting for API to become ready…');
     const ready = await waitForApi(35000, 1500);
@@ -215,7 +309,7 @@ async function ensureXamppRunning() {
       log('XAMPP API did not become ready in time.');
       dialog.showMessageBoxSync({
         type:    'warning',
-        title:   'SmartTrack — XAMPP Not Ready',
+        title:   'SmartTrack — Services Not Ready',
         message: 'Could not start Apache or MySQL automatically.',
         detail:  'Please open XAMPP Control Panel and start Apache and MySQL manually, then relaunch SmartTrack.',
         buttons: ['OK'],
@@ -928,6 +1022,7 @@ app.on('window-all-closed', () => {
 app.on('before-quit', () => {
   isQuitting = true;
   stopShareTunnel();
+  if (!IS_DEV) stopXamppServices();
 });
 
 // ─── Global error handling ────────────────────────────────────────────────────

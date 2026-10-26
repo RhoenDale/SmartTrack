@@ -99,7 +99,7 @@ function LoginPage({ onLogin, businessSettings }: {
       if (msg.includes("account_inactive")) {
         setShowInactive(true);
       } else if (msg.includes("Failed to fetch") || msg.includes("NetworkError")) {
-        setError("Cannot connect to server. Is XAMPP running? (http://localhost/SmartTrack/api)");
+        setError("Cannot connect to server. Please ensure the app services are running.");
       } else if (msg.includes("401") || msg.includes("Invalid email or password")) {
         setError("Invalid email or password.");
       } else {
@@ -187,7 +187,7 @@ function LoginPage({ onLogin, businessSettings }: {
           </form>
 
           <p className="text-center text-[11px] text-muted-foreground mt-6">
-            SmartTrack v2.10.19{businessSettings?.businessAddress ? ` · ${businessSettings.businessAddress}` : ""}
+            SmartTrack v3.10.26.26{businessSettings?.businessAddress ? ` · ${businessSettings.businessAddress}` : ""}
           </p>
         </div>
       </div>

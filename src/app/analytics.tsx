@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Package, TrendingUp, AlertTriangle } from "lucide-react";
+import { Package, TrendingUp, RotateCcw } from "lucide-react";
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from "recharts";
 import {
   PIE_COLORS, getReorderUnits,
@@ -7,7 +7,7 @@ import {
   type Product, type Transaction,
 } from "./data";
 import { fmt, SvgAreaChart, StockBadge } from "./shared";
-import { analyticsApi } from "./api";
+import { analyticsApi, returnRequestsApi, type ReturnRequest } from "./api";
 
 export default function AnalyticsPage({
   inventory,
@@ -121,8 +121,22 @@ export default function AnalyticsPage({
     }));
   }, [transactions, inventory]);
 
-  const adjustments = transactions.filter(t => t.type === "adjustment");
-  const totalDamaged = adjustments.reduce((s, t) => s + (t.damagedQty ?? t.qty), 0);
+  const [returnRequests, setReturnRequests] = useState<ReturnRequest[]>([]);
+  const [returnRequestsLoading, setReturnRequestsLoading] = useState(true);
+
+  useEffect(() => {
+    let active = true;
+    setReturnRequestsLoading(true);
+    returnRequestsApi.list()
+      .then(data => { if (active) setReturnRequests(data); })
+      .catch(error => console.error("Return requests load failed:", error))
+      .finally(() => { if (active) setReturnRequestsLoading(false); });
+    return () => { active = false; };
+  }, [transactions]);
+
+  const restockedCount = returnRequests.filter(r => r.disposition === "restocked").length;
+  const brokenCount    = returnRequests.filter(r => r.disposition === "broken").length;
+  const pendingCount   = returnRequests.filter(r => r.disposition === "pending").length;
 
   return (
     <div className="p-4 sm:p-6 space-y-5 max-w-[1400px]">
@@ -151,12 +165,11 @@ export default function AnalyticsPage({
         </select>
       </div>
 
-      <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 xl:grid-cols-3 gap-4">
         {[
           { label: "SMA Forecast (3-month)", value: `${Math.round(forecastSMA3).toLocaleString()} units`, sub: "Short-term demand forecast", color: "text-sky-600 dark:text-sky-400" },
           { label: "SMA Forecast (6-month)", value: `${Math.round(forecastSMA6).toLocaleString()} units`, sub: "Medium-term demand trend", color: "text-emerald-600 dark:text-emerald-400" },
           { label: "EOQ Recommendation", value: `${eoqOverall.toLocaleString()} units`, sub: "Optimal replenishment quantity", color: "text-amber-600 dark:text-amber-400" },
-          { label: "Damaged / Adjusted", value: `${totalDamaged} units`, sub: `${adjustments.length} adjustment record${adjustments.length !== 1 ? "s" : ""}`, color: "text-red-600 dark:text-red-400" },
         ].map(m => (
           <div key={m.label} className="bg-card border border-border rounded-xl p-4 shadow-sm">
             <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">{m.label}</p>
@@ -164,6 +177,24 @@ export default function AnalyticsPage({
             <p className={`text-xs mt-1 font-medium ${m.color}`}>{m.sub}</p>
           </div>
         ))}
+      </div>
+
+      <div className="grid grid-cols-3 gap-4">
+        <div className="bg-card border border-border rounded-xl p-4 shadow-sm">
+          <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Returns · Pending</p>
+          <p className="text-xl font-bold text-foreground mt-2 tabular-nums tracking-tight">{pendingCount} return{pendingCount !== 1 ? "s" : ""}</p>
+          <p className="text-xs mt-1 font-medium text-amber-600 dark:text-amber-400">Awaiting disposition</p>
+        </div>
+        <div className="bg-card border border-border rounded-xl p-4 shadow-sm">
+          <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Returns · Restocked</p>
+          <p className="text-xl font-bold text-foreground mt-2 tabular-nums tracking-tight">{restockedCount} return{restockedCount !== 1 ? "s" : ""}</p>
+          <p className="text-xs mt-1 font-medium text-emerald-600 dark:text-emerald-400">Added back to inventory</p>
+        </div>
+        <div className="bg-card border border-border rounded-xl p-4 shadow-sm">
+          <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Returns · Broken</p>
+          <p className="text-xl font-bold text-foreground mt-2 tabular-nums tracking-tight">{brokenCount} return{brokenCount !== 1 ? "s" : ""}</p>
+          <p className="text-xs mt-1 font-medium text-red-600 dark:text-red-400">Marked out of stock</p>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 items-start">
@@ -316,33 +347,44 @@ export default function AnalyticsPage({
         </div>
       </div>
 
-      {adjustments.length > 0 && (
+      {returnRequests.length > 0 && (
         <div className="bg-card border border-border rounded-xl overflow-hidden shadow-sm">
           <div className="px-5 py-4 border-b border-border flex items-center gap-2">
-            <AlertTriangle size={14} className="text-red-500" />
+            <RotateCcw size={14} className="text-orange-500" />
             <div>
-              <h3 className="text-sm font-bold text-foreground">Inventory Adjustments &amp; Damage Records</h3>
-              <p className="text-[11px] text-muted-foreground mt-0.5">Managed through the Inventory Adjustments and Return/Refund Tracking process</p>
+              <h3 className="text-sm font-bold text-foreground">Return Records</h3>
+              <p className="text-[11px] text-muted-foreground mt-0.5">All customer returns — restocked back to inventory or marked as broken</p>
             </div>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
                 <tr className="border-b border-border/60 bg-muted/20">
-                  {["Adj. ID", "Product", "Qty Deducted", "Staff", "Date", "Reason"].map(h => (
+                  {["Return ID", "Product", "Qty", "Cashier", "Date", "Reason", "Disposition"].map(h => (
                     <th key={h} className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide py-3 text-left px-4 first:px-5">{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {adjustments.map(tx => (
-                  <tr key={tx.id} className="border-b border-border/40 hover:bg-muted/20 transition-colors">
-                    <td className="px-5 py-3 text-[11px] text-muted-foreground">{tx.id}</td>
-                    <td className="px-4 py-3 text-xs font-bold text-foreground">{tx.product}</td>
-                    <td className="px-4 py-3 text-xs font-bold tabular-nums text-red-600 dark:text-red-400">{tx.qty}</td>
-                    <td className="px-4 py-3 text-xs text-muted-foreground">{tx.staff}</td>
-                    <td className="px-4 py-3 text-xs text-muted-foreground tabular-nums">{tx.date}</td>
-                    <td className="px-4 py-3 text-xs text-muted-foreground">{tx.adjustmentReason ?? tx.note ?? "—"}</td>
+                {returnRequests.map(r => (
+                  <tr key={r.returnTxId} className="border-b border-border/40 hover:bg-muted/20 transition-colors">
+                    <td className="px-5 py-3 text-[11px] text-muted-foreground font-mono">{r.returnTxId}</td>
+                    <td className="px-4 py-3 text-xs font-bold text-foreground">{r.product}</td>
+                    <td className="px-4 py-3 text-xs font-bold tabular-nums text-orange-600 dark:text-orange-400">{r.qty}</td>
+                    <td className="px-4 py-3 text-xs text-muted-foreground">{r.cashier}</td>
+                    <td className="px-4 py-3 text-xs text-muted-foreground tabular-nums">{r.createdAt}</td>
+                    <td className="px-4 py-3 text-xs text-muted-foreground">{r.reason}</td>
+                    <td className="px-4 py-3">
+                      {r.disposition === "restocked" && (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400">Restocked</span>
+                      )}
+                      {r.disposition === "broken" && (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400">Broken</span>
+                      )}
+                      {r.disposition === "pending" && (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400">Pending</span>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>

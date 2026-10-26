@@ -259,7 +259,6 @@ function enrich_product(array $product): array {
     $product['unit_label'] = $product['unit_label'] ?? 'unit';
     $product['units_per_pack'] = max(1, (int)($product['units_per_pack'] ?? 1));
     $product['pack_price'] = $product['pack_price'] !== null ? (float)$product['pack_price'] : null;
-    $product['is_vat_exempt'] = (int)($product['is_vat_exempt'] ?? 0);
     $product['reorder']    = (int)$product['reorder'];
 
     return $product;

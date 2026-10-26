@@ -41,8 +41,6 @@ export interface Product {
   unitLabel?:   string;
   unitsPerPack?: number;
   packPrice?:   number | null;
-  is_vat_exempt?: number | null; // 0 = standard VAT, 1 = VAT-exempt
-  isVatExempt?:   boolean;       // camelCase alias
   expiry:       string;      // earliest batch expiry "MM/DD/YYYY"
   status:       StockStatus;
   batches:      ProductBatch[];
@@ -229,7 +227,6 @@ export function normalizeProduct(p: Product): Product {
     unitLabel:    p.unitLabel ?? (p as any).unit_label ?? "unit",
     unitsPerPack: Number(p.unitsPerPack ?? (p as any).units_per_pack ?? 1),
     packPrice:    p.packPrice ?? (p as any).pack_price ?? null,
-    isVatExempt:  !!(p.is_vat_exempt ?? (p.isVatExempt ? 1 : 0)),
     batches: (p.batches ?? []).map(b => ({
       ...b,
       expiryDate:     b.expiryDate     ?? b.expiry ?? null,
@@ -318,7 +315,7 @@ export function computeTax(total: number, isVatExempt = false): TaxBreakdown {
 export function computeSaleTax(product: Product, qty: number): TaxBreakdown {
   const unitPrice = product.salePrice ?? product.price;
   const total     = round2(unitPrice * qty);
-  return computeTax(total, !!(product.isVatExempt ?? product.is_vat_exempt));
+  return computeTax(total, false); // VAT-exempt is sale-level (SC/PWD discount), not per-product
 }
 
 function round2(n: number): number {

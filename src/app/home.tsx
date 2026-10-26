@@ -211,7 +211,7 @@ export default function Home({ user, onLogout, onUserUpdated }: { user: AuthUser
   // Guard: redirect non-admin away from admin-only pages
   useEffect(() => {
     if (!isAdmin && (page === "users" || page === "financial")) setPage(defaultPage());
-    if (!isAdmin && !isInventoryManager && page === "returns") setPage(defaultPage());
+    if (!isAdmin && !isInventoryManager && !isCashier && page === "returns") setPage(defaultPage());
     if (isInventoryManager && page === "transactions") setPage("inventory");
   }, [isAdmin, isCashier, isInventoryManager, page]);
 
@@ -338,7 +338,6 @@ export default function Home({ user, onLogout, onUserUpdated }: { user: AuthUser
         unit_label:    updated.unitLabel ?? "unit",
         units_per_pack: updated.unitsPerPack ?? 1,
         pack_price:    updated.packPrice ?? null,
-        is_vat_exempt: updated.isVatExempt  ? 1 : (updated.is_vat_exempt ?? 0),
         batches: updated.batches.map(b => ({
           batchId: b.batchId, qty: b.qty,
           expiryDate: b.expiryDate ?? b.expiry ?? null,
@@ -613,6 +612,7 @@ export default function Home({ user, onLogout, onUserUpdated }: { user: AuthUser
     { id: "analytics",    icon: BarChart2,       label: "Analytics" },
     { id: "stock-alerts", icon: BellRing,        label: "Stock Alerts", badge: totalAlertBadge },
     { id: "reports",      icon: ClipboardList,   label: "Reports" },
+    { id: "returns",      icon: ClipboardCheck,  label: "Returns" },
   ];
   const navItems = isAdmin ? adminNav : isInventoryManager ? invNav : cashierNav;
 
@@ -678,6 +678,19 @@ export default function Home({ user, onLogout, onUserUpdated }: { user: AuthUser
               <span className="text-[11px] text-white/50">Collapse panel</span>
               <button onClick={() => setSidebar(false)} className="text-[10px] text-teal-300 font-semibold hover:underline">Hide</button>
             </div>
+            {/* Returns & Broken shortcut */}
+            {(isInventoryManager || isCashier) && (
+              <div className="border-t border-white/[0.08] pt-2">
+                <button
+                  type="button"
+                  onClick={() => { setPage("returns"); setShowSettings(false); }}
+                  className="w-full flex items-center gap-2 rounded-lg bg-orange-400/15 px-2.5 py-2 text-[11px] font-semibold text-orange-200 hover:bg-orange-400/25 transition-colors"
+                >
+                  <ClipboardCheck size={13} className="text-orange-300 shrink-0" />
+                  Returns &amp; Broken
+                </button>
+              </div>
+            )}
             {window.smarttrack?.isElectron && (
               <div className="border-t border-white/[0.08] pt-2 space-y-2">
                 <div className="flex items-center gap-2 text-white/75">
@@ -685,7 +698,7 @@ export default function Home({ user, onLogout, onUserUpdated }: { user: AuthUser
                   <span className="text-[11px] font-semibold">Share SmartTrack</span>
                 </div>
                 <p className="text-[10px] leading-relaxed text-white/45">
-                  Create a temporary public link. XAMPP must be running.
+                  Create a temporary public link to share SmartTrack over the internet.
                 </p>
                 {shareStatus.url && (
                   <div className="flex items-center gap-1.5">
@@ -915,8 +928,8 @@ export default function Home({ user, onLogout, onUserUpdated }: { user: AuthUser
             {page === "analytics"    && <AnalyticsPage inventory={inventory} transactions={transactions} />}
             {page === "stock-alerts" && <StockAlertsPage inventory={inventory} onGoToInventory={() => setPage("inventory")} onEditProduct={handleStockAlertEditProduct} userRole={user.role} />}
             {page === "reports"      && <ReportsPage inventory={inventory} transactions={transactions} user={user} />}
-            {page === "returns" && (isAdmin || isInventoryManager) && (
-              <ReturnsPage user={user} onDispositionComplete={handleReturnDispositionComplete} />
+            {page === "returns" && (isAdmin || isInventoryManager || isCashier) && (
+              <ReturnsPage user={user} inventory={inventory} onDispositionComplete={handleReturnDispositionComplete} />
             )}
             {page === "financial"    && isAdmin && <FinancialPage user={user} />}
             {page === "users"        && isAdmin && <UsersPage staff={staff} currentUserId={user.id} currentUserRole={user.role} onAddUser={() => setShowAddUser(true)} onEditUser={setEditingUser} onDeleteUser={handleDeleteUser} onToggleStatus={handleToggleStatus} onResetPassword={handleAdminResetPassword} onCreatePassword={handleAdminCreatePassword} />}

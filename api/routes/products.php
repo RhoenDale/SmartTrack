@@ -104,7 +104,7 @@ if ($id) {
         }
 
         $pdo->prepare(
-            'UPDATE products SET barcode=?, name=?, supplier=?, reorder=?, price=?, sale_price=?, unit_label=?, units_per_pack=?, pack_price=?, is_vat_exempt=?, updated_at=NOW()
+            'UPDATE products SET barcode=?, name=?, supplier=?, reorder=?, price=?, sale_price=?, unit_label=?, units_per_pack=?, pack_price=?, updated_at=NOW()
              WHERE id = ?'
         )->execute([
             $barcode !== '' ? $barcode : null,
@@ -114,7 +114,6 @@ if ($id) {
             trim((string)($data['unit_label'] ?? 'unit')) ?: 'unit',
             max(1, (int)($data['units_per_pack'] ?? 1)),
             isset($data['pack_price']) && $data['pack_price'] !== '' ? (float)$data['pack_price'] : null,
-            isset($data['is_vat_exempt']) ? (int)$data['is_vat_exempt'] : 0,
             $id,
         ]);
         sync_product_categories($pdo, $id, $categoryNames);
@@ -208,8 +207,8 @@ if ($method === 'POST') {
     }
 
     $pdo->prepare(
-        'INSERT INTO products (barcode, name, supplier, reorder, price, sale_price, unit_label, units_per_pack, pack_price, is_vat_exempt, status)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "good")'
+        'INSERT INTO products (barcode, name, supplier, reorder, price, sale_price, unit_label, units_per_pack, pack_price, status)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, "good")'
     )->execute([
         $barcode, $data['name'], $data['supplier'],
         (int)$data['reorder'], (float)$data['price'],
@@ -217,7 +216,6 @@ if ($method === 'POST') {
         trim((string)($data['unit_label'] ?? 'unit')) ?: 'unit',
         max(1, (int)($data['units_per_pack'] ?? 1)),
         isset($data['pack_price']) && $data['pack_price'] !== '' ? (float)$data['pack_price'] : null,
-        isset($data['is_vat_exempt']) ? (int)$data['is_vat_exempt'] : 0,
     ]);
     $productId = (string)$pdo->lastInsertId();
     sync_product_categories($pdo, $productId, $categoryNames);
