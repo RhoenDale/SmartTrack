@@ -155,7 +155,7 @@ export default function InventoryPage({
       </div>
 
       <div className="bg-card border border-border rounded-xl overflow-hidden shadow-sm">
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto" data-table-scroll="fixed">
           <table className="w-full">
             <thead className="sticky top-0 z-10 bg-card shadow-sm">
               <tr className="border-b border-border bg-muted/30">

@@ -623,11 +623,6 @@ export function ProductFormModal({
           <FieldInput label={`Pack/Box Price (${PESO})`} type="number" value={form.packPrice} onChange={set("packPrice")} placeholder="Optional" min={0} step={0.01} helperText="Optional whole-pack price" />
         </div>
 
-        {/* VAT info — all products are VAT-inclusive by default; exemption applied at sale time for SC/PWD */}
-        <div className="flex items-center gap-2 rounded-xl border border-border bg-muted/20 px-4 py-2.5 text-[11px] text-muted-foreground">
-          <span>All prices are VAT-inclusive (12%). SC/PWD exemption is applied during checkout, not per product.</span>
-        </div>
-
         {/* Live VAT breakdown — always standard 12% */}
         {parseFloat(form.price) > 0 && (() => {
           const activePrice = parseFloat(form.salePrice || form.price) || parseFloat(form.price) || 0;
@@ -1980,13 +1975,22 @@ export function InvoiceModal({ tx, settings, inventory, onClose }: {
   const taxAmt = lineBreakdowns.reduce((sum, line) => sum + line.tax, 0);
   const vatLabel = taxAmt > 0 ? "VAT (12%)" : "VAT (0.00)";
   // SC/PWD discount text shown on receipt
-  const customerDiscountText =
-    tx.type === "sale" && tx.customerVatExempt
-      ? `${tx.customerExemptionType ?? "Qualified ID"} · ID No. ${tx.customerIdNumber ?? ""}`.trim()
-      : tx.type === "sale" && (tx.note?.startsWith("Customer VAT exemption: ") || tx.note?.startsWith("Customer discount: "))
-        ? tx.note.replace("Customer VAT exemption: ", "").replace("Customer discount: ", "")
-        : "";
-  const customerExemptionText = customerDiscountText; // keep alias for receipt HTML template
+  // Build SC/PWD discount info — prefer dedicated DB columns, fall back to parsing the note
+  const exemptionType = tx.customerVatExempt
+    ? (tx.customerExemptionType ?? "Qualified ID")
+    : tx.type === "sale" && (tx.note?.startsWith("Customer VAT exemption: ") || tx.note?.startsWith("Customer discount: "))
+      ? tx.note.replace(/^Customer (?:VAT exemption|discount): /, "").replace(/ ID .+$/, "")
+      : "";
+  const exemptionIdNumber = tx.customerVatExempt
+    ? (tx.customerIdNumber ?? "")
+    : tx.type === "sale" && (tx.note?.startsWith("Customer VAT exemption: ") || tx.note?.startsWith("Customer discount: "))
+      ? tx.note.replace(/^Customer (?:VAT exemption|discount): .+ ID /, "")
+      : "";
+  const hasDiscount = !!(exemptionType || exemptionIdNumber);
+  const customerDiscountText = hasDiscount
+    ? `${exemptionType}${exemptionType && exemptionIdNumber ? " · ID No. " : ""}${exemptionIdNumber}`.trim()
+    : "";
+  const customerExemptionText = customerDiscountText;
   const escapeReceiptHtml = (value: string) =>
     value.replace(/[&<>"']/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch] ?? ch));
   const businessName = settings?.businessName.trim() ?? "";
@@ -1994,8 +1998,12 @@ export function InvoiceModal({ tx, settings, inventory, onClose }: {
   const businessPhone = settings?.businessPhone.trim() ?? "";
   const businessTin = settings?.businessTin.trim() ?? "";
   const receiptNumber = settings?.orPrefix ? `${settings.orPrefix}${tx.id}` : tx.id;
-  const customerExemptionHtml = customerDiscountText
-    ? `<div class="bold">SC/PWD Discount:</div><div style="word-break:break-word">${escapeReceiptHtml(customerDiscountText)}</div><div class="dashes"></div>`
+  // HTML block for printed receipt — exemption type and ID number on separate lines
+  const customerExemptionHtml = hasDiscount
+    ? `<div class="bold">SC/PWD Discount:</div>` +
+      (exemptionType     ? `<div style="word-break:break-word">${escapeReceiptHtml(exemptionType)}</div>` : "") +
+      (exemptionIdNumber ? `<div style="word-break:break-word">ID No. ${escapeReceiptHtml(exemptionIdNumber)}</div>` : "") +
+      `<div class="dashes"></div>`
     : "";
 
   const handlePrint = () => {
@@ -2126,8 +2134,9 @@ export function InvoiceModal({ tx, settings, inventory, onClose }: {
             <div style={{ borderTop: "1px dashed #000", margin: "6px 0" }} />
             {customerExemptionText && (
               <>
-                <div style={{ fontWeight: "bold" }}>VAT Exemption:</div>
-                <div style={{ wordBreak: "break-word", marginBottom: 4 }}>{customerExemptionText}</div>
+                <div style={{ fontWeight: "bold" }}>SC/PWD Discount:</div>
+                {exemptionType     && <div style={{ wordBreak: "break-word", marginBottom: 2 }}>{exemptionType}</div>}
+                {exemptionIdNumber && <div style={{ wordBreak: "break-word", marginBottom: 4 }}>ID No. {exemptionIdNumber}</div>}
                 <div style={{ borderTop: "1px dashed #000", margin: "6px 0" }} />
               </>
             )}

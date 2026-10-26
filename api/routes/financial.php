@@ -52,13 +52,30 @@ switch ($tab) {
         $stmt->execute($params);
         $row = $stmt->fetch(PDO::FETCH_ASSOC);
 
+        $brokenWhere = "WHERE pr.record_type = 'broken' AND t.type = 'adjustment'";
+        $brokenParams = [];
+        if ($dateFrom) { $brokenWhere .= ' AND DATE(t.transacted_at) >= ?'; $brokenParams[] = $dateFrom; }
+        if ($dateTo)   { $brokenWhere .= ' AND DATE(t.transacted_at) <= ?'; $brokenParams[] = $dateTo;   }
+        $brokenStmt = $pdo->prepare(
+            "SELECT COALESCE(SUM(pr.loss_amount), 0) AS broken_loss,
+                    SUM(pr.loss_amount IS NULL) AS uncosted_broken_count
+             FROM product_returns pr
+             JOIN transactions t ON t.id = pr.id
+             $brokenWhere"
+        );
+        $brokenStmt->execute($brokenParams);
+        $brokenRow = $brokenStmt->fetch(PDO::FETCH_ASSOC);
+
         $totalRevenue    = (float)$row['total_revenue'];    // VAT-inclusive gross
         $totalPreTax     = (float)$row['total_pre_tax'];    // net of VAT (taxable base)
         $totalVat        = (float)$row['total_vat_collected']; // VAT collected
         $totalReturns    = (float)$row['total_returns'];
+        $brokenLoss      = (float)$brokenRow['broken_loss'];
         $vatReturned     = (float)$row['total_vat_returned'];
         $netVat          = round($totalVat - $vatReturned, 2); // net VAT payable to BIR
         $netRevenue      = round($totalRevenue - $totalReturns, 2);
+        $totalLosses     = round($totalReturns + $brokenLoss, 2);
+        $netAfterLosses  = round($netRevenue - $brokenLoss, 2);
         $netPreTax       = round($totalPreTax - ((float)$row['total_returns'] - $vatReturned), 2);
         $salesCount      = (int)$row['sales_count'];
         $avgOrderVal     = $salesCount > 0 ? round($totalRevenue / $salesCount, 2) : 0.0;
@@ -70,6 +87,10 @@ switch ($tab) {
             'netVatPayable'      => $netVat,
             'totalReturns'       => $totalReturns,
             'netRevenue'         => $netRevenue,
+            'brokenStockLoss'    => $brokenLoss,
+            'totalLosses'        => $totalLosses,
+            'netAfterLosses'     => $netAfterLosses,
+            'uncostedBrokenCount'=> (int)($brokenRow['uncosted_broken_count'] ?? 0),
             'salesCount'         => $salesCount,
             'returnsCount'       => (int)$row['returns_count'],
             'adjustmentsCount'   => (int)$row['adjustments_count'],
@@ -93,22 +114,26 @@ switch ($tab) {
                 'date'    => $dt->format('M d'),
                 'revenue' => 0.0,
                 'returns' => 0.0,
+                'brokenLoss' => 0.0,
             ];
         }
 
         $stmt = $pdo->prepare(
-            "SELECT DATE(transacted_at) AS day,
-                    SUM(CASE WHEN type='sale'   THEN amount ELSE 0 END) AS revenue,
-                    SUM(CASE WHEN type='return' THEN amount ELSE 0 END) AS returns
-             FROM transactions
-             WHERE DATE(transacted_at) >= CURDATE() - INTERVAL ? DAY
-             GROUP BY DATE(transacted_at)"
+            "SELECT DATE(t.transacted_at) AS day,
+                    SUM(CASE WHEN t.type='sale'   THEN t.amount ELSE 0 END) AS revenue,
+                    SUM(CASE WHEN t.type='return' THEN t.amount ELSE 0 END) AS returns,
+                    SUM(CASE WHEN pr.record_type='broken' THEN COALESCE(pr.loss_amount,0) ELSE 0 END) AS broken_loss
+             FROM transactions t
+             LEFT JOIN product_returns pr ON pr.id = t.id
+             WHERE DATE(t.transacted_at) >= CURDATE() - INTERVAL ? DAY
+             GROUP BY DATE(t.transacted_at)"
         );
         $stmt->execute([$days - 1]);
         foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
             if (isset($calendar[$r['day']])) {
                 $calendar[$r['day']]['revenue'] = (float)$r['revenue'];
                 $calendar[$r['day']]['returns'] = (float)$r['returns'];
+                $calendar[$r['day']]['brokenLoss'] = (float)$r['broken_loss'];
             }
         }
 
@@ -118,22 +143,26 @@ switch ($tab) {
     // ── Monthly revenue + returns — last 12 months ────────────────────────────
     case 'monthly':
         $stmt = $pdo->query(
-            "SELECT DATE_FORMAT(transacted_at, '%b %Y') AS month,
-                    MIN(transacted_at)                   AS sort_key,
-                    SUM(CASE WHEN type='sale'   THEN amount ELSE 0 END) AS revenue,
-                    SUM(CASE WHEN type='return' THEN amount ELSE 0 END) AS returns,
-                    COUNT(CASE WHEN type='sale' THEN 1 END)             AS sales_count
-             FROM transactions
-             WHERE transacted_at >= NOW() - INTERVAL 12 MONTH
-             GROUP BY DATE_FORMAT(transacted_at, '%Y-%m')
-             ORDER BY MIN(transacted_at) ASC"
+            "SELECT DATE_FORMAT(t.transacted_at, '%b %Y') AS month,
+                    MIN(t.transacted_at)                   AS sort_key,
+                    SUM(CASE WHEN t.type='sale'   THEN t.amount ELSE 0 END) AS revenue,
+                    SUM(CASE WHEN t.type='return' THEN t.amount ELSE 0 END) AS returns,
+                    SUM(CASE WHEN pr.record_type='broken' THEN COALESCE(pr.loss_amount,0) ELSE 0 END) AS broken_loss,
+                    COUNT(CASE WHEN t.type='sale' THEN 1 END)             AS sales_count
+             FROM transactions t
+             LEFT JOIN product_returns pr ON pr.id = t.id
+             WHERE t.transacted_at >= NOW() - INTERVAL 12 MONTH
+             GROUP BY DATE_FORMAT(t.transacted_at, '%Y-%m')
+             ORDER BY MIN(t.transacted_at) ASC"
         );
         $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
         $result = array_map(fn($r) => [
             'month'       => $r['month'],
             'revenue'     => (float)$r['revenue'],
             'returns'     => (float)$r['returns'],
+            'brokenLoss'  => (float)$r['broken_loss'],
             'net'         => round((float)$r['revenue'] - (float)$r['returns'], 2),
+            'netAfterLosses' => round((float)$r['revenue'] - (float)$r['returns'] - (float)$r['broken_loss'], 2),
             'sales_count' => (int)$r['sales_count'],
         ], $rows);
 

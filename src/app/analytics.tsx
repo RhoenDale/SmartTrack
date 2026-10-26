@@ -179,7 +179,7 @@ export default function AnalyticsPage({
         ))}
       </div>
 
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4">
         <div className="bg-card border border-border rounded-xl p-4 shadow-sm">
           <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Returns · Pending</p>
           <p className="text-xl font-bold text-foreground mt-2 tabular-nums tracking-tight">{pendingCount} return{pendingCount !== 1 ? "s" : ""}</p>
@@ -194,6 +194,23 @@ export default function AnalyticsPage({
           <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Returns · Broken</p>
           <p className="text-xl font-bold text-foreground mt-2 tabular-nums tracking-tight">{brokenCount} return{brokenCount !== 1 ? "s" : ""}</p>
           <p className="text-xs mt-1 font-medium text-red-600 dark:text-red-400">Marked out of stock</p>
+        </div>
+        <div className="bg-card border border-border rounded-xl p-4 shadow-sm">
+          <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Refund Loss</p>
+          <p className="text-xl font-bold text-orange-600 dark:text-orange-400 mt-2 tabular-nums tracking-tight">{fmt(smaData?.returnLoss ?? 0)}</p>
+          <p className="text-xs mt-1 font-medium text-muted-foreground">Customer refunds · {scopeLabel}</p>
+        </div>
+        <div className="bg-card border border-border rounded-xl p-4 shadow-sm">
+          <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Broken Stock Loss</p>
+          <p className="text-xl font-bold text-red-600 dark:text-red-400 mt-2 tabular-nums tracking-tight">{fmt(smaData?.brokenLoss ?? 0)}</p>
+          <p className="text-xs mt-1 font-medium text-muted-foreground">
+            Batch cost · {smaData?.uncostedBrokenCount ?? 0} uncosted record{smaData?.uncostedBrokenCount === 1 ? "" : "s"}
+          </p>
+        </div>
+        <div className="bg-card border border-border rounded-xl p-4 shadow-sm">
+          <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Total Loss</p>
+          <p className="text-xl font-bold text-foreground mt-2 tabular-nums tracking-tight">{fmt(smaData?.totalLoss ?? 0)}</p>
+          <p className="text-xs mt-1 font-medium text-muted-foreground">Refunds + standalone write-offs</p>
         </div>
       </div>
 

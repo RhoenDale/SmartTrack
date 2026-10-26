@@ -100,7 +100,7 @@ function fifo_deduct(string $productId, int $qty): array {
 
     // Lock rows for update to prevent race conditions
     $stmt = $pdo->prepare(
-        'SELECT id, batch_id, qty, expiry_date, received_date
+        'SELECT id, batch_id, qty, expiry_date, received_date, unit_cost
          FROM product_batches
          WHERE product_id = ? AND qty > 0
          ORDER BY received_date ASC, id ASC
@@ -127,6 +127,7 @@ function fifo_deduct(string $productId, int $qty): array {
             'batchId'    => $b['batch_id'],
             'expiry'     => $b['expiry_date'],
             'qty'        => $deduct,
+            'unitCost'   => $b['unit_cost'] !== null ? (float)$b['unit_cost'] : null,
         ];
         $updates[]  = ['id' => $b['id'], 'qty' => $newQty];
     }
@@ -327,11 +328,19 @@ function format_transaction(array $tx): array {
     $customerVatExempt = false;
     $customerExemptionType = null;
     $customerIdNumber = null;
-    if (($tx['type'] ?? '') === 'sale' && !empty($tx['note'])) {
-        if (preg_match('/^Customer (?:VAT exemption|discount): (.+) ID (.+)$/', $tx['note'], $matches)) {
-            $customerVatExempt = true;
-            $customerExemptionType = $matches[1];
-            $customerIdNumber = $matches[2];
+    if (($tx['type'] ?? '') === 'sale') {
+        // Prefer dedicated columns (added in add_customer_id_to_transactions migration)
+        if (!empty($tx['customer_vat_exempt'])) {
+            $customerVatExempt     = true;
+            $customerExemptionType = $tx['customer_exemption_type'] ?? null;
+            $customerIdNumber      = $tx['customer_id_number']      ?? null;
+        } elseif (!empty($tx['note'])) {
+            // Fallback: parse legacy note for rows that pre-date the migration
+            if (preg_match('/^Customer (?:VAT exemption|discount): (.+) ID (.+)$/', $tx['note'], $matches)) {
+                $customerVatExempt     = true;
+                $customerExemptionType = $matches[1];
+                $customerIdNumber      = $matches[2];
+            }
         }
     }
 

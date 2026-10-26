@@ -112,6 +112,38 @@ switch ($method . ':' . $action) {
             "SELECT COUNT(*) FROM transactions WHERE type='adjustment'"
         )->fetchColumn();
 
+        $lossScope = '';
+        $lossParams = [];
+        if ($productId !== '') {
+            $lossScope .= ' AND pr.product_id = ?';
+            $lossParams[] = $productId;
+        }
+        if ($category !== '') {
+            $lossScope .= ' AND EXISTS (
+                SELECT 1 FROM product_category_map pcm
+                JOIN categories c ON c.id = pcm.category_id
+                WHERE pcm.product_id = pr.product_id AND c.name = ?
+            )';
+            $lossParams[] = $category;
+        }
+        $returnLossStmt = $pdo->prepare(
+            "SELECT COALESCE(SUM(pr.refund_amount), 0)
+             FROM product_returns pr
+             WHERE pr.record_type = 'return' $lossScope"
+        );
+        $returnLossStmt->execute($lossParams);
+        $returnLoss = (float)$returnLossStmt->fetchColumn();
+
+        $brokenLossStmt = $pdo->prepare(
+            "SELECT COALESCE(SUM(pr.loss_amount), 0) AS broken_loss,
+                    SUM(pr.loss_amount IS NULL) AS uncosted_broken_count
+             FROM product_returns pr
+             WHERE pr.record_type = 'broken' $lossScope"
+        );
+        $brokenLossStmt->execute($lossParams);
+        $brokenLoss = $brokenLossStmt->fetch(PDO::FETCH_ASSOC);
+        $brokenLossAmount = (float)$brokenLoss['broken_loss'];
+
         json_response([
             'chartData'    => $result,
             'sma3'         => round($sma3Val),
@@ -119,6 +151,10 @@ switch ($method . ':' . $action) {
             'eoq'          => $eoq,
             'totalDamaged' => $adjustedDmg,
             'adjustCount'  => $adjustCount,
+            'returnLoss'   => round($returnLoss, 2),
+            'brokenLoss'   => round($brokenLossAmount, 2),
+            'totalLoss'    => round($returnLoss + $brokenLossAmount, 2),
+            'uncostedBrokenCount' => (int)($brokenLoss['uncosted_broken_count'] ?? 0),
         ]);
         break;
 

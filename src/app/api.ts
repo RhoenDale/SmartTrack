@@ -238,30 +238,42 @@ export const transactionsApi = {
 };
 
 export type ReturnRequest = {
-  returnTxId: string;
-  saleTxId: string;
-  productId: string;
-  product: string;
-  qty: number;
-  refund: number;
-  reason: string;
-  cashier: string;
-  createdAt: string;
-  disposition: 'pending' | 'restocked' | 'broken';
-  processedAt: string | null;
-  saleUnit: 'unit' | 'pack';
+  returnTxId:   string;   // product_returns.id (RET-* or BRK-*)
+  saleTxId:     string;   // original sale tx id; equals returnTxId for broken records
+  productId:    string;
+  product:      string;   // product_name (denormalised)
+  qty:          number;   // base units
+  refund:       number;   // refund_amount; 0 for broken records
+  reason:       string;
+  cashier:      string;   // recorded_by_name (denormalised)
+  createdAt:    string;   // "MM/DD/YYYY HH:mm"
+  disposition:  'pending' | 'restocked' | 'broken';
+  processedAt:  string | null;
+  saleUnit:     'unit' | 'pack';
   unitsPerSale: number;
-  returnType: 'return' | 'adjustment';
+  returnType:   'return' | 'adjustment'; // 'return' = customer return, 'adjustment' = broken
 };
 
 export const returnRequestsApi = {
-  list: () => get<ReturnRequest[]>('/return-requests'),
+  list: () =>
+    get<ReturnRequest[]>('/return-requests'),
   submit: (data: { sale_tx_id: string; qty: number; reason: string }) =>
-    post<{ transaction: import('./data').Transaction; disposition: 'pending' }>('/return-requests', data),
+    post<{
+      record: ReturnRequest;
+      transaction: import('./data').Transaction;
+      disposition: 'pending';
+    }>('/return-requests', data),
   setDisposition: (returnTxId: string, disposition: 'restocked' | 'broken') =>
     put<{ message: string; product: import('./data').Product }>(`/return-requests/${returnTxId}`, { disposition }),
-  reportBroken: (data: { product_id: string; qty: number; reason: string }) =>
-    post<{ message: string; product: import('./data').Product }>('/return-requests/broken', data),
+  reportBroken: (data: {
+    product_id: string;
+    qty: number;
+    reason: string;
+    sale_qty?: number;
+    sale_unit?: 'unit' | 'pack';
+    units_per_sale?: number;
+  }) =>
+    post<{ message: string; record: ReturnRequest; product: import('./data').Product }>('/return-requests/broken', data),
 };
 
 // ─── Users ────────────────────────────────────────────────────────────────────
@@ -343,6 +355,10 @@ export const analyticsApi = {
     eoq:          number;
     totalDamaged: number;
     adjustCount:  number;
+    returnLoss: number;
+    brokenLoss: number;
+    totalLoss: number;
+    uncostedBrokenCount: number;
   }>(`/analytics/sma?product_id=${encodeURIComponent(filters.productId ?? '')}&category=${encodeURIComponent(filters.category ?? '')}`),
   eoq:          () => get('/analytics/eoq'),
   performance:  () => get('/analytics/performance'),
@@ -367,15 +383,17 @@ export const financialApi = {
     return get<{
       totalRevenue: number; totalPreTax: number; totalVatCollected: number; netVatPayable: number;
       totalReturns: number; netRevenue: number;
+      brokenStockLoss: number; totalLosses: number; netAfterLosses: number;
+      uncostedBrokenCount: number;
       salesCount: number; returnsCount: number;
       adjustmentsCount: number; totalTransactions: number; avgOrderValue: number;
       todayRevenue: number; weekRevenue: number; monthRevenue: number;
     }>(`/financial/summary${qs}`);
   },
   daily:     (days = 30) =>
-    get<{ date: string; revenue: number; returns: number }[]>(`/financial/daily?days=${days}`),
+    get<{ date: string; revenue: number; returns: number; brokenLoss: number }[]>(`/financial/daily?days=${days}`),
   monthly:   () =>
-    get<{ month: string; revenue: number; returns: number; net: number; sales_count: number }[]>('/financial/monthly'),
+    get<{ month: string; revenue: number; returns: number; brokenLoss: number; net: number; netAfterLosses: number; sales_count: number }[]>('/financial/monthly'),
   records:   (params: { type?: string; dateFrom?: string; dateTo?: string; page?: number; perPage?: number }) => {
     const p = new URLSearchParams({ type: params.type ?? 'all', page: String(params.page ?? 1), per_page: String(params.perPage ?? 25) });
     if (params.dateFrom) p.set('date_from', params.dateFrom);

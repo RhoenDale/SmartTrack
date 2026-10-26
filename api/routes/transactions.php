@@ -181,6 +181,9 @@ function handle_sale(PDO $pdo, array $authUser): void {
     $note = $customerVatExempt
         ? "Customer VAT exemption: {$customerExemptionType} ID {$customerIdNumber}"
         : null;
+    $cvExempt = $customerVatExempt ? 1 : 0;
+    $cvType   = $customerVatExempt ? $customerExemptionType : null;
+    $cvId     = $customerVatExempt ? $customerIdNumber      : null;
 
     $batchStmt = $pdo->prepare(
         "SELECT batch_id, expiry_date, qty
@@ -221,10 +224,12 @@ function handle_sale(PDO $pdo, array $authUser): void {
         $pdo->prepare(
             'INSERT INTO transactions
              (id, type, sale_group_id, product_name, product_id, qty, sale_qty, sale_unit, units_per_sale, amount, pre_tax_amount, tax_amount, tax_rate,
-               staff, staff_id, status, note, transacted_at)
-              VALUES (?, "sale", NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "completed", ?, NOW())'
+              customer_vat_exempt, customer_exemption_type, customer_id_number,
+              staff, staff_id, status, note, transacted_at)
+              VALUES (?, "sale", NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "completed", ?, NOW())'
           )->execute([$txId, $product['name'], $productId, $qty, $saleQty, $saleUnit, $unitsPerSale, $amount,
                     $preTaxAmount, $taxAmount, $vatRate,
+                    $cvExempt, $cvType, $cvId,
                     staff_abbrev($authUser['name']), $authUser['id'], $note]);
 
         $ins = $pdo->prepare(
@@ -342,15 +347,20 @@ function handle_multi_sale(PDO $pdo, array $authUser, array $data, array $items)
             $note = $applyCustomerDiscount
                 ? "Customer discount: {$customerExemptionType} ID {$customerIdNumber}"
                 : null;
+            $cvExempt = $applyCustomerDiscount ? 1 : 0;
+            $cvType   = $applyCustomerDiscount ? $customerExemptionType : null;
+            $cvId     = $applyCustomerDiscount ? $customerIdNumber      : null;
 
             $pdo->prepare(
                 'INSERT INTO transactions
                  (id, type, sale_group_id, product_name, product_id, qty, sale_qty, sale_unit, units_per_sale, amount, discount_amount, pre_tax_amount, tax_amount, tax_rate,
+                  customer_vat_exempt, customer_exemption_type, customer_id_number,
                   staff, staff_id, status, note, transacted_at)
-                 VALUES (?, "sale", ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "completed", ?, NOW())'
+                 VALUES (?, "sale", ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "completed", ?, NOW())'
             )->execute([
                 $txId, $saleGroupId, $product['name'], $productId, $qty, $saleQty, $saleUnit, $unitsPerSale, $amount, $discountAmount,
                 $preTaxAmount, $taxAmount, $vatRate,
+                $cvExempt, $cvType, $cvId,
                 staff_abbrev($authUser['name']), $authUser['id'], $note
             ]);
 

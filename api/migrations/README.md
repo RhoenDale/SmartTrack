@@ -30,6 +30,20 @@ inventory only after the manager confirms their condition. The Returns page is
 available to inventory managers and admins; admins can review requests and
 their disposition status but cannot process them.
 
+## Broken Stock Loss Reporting
+
+For an existing database, run `add_broken_loss_amount.sql` once before
+deploying the updated app. Fresh databases created with
+`create_product_returns_table.sql` include the column. New standalone broken
+stock records capture the FIFO batch cost at the time stock is removed.
+Historical records remain unvalued because their consumed batch costs were not
+recorded. Customer refunds are reported separately; returned items marked
+broken are not added again as standalone broken-stock write-offs.
+To show already-recorded broken-stock costs in the Transactions page's
+Adjustment amount column, run `backfill_broken_adjustment_amounts.sql` after
+the loss amount column is available. New broken-stock adjustment transactions
+store their recorded batch-cost loss automatically.
+
 ## Separate Product IDs and Barcodes
 
 Back up the `smarttrack` database, then run

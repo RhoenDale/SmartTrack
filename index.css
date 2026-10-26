@@ -26,6 +26,23 @@
  */
 @import './src/styles/globals.css';
 
+/* Scroll table rows inside the table viewport so the header stays in view. */
+:is([data-slot="table-container"], .overflow-x-auto:has(> table)) {
+  max-height: min(70vh, 720px);
+  overflow: auto;
+}
+
+:is([data-table-scroll="fixed"], [data-slot="table-container"]) {
+  height: min(70vh, 720px);
+}
+
+:is([data-slot="table-container"], .overflow-x-auto:has(> table)) thead th {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background-color: color-mix(in srgb, var(--muted) 35%, var(--card));
+}
+
 /* ─── Hide all scrollbars globally (scrolling still works) ─────────────────── */
 
 /* Firefox */

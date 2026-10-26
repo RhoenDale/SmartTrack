@@ -189,7 +189,7 @@ export default function TransactionsPage({
           </div>
         </div>
 
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto" data-table-scroll="fixed">
           <table className="w-full">
             <thead className="sticky top-0 z-10 bg-card shadow-sm">
               <tr className="border-b border-border/60 bg-muted/20">

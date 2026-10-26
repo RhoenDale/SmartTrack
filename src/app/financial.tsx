@@ -13,12 +13,14 @@ import type { AuthUser } from "./data";
 type Summary = {
   totalRevenue: number; totalPreTax: number; totalVatCollected: number; netVatPayable: number;
   totalReturns: number; netRevenue: number;
+  brokenStockLoss: number; totalLosses: number; netAfterLosses: number;
+  uncostedBrokenCount: number;
   salesCount: number; returnsCount: number;
   adjustmentsCount: number; totalTransactions: number; avgOrderValue: number;
   todayRevenue: number; weekRevenue: number; monthRevenue: number;
 };
-type DailyRow   = { date: string; revenue: number; returns: number };
-type MonthlyRow = { month: string; revenue: number; returns: number; net: number; sales_count: number };
+type DailyRow   = { date: string; revenue: number; returns: number; brokenLoss: number };
+type MonthlyRow = { month: string; revenue: number; returns: number; brokenLoss: number; net: number; netAfterLosses: number; sales_count: number };
 type LedgerRow  = { id: string; type: string; product: string; qty: number; amount: number; staff: string; note: string; status: string; date: string };
 type BreakdownRow = { category: string; revenue: number; units: number; share: number };
 type StaffRow     = { staff: string; transactions: number; revenue: number; unitsSold: number };
@@ -275,19 +277,22 @@ export default function FinancialPage({ user }: { user: AuthUser }) {
 
       {/* ── KPI headline cards ── */}
       {summary && (
-        <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-3">
           <KpiCard label="Gross Revenue"    value={fmt(summary.totalRevenue)}        color="text-emerald-600 dark:text-emerald-400" icon={TrendingUp}   sub={`${summary.salesCount} sales · VAT-inclusive`} trend="up" />
           <KpiCard label="Pre-tax Revenue"  value={fmt(summary.totalPreTax)}         color="text-sky-600 dark:text-sky-400"         icon={BarChart3}    sub="Net of VAT (taxable base)" trend="up" />
           <KpiCard label="VAT Collected"    value={fmt(summary.totalVatCollected)}   color="text-violet-600 dark:text-violet-400"   icon={DollarSign}   sub={`Net payable to BIR: ${fmt(summary.netVatPayable)}`} />
           <KpiCard label="Total Returns"    value={fmt(summary.totalReturns)}        color="text-orange-600 dark:text-orange-400"   icon={TrendingDown} sub={`${summary.returnsCount} returns`} />
+          <KpiCard label="Broken Stock Loss" value={fmt(summary.brokenStockLoss)} color="text-red-600 dark:text-red-400" icon={Wrench} sub={summary.uncostedBrokenCount > 0 ? `${summary.uncostedBrokenCount} broken records have no saved batch cost` : "Standalone damage valued at batch cost"} />
+          <KpiCard label="Total Losses"     value={fmt(summary.totalLosses)}         color="text-red-600 dark:text-red-400"         icon={TrendingDown} sub="Refunds + broken stock write-offs" />
           <KpiCard label="Net Revenue"      value={fmt(summary.netRevenue)}          color="text-primary"                           icon={TrendingUp}   sub="Revenue minus returns" trend="up" />
+          <KpiCard label="Net After Losses" value={fmt(summary.netAfterLosses)} color="text-primary" icon={TrendingDown} sub="Refunds deducted; minus broken stock cost" />
           <KpiCard label="Avg Order Value"  value={fmt(summary.avgOrderValue)}       color="text-amber-600 dark:text-amber-400"     icon={ShoppingCart} sub="Per sale transaction" />
         </div>
       )}
 
       {/* ── Period spotlight ── */}
       {summary && (
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
           {[
             { label: "Today",     value: fmt(summary.todayRevenue),  color: "text-emerald-600 dark:text-emerald-400" },
             { label: "This Week", value: fmt(summary.weekRevenue),   color: "text-sky-600 dark:text-sky-400" },
@@ -323,11 +328,12 @@ export default function FinancialPage({ user }: { user: AuthUser }) {
             <div className="flex items-center justify-between mb-4">
               <div>
                 <h3 className="text-sm font-bold text-foreground">Daily Revenue — Last 14 Days</h3>
-                <p className="text-[11px] text-muted-foreground mt-0.5">Revenue vs. returns per day</p>
+                <p className="text-[11px] text-muted-foreground mt-0.5">Revenue, refunds, and broken stock write-offs per day</p>
               </div>
               <div className="flex items-center gap-3 text-[11px] text-muted-foreground">
                 <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-teal-500 inline-block" />Revenue</span>
                 <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-orange-400 inline-block" />Returns</span>
+                <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-red-500 inline-block" />Broken stock</span>
               </div>
             </div>
             <div className="text-foreground" style={{ height: 220 }}>
@@ -337,6 +343,7 @@ export default function FinancialPage({ user }: { user: AuthUser }) {
                   lines={[
                     { key: "revenue", color: "#0d9488", name: "Revenue" },
                     { key: "returns", color: "#f97316", name: "Returns" },
+                    { key: "brokenLoss", color: "#ef4444", name: "Broken stock loss" },
                   ]}
                   yFormatter={v => v >= 1000 ? `₱${(v / 1000).toFixed(1)}k` : `₱${Math.round(v)}`}
                 />
@@ -350,7 +357,7 @@ export default function FinancialPage({ user }: { user: AuthUser }) {
           <div className="bg-card border border-border rounded-xl shadow-sm overflow-hidden">
             <div className="px-5 py-4 border-b border-border">
               <h3 className="text-sm font-bold text-foreground">Monthly Revenue Trend</h3>
-              <p className="text-[11px] text-muted-foreground mt-0.5">Last 12 months · revenue, returns, and net</p>
+              <p className="text-[11px] text-muted-foreground mt-0.5">Last 12 months · revenue, refunds, broken-stock loss, and net after losses</p>
             </div>
             {monthly.length === 0 ? (
               <div className="p-8 text-center text-sm text-muted-foreground">No monthly data available</div>
@@ -359,20 +366,21 @@ export default function FinancialPage({ user }: { user: AuthUser }) {
                 <table className="w-full text-xs">
                   <thead>
                     <tr className="border-b border-border bg-muted/30">
-                      {["Month","Revenue","Returns","Net Revenue","Sales","Profit (est.)"].map(h => (
+                      {["Month","Revenue","Returns","Broken Loss","Net After Losses","Sales","Profit (est.)"].map(h => (
                         <th key={h} className="px-4 py-3 text-left font-semibold text-muted-foreground uppercase tracking-wide text-[10px]">{h}</th>
                       ))}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border">
                     {[...monthly].reverse().map((m, i) => {
-                      const profit = m.net * 0.4;
+                      const profit = m.netAfterLosses * 0.4;
                       return (
                         <tr key={m.month} className={`hover:bg-muted/20 transition-colors ${i === 0 ? "bg-primary/5" : ""}`}>
                           <td className="px-4 py-3 font-semibold text-foreground">{m.month}{i === 0 && <span className="ml-2 text-[10px] text-primary font-bold">(current)</span>}</td>
                           <td className="px-4 py-3 tabular-nums text-emerald-600 dark:text-emerald-400 font-semibold">{fmt(m.revenue)}</td>
                           <td className="px-4 py-3 tabular-nums text-orange-600 dark:text-orange-400">{fmt(m.returns)}</td>
-                          <td className="px-4 py-3 tabular-nums text-primary font-bold">{fmt(m.net)}</td>
+                          <td className="px-4 py-3 tabular-nums text-red-600 dark:text-red-400">{fmt(m.brokenLoss)}</td>
+                          <td className="px-4 py-3 tabular-nums text-primary font-bold">{fmt(m.netAfterLosses)}</td>
                           <td className="px-4 py-3 tabular-nums text-foreground">{m.sales_count.toLocaleString()}</td>
                           <td className="px-4 py-3 tabular-nums text-sky-600 dark:text-sky-400">{fmt(profit)}</td>
                         </tr>
@@ -382,7 +390,8 @@ export default function FinancialPage({ user }: { user: AuthUser }) {
                   {monthly.length > 1 && (() => {
                     const totRev = monthly.reduce((s, m) => s + m.revenue, 0);
                     const totRet = monthly.reduce((s, m) => s + m.returns, 0);
-                    const totNet = monthly.reduce((s, m) => s + m.net, 0);
+                    const totBroken = monthly.reduce((s, m) => s + m.brokenLoss, 0);
+                    const totNetAfterLosses = monthly.reduce((s, m) => s + m.netAfterLosses, 0);
                     const totSales = monthly.reduce((s, m) => s + m.sales_count, 0);
                     return (
                       <tfoot>
@@ -390,9 +399,10 @@ export default function FinancialPage({ user }: { user: AuthUser }) {
                           <td className="px-4 py-3 text-[11px] uppercase tracking-wide text-muted-foreground">Total ({monthly.length} months)</td>
                           <td className="px-4 py-3 tabular-nums text-emerald-600 dark:text-emerald-400">{fmt(totRev)}</td>
                           <td className="px-4 py-3 tabular-nums text-orange-600 dark:text-orange-400">{fmt(totRet)}</td>
-                          <td className="px-4 py-3 tabular-nums text-primary">{fmt(totNet)}</td>
+                          <td className="px-4 py-3 tabular-nums text-red-600 dark:text-red-400">{fmt(totBroken)}</td>
+                          <td className="px-4 py-3 tabular-nums text-primary">{fmt(totNetAfterLosses)}</td>
                           <td className="px-4 py-3 tabular-nums text-foreground">{totSales.toLocaleString()}</td>
-                          <td className="px-4 py-3 tabular-nums text-sky-600 dark:text-sky-400">{fmt(totNet * 0.4)}</td>
+                          <td className="px-4 py-3 tabular-nums text-sky-600 dark:text-sky-400">{fmt(totNetAfterLosses * 0.4)}</td>
                         </tr>
                       </tfoot>
                     );
@@ -703,6 +713,19 @@ export default function FinancialPage({ user }: { user: AuthUser }) {
                   {fmt(incomeTotals.grossProfit)}
                 </p>
               </div>
+              {summary && (
+                <div className="bg-card border border-border rounded-xl p-4 shadow-sm text-center">
+                  <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Profit After Losses</p>
+                  <p className={`text-xl font-bold tabular-nums mt-2 ${
+                    incomeTotals.grossProfit - summary.totalReturns - summary.brokenStockLoss >= 0
+                      ? "text-primary"
+                      : "text-red-600 dark:text-red-400"
+                  }`}>
+                    {fmt(incomeTotals.grossProfit - summary.totalReturns - summary.brokenStockLoss)}
+                  </p>
+                  <p className="text-[10px] text-muted-foreground mt-1">Gross profit minus refunds and broken stock cost</p>
+                </div>
+              )}
             </div>
           )}
 

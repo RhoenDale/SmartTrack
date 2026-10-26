@@ -15,7 +15,14 @@ function BrokenProductModal({
 }: {
   inventory: Product[];
   onClose: () => void;
-  onSubmit: (productId: string, qty: number, reason: string) => Promise<void>;
+  onSubmit: (
+    productId: string,
+    qty: number,
+    reason: string,
+    saleQty: number,
+    saleUnit: "unit" | "pack",
+    unitsPerSale: number
+  ) => Promise<void>;
 }) {
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [qty, setQty] = useState("1");
@@ -43,7 +50,14 @@ function BrokenProductModal({
     setSubmitting(true);
     setError("");
     try {
-      await onSubmit(selectedProduct.id, baseQty, reason.trim());
+      await onSubmit(
+        selectedProduct.id,
+        baseQty,
+        reason.trim(),
+        qtyNum,
+        saleUnit,
+        saleUnit === "pack" ? unitsPerPack : 1
+      );
       onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to record broken product.");
@@ -246,8 +260,22 @@ export default function ReturnsPage({
     }
   };
 
-  const handleReportBroken = async (productId: string, qty: number, reason: string) => {
-    await returnRequestsApi.reportBroken({ product_id: productId, qty, reason });
+  const handleReportBroken = async (
+    productId: string,
+    qty: number,
+    reason: string,
+    saleQty: number,
+    saleUnit: "unit" | "pack",
+    unitsPerSale: number
+  ) => {
+    await returnRequestsApi.reportBroken({
+      product_id: productId,
+      qty,
+      reason,
+      sale_qty: saleQty,
+      sale_unit: saleUnit,
+      units_per_sale: unitsPerSale,
+    });
     await loadReturns();
     await onDispositionComplete();
     setActiveTab("broken");

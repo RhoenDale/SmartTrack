@@ -358,6 +358,7 @@ function CashierDashboard({ user, inventory, transactions, computed, summary }: 
     .join(" ")
     .toLocaleLowerCase();
   const myTxns = transactions.filter(tx =>
+    tx.type === "adjustment" ||
     tx.staffId === user.id ||
     (!tx.staffId && tx.staff?.trim().toLocaleLowerCase() === abbreviatedName)
   );
