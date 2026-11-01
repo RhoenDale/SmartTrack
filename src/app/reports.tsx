@@ -1,0 +1,378 @@
+import { useState, useMemo, useEffect } from "react";
+import { ShoppingCart, AlertTriangle, Package, Printer } from "lucide-react";
+import { getReorderUnits, type AuthUser, type Product, type Transaction } from "./data";
+import { fmt, StockBadge, InfoTip, TablePager, ConfirmDialog } from "./shared";
+
+export default function ReportsPage({
+  inventory,
+  transactions,
+  user: _user,
+}: {
+  inventory: Product[];
+  transactions: Transaction[];
+  user: AuthUser;
+}) {
+  const [activeTab, setActiveTab] = useState<"sales" | "stock" | "inventory">("sales");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [salesPage, setSalesPage] = useState(1);
+  const [stockPage, setStockPage] = useState(1);
+  const [invPage, setInvPage] = useState(1);
+  const PAGE_SIZE = 10;
+  const [confirmPrint, setConfirmPrint] = useState(false);
+
+  useEffect(() => {
+    setSalesPage(1);
+    setStockPage(1);
+    setInvPage(1);
+  }, [dateFrom, dateTo, activeTab]);
+
+  const parseTransactionDate = (date: string) => {
+    const [rawDate] = date.split(" ");
+    const [mm, dd, yyyy] = rawDate.split("/");
+    return new Date(`${yyyy}-${mm.padStart(2, "0")}-${dd.padStart(2, "0")}T00:00:00`);
+  };
+
+  const filteredTransactions = useMemo(() => {
+    return transactions.filter(tx => {
+      const txDate = parseTransactionDate(tx.date);
+      if (dateFrom) {
+        const fromDate = new Date(`${dateFrom}T00:00:00`);
+        if (txDate < fromDate) return false;
+      }
+      if (dateTo) {
+        const toDate = new Date(`${dateTo}T23:59:59`);
+        if (txDate > toDate) return false;
+      }
+      return true;
+    });
+  }, [transactions, dateFrom, dateTo]);
+
+  const sales = filteredTransactions.filter(t => t.type === "sale");
+  const returns = filteredTransactions.filter(t => t.type === "return");
+  const totalRevenue = sales.reduce((s, t) => s + t.amount, 0);
+  const totalReturns = returns.reduce((s, t) => s + t.amount, 0);
+  const netRevenue = totalRevenue - totalReturns;
+
+  const salesByProduct = useMemo(() => {
+    const map: Record<string, { product: string; qty: number; amount: number }> = {};
+    sales.forEach(t => {
+      if (!map[t.product]) map[t.product] = { product: t.product, qty: 0, amount: 0 };
+      map[t.product].qty += t.qty;
+      map[t.product].amount += t.amount;
+    });
+    return Object.values(map).sort((a, b) => b.amount - a.amount);
+  }, [sales]);
+
+  const totalStock = inventory.reduce((s, p) => s + p.stock, 0);
+  const totalValue = inventory.reduce((s, p) => s + p.stock * p.price, 0);
+  const outOfStock = inventory.filter(i => i.status === "out_of_stock");
+  const critical   = inventory.filter(i => i.status === "critical");
+  const low        = inventory.filter(i => i.status === "low");
+  const moderate   = inventory.filter(i => i.status === "moderate");
+  const good       = inventory.filter(i => i.status === "good");
+
+  const paginatedSales = useMemo(() => {
+    const start = (salesPage - 1) * PAGE_SIZE;
+    return salesByProduct.slice(start, start + PAGE_SIZE);
+  }, [salesByProduct, salesPage]);
+
+  const actionItems = useMemo(() => [...outOfStock, ...critical, ...low, ...moderate], [outOfStock, critical, low, moderate]);
+
+  const paginatedActionItems = useMemo(() => {
+    const start = (stockPage - 1) * PAGE_SIZE;
+    return actionItems.slice(start, start + PAGE_SIZE);
+  }, [actionItems, stockPage]);
+
+  const paginatedInv = useMemo(() => {
+    const start = (invPage - 1) * PAGE_SIZE;
+    return inventory.slice(start, start + PAGE_SIZE);
+  }, [inventory, invPage]);
+
+  const tabs: { id: "sales" | "stock" | "inventory"; label: string; icon: any }[] = [
+    { id: "sales",     label: "Sales Report", icon: ShoppingCart },
+    { id: "stock",     label: "Stock Alerts", icon: AlertTriangle },
+    { id: "inventory", label: "Inventory",    icon: Package },
+  ];
+
+  return (
+    <div className="p-4 sm:p-6 space-y-5 max-w-[1400px] mx-auto printable-report">
+      <style>{`@media print {
+        body * { visibility: hidden !important; }
+        .printable-report, .printable-report * { visibility: visible !important; }
+        .printable-report { position: absolute; left: 0; top: 0; width: 100%; }
+        .no-print { display: none !important; }
+      }`}</style>
+
+      {/* Header */}
+      <div className="flex items-start sm:items-center justify-between gap-3">
+        <div>
+          <div className="flex items-center gap-2">
+            <h1 className="text-xl font-bold text-foreground">Reports</h1>
+            <InfoTip title="Audit & Compliance Reports"
+              lines={[
+                "Generate printable audit summaries and regulatory records.",
+                { label: "Sales Report", value: "Revenue summary, return totals, and item sales breakdowns" },
+                { label: "Stock Alerts", value: "Snapshot of products currently below reorder thresholds" },
+                { label: "Inventory", value: "Complete valuation report and pack/unit quantities" },
+                { label: "Print / PDF", value: "Exports clean, paper-ready documents for archiving" },
+              ]} />
+          </div>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            {dateFrom || dateTo ? <>Filtered: {dateFrom || "All time"} to {dateTo || "Present"}</> : <>All-time data</>}
+          </p>
+        </div>
+        <button onClick={() => setConfirmPrint(true)}
+          className="flex items-center gap-2 px-3 py-2 border border-border rounded-xl text-xs font-bold text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-all flex-shrink-0 no-print">
+          <Printer size={13} /> Print
+        </button>
+      </div>
+
+      {/* Date Range Filter */}
+      <div className="bg-card border border-border/80 rounded-2xl p-4 shadow-[0_2px_12px_-4px_rgba(13,148,136,0.06),0_1px_3px_rgba(0,0,0,0.02)] no-print">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+          <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Date Range:</label>
+          <div className="flex flex-wrap items-center gap-2">
+            <label className="text-[11px] text-muted-foreground">From</label>
+            <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
+              className="rounded-xl border border-border/80 bg-background/90 px-3 py-1.5 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary/25 focus:border-primary" />
+            <label className="text-[11px] text-muted-foreground">To</label>
+            <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
+              className="rounded-xl border border-border/80 bg-background/90 px-3 py-1.5 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary/25 focus:border-primary" />
+            {(dateFrom || dateTo) && (
+              <button onClick={() => { setDateFrom(""); setDateTo(""); }}
+                className="text-xs text-primary hover:text-primary/80 font-semibold">Clear</button>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Tab bar */}
+      <div className="flex items-center gap-1 bg-muted/40 rounded-xl p-1 w-full overflow-x-auto no-print">
+        {tabs.map(t => (
+          <button key={t.id} onClick={() => setActiveTab(t.id)}
+            className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold transition-all whitespace-nowrap flex-1 justify-center ${
+              activeTab === t.id ? "bg-card text-foreground shadow-2xs border border-border/80" : "text-muted-foreground hover:text-foreground"
+            }`}>
+            <t.icon size={12} />{t.label}
+          </button>
+        ))}
+      </div>
+
+      {/* ── Sales Report ── */}
+      {activeTab === "sales" && (
+        <div className="space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            {[
+              { label: "Total Revenue", value: fmt(totalRevenue), color: "text-emerald-600 dark:text-emerald-400" },
+              { label: "Net Revenue",   value: fmt(netRevenue),   color: "text-primary" },
+              { label: "Total Returns", value: fmt(totalReturns), color: "text-violet-600 dark:text-violet-400" },
+            ].map(c => (
+              <div key={c.label} className="bg-card border border-border/80 rounded-2xl p-4 shadow-[0_2px_12px_-4px_rgba(13,148,136,0.06),0_1px_3px_rgba(0,0,0,0.02)]">
+                <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">{c.label}</p>
+                <p className={`text-lg font-bold mt-2 tabular-nums tracking-tight ${c.color}`}>{c.value}</p>
+              </div>
+            ))}
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {[
+              { label: "Sales",   count: sales.length,   color: "text-emerald-600 dark:text-emerald-400" },
+              { label: "Returns", count: returns.length,  color: "text-orange-600 dark:text-orange-400" },
+            ].map(c => (
+              <div key={c.label} className="bg-card border border-border/80 rounded-2xl p-4 shadow-[0_2px_12px_-4px_rgba(13,148,136,0.06),0_1px_3px_rgba(0,0,0,0.02)] text-center">
+                <p className={`text-2xl font-bold tabular-nums ${c.color}`}>{c.count}</p>
+                <p className="text-xs text-muted-foreground mt-1">{c.label}</p>
+              </div>
+            ))}
+          </div>
+          <div className="bg-card border border-border/80 rounded-2xl overflow-hidden shadow-[0_2px_12px_-4px_rgba(13,148,136,0.06),0_1px_3px_rgba(0,0,0,0.02)]">
+            <div className="px-5 py-4 border-b border-border/70 bg-card/50">
+              <div className="flex items-center gap-2">
+                <h3 className="text-sm font-bold text-foreground">Sales by Product</h3>
+                <InfoTip title="Product Sales Audit Report"
+                  lines={[
+                    "Cumulative sales receipts, units dispensed, and gross revenue grouped per product line.",
+                    { label: "Scope", value: "Verified sales records only" },
+                    { label: "Revenue", value: "Total monetary receipts collected" },
+                  ]} />
+              </div>
+              <p className="text-[11px] text-muted-foreground mt-0.5">
+                {dateFrom || dateTo ? `${dateFrom || "All time"} to ${dateTo || "Present"}` : "All time"}
+              </p>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-border/70 bg-muted/30">
+                    {["Product", "Qty Sold", "Revenue", "% of Sales"].map(h => (
+                      <th key={h} className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide py-3 text-left px-4 first:px-5">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {paginatedSales.map(row => (
+                    <tr key={row.product} className="border-b border-border/40 hover:bg-muted/30 transition-colors">
+                      <td className="px-5 py-3 text-xs font-semibold text-foreground">{row.product}</td>
+                      <td className="px-4 py-3 text-xs text-muted-foreground">{row.qty}</td>
+                      <td className="px-4 py-3 text-xs font-bold text-foreground">{fmt(row.amount)}</td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-2">
+                          <div className="w-16 h-1.5 bg-muted rounded-full overflow-hidden">
+                            <div className="h-full bg-primary rounded-full" style={{ width: `${Math.round((row.amount / totalRevenue) * 100)}%` }} />
+                          </div>
+                          <span className="text-[11px] text-muted-foreground w-7">{Math.round((row.amount / totalRevenue) * 100)}%</span>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                  {salesByProduct.length === 0 && (
+                    <tr><td colSpan={4} className="text-center py-8 text-sm text-muted-foreground">No sales recorded</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+            <TablePager total={salesByProduct.length} page={salesPage} pageSize={PAGE_SIZE} onPage={setSalesPage} />
+          </div>
+        </div>
+      )}
+
+      {/* ── Stock Alerts ── */}
+      {activeTab === "stock" && (
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            {[
+              { label: "Out of Stock", count: outOfStock.length, color: "text-red-800 dark:text-red-300", bg: "bg-red-100 dark:bg-red-500/15", border: "border-red-300 dark:border-red-500/40" },
+              { label: "Critical",     count: critical.length,   color: "text-red-600 dark:text-red-400",   bg: "bg-red-50 dark:bg-red-500/10",    border: "border-red-200 dark:border-red-500/20" },
+              { label: "Low Stock",    count: low.length,        color: "text-amber-600 dark:text-amber-400", bg: "bg-amber-50 dark:bg-amber-500/10", border: "border-amber-200 dark:border-amber-500/20" },
+              { label: "Moderate",     count: moderate.length,   color: "text-yellow-600 dark:text-yellow-400", bg: "bg-yellow-50 dark:bg-yellow-500/10", border: "border-yellow-200 dark:border-yellow-500/20" },
+              { label: "Healthy",      count: good.length,       color: "text-emerald-600 dark:text-emerald-400", bg: "bg-emerald-50 dark:bg-emerald-500/10", border: "border-emerald-200 dark:border-emerald-500/20" },
+            ].map(c => (
+              <div key={c.label} className={`${c.bg} border ${c.border} rounded-xl p-4 shadow-sm`}>
+                <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">{c.label}</p>
+                <p className={`text-2xl font-bold tabular-nums ${c.color} mt-2`}>{c.count}</p>
+              </div>
+            ))}
+          </div>
+          <div className="bg-card border border-border rounded-xl overflow-hidden shadow-sm">
+            <div className="px-5 py-4 border-b border-border">
+              <div className="flex items-center gap-2">
+                <h3 className="text-sm font-bold text-foreground">Items Requiring Action</h3>
+                <InfoTip title="Restocking Priority Report"
+                  lines={[
+                    "Urgent list of inventory items currently out of stock, critical, or approaching reorder points.",
+                    { label: "Threshold", value: "Configured reorder point per product" },
+                    { label: "Recommended", value: "Review replenishment orders in Supplier Orders" },
+                  ]} />
+              </div>
+              <p className="text-[11px] text-muted-foreground mt-0.5">
+                {outOfStock.length + critical.length + low.length + moderate.length} products below or near reorder threshold
+              </p>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-border bg-muted/30">
+                    {["Product", "Category", "Current Stock", "Reorder At", "Shortage", "Status"].map(h => (
+                      <th key={h} className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide py-3 text-left px-4 first:px-5">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {paginatedActionItems.map(item => (
+                    <tr key={item.id} className="border-b border-border/40 hover:bg-muted/30 transition-colors">
+                      <td className="px-5 py-3"><p className="text-xs font-bold text-foreground">{item.name}</p><p className="text-[10px] text-muted-foreground">{item.id}</p></td>
+                      <td className="px-4 py-3 text-xs text-muted-foreground">{item.category}</td>
+                      <td className="px-4 py-3 text-xs font-bold text-foreground">{item.stock}</td>
+                      <td className="px-4 py-3 text-xs text-muted-foreground">{item.reorder} packs ({getReorderUnits(item)} units)</td>
+                      <td className="px-4 py-3 text-xs font-semibold">
+                        <span className={item.stock < getReorderUnits(item) ? "text-red-600 dark:text-red-400" : "text-muted-foreground"}>
+                          {item.stock < getReorderUnits(item) ? `-${getReorderUnits(item) - item.stock}` : "—"}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3"><StockBadge status={item.status} /></td>
+                    </tr>
+                  ))}
+                  {actionItems.length === 0 && (
+                    <tr><td colSpan={6} className="text-center py-8 text-sm text-muted-foreground">All products are at healthy stock levels</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+            <TablePager total={actionItems.length} page={stockPage} pageSize={PAGE_SIZE} onPage={setStockPage} />
+          </div>
+        </div>
+      )}
+
+      {/* ── Inventory ── */}
+      {activeTab === "inventory" && (
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+            {[
+              { label: "Total Products",       value: String(inventory.length),        color: "text-foreground" },
+              { label: "Total Stock Units",     value: totalStock.toLocaleString(),     color: "text-primary" },
+              { label: "Total Inventory Value", value: fmt(totalValue),                 color: "text-emerald-600 dark:text-emerald-400" },
+            ].map(c => (
+              <div key={c.label} className="bg-card border border-border rounded-xl p-4 shadow-sm">
+                <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">{c.label}</p>
+                <p className={`text-xl font-bold mt-2 tabular-nums tracking-tight ${c.color}`}>{c.value}</p>
+              </div>
+            ))}
+          </div>
+          <div className="bg-card border border-border rounded-xl overflow-hidden shadow-sm">
+            <div className="px-5 py-4 border-b border-border">
+              <div className="flex items-center gap-2">
+                <h3 className="text-sm font-bold text-foreground">Complete Inventory</h3>
+                <InfoTip title="Inventory Audit Report"
+                  lines={[
+                    "Comprehensive snapshot of all product catalog records, stock levels, unit pricing, and supplier info.",
+                    { label: "Export", value: "Can be downloaded via Export CSV or printed directly" },
+                  ]} />
+              </div>
+              <p className="text-[11px] text-muted-foreground mt-0.5">All products as of {new Date().toLocaleDateString()}</p>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-border bg-muted/30">
+                    {["Product", "Category", "Stock", "Unit Price", "Stock Value", "Expiry", "Status"].map(h => (
+                      <th key={h} className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide py-3 text-left px-4 first:px-5">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {paginatedInv.map(item => (
+                    <tr key={item.id} className="border-b border-border/40 hover:bg-muted/30 transition-colors">
+                      <td className="px-5 py-3"><p className="text-xs font-bold text-foreground">{item.name}</p><p className="text-[10px] text-muted-foreground">{item.id}</p></td>
+                      <td className="px-4 py-3 text-xs text-muted-foreground">{item.category}</td>
+                      <td className="px-4 py-3 text-xs font-bold text-foreground">{item.stock.toLocaleString()}</td>
+                      <td className="px-4 py-3 text-xs text-muted-foreground">{fmt(item.price)}</td>
+                      <td className="px-4 py-3 text-xs font-bold text-foreground">{fmt(item.stock * item.price)}</td>
+                      <td className="px-4 py-3 text-xs text-muted-foreground">{item.expiry === "—" ? "" : item.expiry}</td>
+                      <td className="px-4 py-3"><StockBadge status={item.status} /></td>
+                    </tr>
+                  ))}
+                  {inventory.length === 0 && (
+                    <tr><td colSpan={7} className="text-center py-8 text-sm text-muted-foreground">No inventory items</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+            <TablePager total={inventory.length} page={invPage} pageSize={PAGE_SIZE} onPage={setInvPage} />
+          </div>
+        </div>
+      )}
+
+      {confirmPrint && (
+        <ConfirmDialog
+          title="Print Report?"
+          message="This will open the print dialog for the current report view."
+          confirmLabel="Print"
+          cancelLabel="Cancel"
+          variant="info"
+          onConfirm={() => { setConfirmPrint(false); window.print(); }}
+          onCancel={() => setConfirmPrint(false)}
+        />
+      )}
+    </div>
+  );
+}
