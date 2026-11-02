@@ -1,6 +1,5 @@
 node_modules/
 dist/
-electron/
 release/
 *.DS_Store
 release/win-unpacked.tmp/
