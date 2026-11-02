@@ -4,11 +4,6 @@
  * URL pattern: http://localhost/SmartTrack/api/{resource}/{id}/{sub}
  */
 
-require_once __DIR__ . '/config.php';
-require_once __DIR__ . '/db.php';
-require_once __DIR__ . '/helpers.php';
-require_once __DIR__ . '/auth.php';
-
 // ─── CORS ─────────────────────────────────────────────────────────────────────
 $origin = $_SERVER['HTTP_ORIGIN'] ?? '';
 $allowed = [
@@ -36,6 +31,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     exit;
 }
 
+// config.php contains machine-specific database credentials and is intentionally
+// excluded from Git. Return JSON rather than a PHP warning page when it is absent.
+$configPath = __DIR__ . '/config.php';
+if (!is_file($configPath)) {
+    http_response_code(503);
+    echo json_encode([
+        'error' => 'API is not configured. Copy api/config.example.php to api/config.php and set your database credentials.',
+    ]);
+    exit;
+}
+
+require_once $configPath;
+require_once __DIR__ . '/db.php';
+require_once __DIR__ . '/helpers.php';
+require_once __DIR__ . '/auth.php';
+
 // ─── Parse URI ────────────────────────────────────────────────────────────────
 $method = $_SERVER['REQUEST_METHOD'];
 $uri    = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
@@ -57,6 +68,10 @@ $sub2     = $segments[3] ?? null; // batchId under /products/{id}/batches/{batch
 // ─── Dispatch ─────────────────────────────────────────────────────────────────
 try {
     switch ($resource) {
+        case 'health':
+            db();
+            json_response(['status' => 'ok', 'database' => ['status' => 'connected']]);
+            break;
         case 'setup-test-users': require __DIR__ . '/setup-test-users.php'; break;
         case 'diagnostic':   require __DIR__ . '/diagnostic.php';         break;
         case 'auth':         require __DIR__ . '/routes/auth.php';         break;

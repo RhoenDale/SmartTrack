@@ -67,8 +67,8 @@ function getApiBase(): string {
 
   // Electron app running from file:// protocol
   if (protocol === 'file:') {
-    log('Electron app detected (file:// protocol)', 'Using http://localhost/SmartTrack/api');
-    return 'http://localhost/SmartTrack/api';
+    log('Electron app detected (file:// protocol)', 'Using http://127.0.0.1/SmartTrack/api');
+    return 'http://127.0.0.1/SmartTrack/api';
   }
 
   // Vite dev server or production on non-standard port
@@ -78,7 +78,8 @@ function getApiBase(): string {
   }
 
   // Production on XAMPP (port 80)
-  const apiBase = `${protocol}//${hostname}/SmartTrack/api`;
+  const apiHost = hostname === 'localhost' ? '127.0.0.1' : hostname;
+  const apiBase = `${protocol}//${apiHost}/SmartTrack/api`;
   log('Production XAMPP detected', apiBase);
   return apiBase;
 }
@@ -142,6 +143,12 @@ async function request<T = unknown>(
     if (res.status === 204) {
       recordApiActivity(method, path, options.body, undefined);
       return undefined as T;
+    }
+
+    if (!res.headers.get('content-type')?.includes('application/json')) {
+      throw new Error(
+        'The API returned a non-JSON response. Check that api/config.php is set up and the request reached the SmartTrack API.'
+      );
     }
 
     const data = await res.json() as T;

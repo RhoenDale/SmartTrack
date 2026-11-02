@@ -107,7 +107,7 @@ export async function initializeElectron() {
  */
 export async function checkXAMPPConnectivity(): Promise<boolean> {
   try {
-    const response = await fetch('http://localhost/SmartTrack/api/diagnostic', {
+    const response = await fetch('http://127.0.0.1/SmartTrack/api/health', {
       method: 'GET',
       signal: AbortSignal.timeout(5000), // 5 second timeout
     });
