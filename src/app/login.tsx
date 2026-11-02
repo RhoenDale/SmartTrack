@@ -4,6 +4,8 @@ import { type AuthUser } from "./data";
 import { authApi, receiptSettingsApi, tokenStore, type PublicBusinessSettings } from "./api";
 import Home from "./home";
 
+const SMARTTRACK_LOGO_URL = `${import.meta.env.BASE_URL}smarttrack-mark.png`;
+
 function FieldInput({ label, type = "text", value, onChange, placeholder, required }: {
   label: string; type?: string; value: string;
   onChange: (v: string) => void; placeholder?: string; required?: boolean;
@@ -236,7 +238,7 @@ function LoginPage({ onLogin, businessSettings, hideBrandMark }: {
             <div className="absolute -inset-3 bg-gradient-to-tr from-teal-400/30 via-sky-400/25 to-blue-500/20 rounded-3xl blur-2xl opacity-80 group-hover:opacity-100 transition-opacity" />
             <img
               data-login-logo
-              src="/smarttrack-mark.png"
+              src={SMARTTRACK_LOGO_URL}
               alt="SmartTrack mark"
               className={`relative w-40 h-28 sm:w-48 sm:h-32 object-contain drop-shadow-[0_18px_28px_rgba(0,0,0,0.35)] transition-all duration-300 group-hover:scale-105 group-hover:-translate-y-1 ${hideBrandMark ? "opacity-0" : "opacity-100"}`}
               style={{ visibility: hideBrandMark ? "hidden" : "visible" }}
@@ -376,7 +378,7 @@ export default function Login() {
     const image = new Image();
     image.onload = () => { if (active) setLogoReady(true); };
     image.onerror = () => { if (active) setLogoReady(true); };
-    image.src = "/smarttrack-mark.png";
+    image.src = SMARTTRACK_LOGO_URL;
     if (image.complete) setLogoReady(true);
 
     authApi.me()
@@ -509,7 +511,7 @@ export default function Login() {
           <div ref={launchBackgroundRef} className="absolute inset-0 bg-[#07182c]" />
           <img
             ref={launchLogoRef}
-            src="/smarttrack-mark.png"
+            src={SMARTTRACK_LOGO_URL}
             alt="SmartTrack"
             className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[180px] h-[120px] object-contain drop-shadow-[0_12px_28px_rgba(0,0,0,0.35)]"
           />

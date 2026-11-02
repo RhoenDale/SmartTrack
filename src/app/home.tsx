@@ -35,6 +35,8 @@ import FinancialPage  from "./financial";
 import PurchaseOrdersPage from "./purchases";
 import CommandAssistant from "./command-assistant";
 
+const SMARTTRACK_LOGO_URL = `${import.meta.env.BASE_URL}smarttrack-mark.png`;
+
 export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrackHub = false }: {
   user: AuthUser;
   onLogout: () => void;
@@ -1254,7 +1256,7 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
         className={`flex items-center gap-3 px-4 py-[18px] border-b border-white/[0.07] w-full hover:bg-white/[0.04] transition-colors group ${sidebarExpanded ? "text-left" : "justify-center"}`}>
         <img
           data-home-logo
-          src="/smarttrack-mark.png"
+          src={SMARTTRACK_LOGO_URL}
           alt="SmartTrack"
           className="w-7 h-7 object-contain drop-shadow-[0_2px_6px_rgba(0,0,0,0.35)] flex-shrink-0 group-hover:scale-105 transition-transform"
         />
@@ -1328,7 +1330,7 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
         <div className="text-center space-y-3">
           <img
             data-home-logo
-            src="/smarttrack-mark.png"
+            src={SMARTTRACK_LOGO_URL}
             alt="SmartTrack"
             className="w-16 h-16 object-contain mx-auto animate-pulse drop-shadow-[0_8px_20px_rgba(0,0,0,0.25)]"
           />
@@ -1364,7 +1366,7 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
                   title="SmartTrack Dashboard"
                 >
                   <img
-                    src="/smarttrack-mark.png"
+                    src={SMARTTRACK_LOGO_URL}
                     alt="SmartTrack"
                     className="w-8 h-8 object-contain drop-shadow-[0_2px_8px_rgba(0,0,0,0.22)] transition-transform group-hover:scale-105"
                   />
@@ -1775,7 +1777,7 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
             <div className="space-y-5">
               <section className="rounded-2xl border border-primary/15 bg-primary/[0.04] p-4 sm:p-5">
                 <div className="flex items-start gap-3">
-                  <img src="/smarttrack-mark.png" alt="" className="mt-0.5 h-10 w-10 shrink-0 object-contain" />
+                  <img src={SMARTTRACK_LOGO_URL} alt="" className="mt-0.5 h-10 w-10 shrink-0 object-contain" />
                   <div>
                     <h3 className="text-sm font-bold text-foreground">Pharmacy operations, organized in one system</h3>
                     <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">

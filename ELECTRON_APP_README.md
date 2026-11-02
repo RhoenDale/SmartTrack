@@ -332,7 +332,7 @@ npm run dist           # Build + create Windows installer
 
 ```powershell
 npm run dist
-# Output: C:\SmartTrack-build\release\SmartTrack-Setup.exe
+# Output: release/SmartTrack-Setup-<version>.exe
 ```
 
 ### Distribute to Users

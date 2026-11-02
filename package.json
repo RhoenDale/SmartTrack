@@ -12,8 +12,8 @@
     "electron": "electron .",
     "electron:dev": "cross-env ELECTRON_START_URL=http://localhost:5173 electron .",
     "start": "npm run build && electron .",
-    "dist": "npm run build && electron-builder",
-    "dist:dir": "npm run build && electron-builder --dir"
+    "dist": "npm run build && cross-env NODE_OPTIONS=--experimental-require-module electron-builder",
+    "dist:dir": "npm run build && cross-env NODE_OPTIONS=--experimental-require-module electron-builder --dir"
   },
   "build": {
     "appId": "com.smarttrack.desktop",
@@ -31,7 +31,7 @@
       "!*.log"
     ],
     "directories": {
-      "output": "C:\\SmartTrack-release",
+      "output": "release",
       "buildResources": "build"
     },
     "win": {
@@ -44,6 +44,27 @@
           ]
         }
       ]
+    },
+    "mac": {
+      "icon": "build/icon.png",
+      "category": "public.app-category.business",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ],
+      "artifactName": "SmartTrack-${version}-mac-${arch}.${ext}"
     },
     "nsis": {
       "oneClick": false,

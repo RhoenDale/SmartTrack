@@ -153,14 +153,27 @@ kill electron process, then run again
 # Build and create setup.exe
 npm run dist
 
-# Output: C:\SmartTrack-build\release\SmartTrack-Setup.exe
+# Output: release/SmartTrack-Setup-<version>.exe
 # This file can be distributed to users
 ```
 
 **Requirements:**
+- Node.js 20.19 or newer
 - .NET Framework (for NSIS installer)
 - All dependencies installed
 - XAMPP connectivity working
+
+### Build macOS App
+
+Install and start XAMPP separately; the macOS SmartTrack app does not bundle Apache, PHP, or MySQL. The app expects the API at `http://localhost/SmartTrack/api`.
+
+```bash
+npm run dist
+```
+
+This creates Intel and Apple Silicon macOS `.dmg` and `.zip` installers in `release/`. Start Apache and MySQL from XAMPP before using the app. The app does not attempt to start Windows XAMPP services on macOS.
+
+On Windows, automatic XAMPP startup uses `C:\xampp` by default. Set `SMARTTRACK_XAMPP_DIR` before launching SmartTrack if XAMPP is installed elsewhere.
 
 ### Configuration
 
@@ -206,7 +219,7 @@ npm start
 | `npm run build` | Build for production (output: dist/) |
 | `npm run electron` | Start Electron with built dist/ |
 | `npm start` | Build + run Electron (production) |
-| `npm run dist` | Build + create installer (Windows) |
+| `npm run dist` | Build + create platform installer (Windows or macOS) |
 
 ## Performance Tips
 
