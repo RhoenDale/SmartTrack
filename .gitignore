@@ -1,8 +1,16 @@
 node_modules/
 dist/
-release/win-unpacked.tmp/
+release/
+*.DS_Store
 dist-build.log
 credentials.md
 .env
 .env.*
 !.env.example
+# Local-only files
+/api/config.php
+/api/diagnostic.php
+/api/setup-test-users.php
+/smarttrack.sql
+/.liveui.json
+/.kiro/hooks/auto-approve-all.json

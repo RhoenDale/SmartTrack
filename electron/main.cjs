@@ -36,8 +36,8 @@ const IS_DEV          = !!DEV_SERVER_URL;
 const DIST_INDEX      = path.join(app.getAppPath(), 'dist', 'index.html');
 const DIST_DIR        = path.dirname(DIST_INDEX);
 const CAN_LOAD_DIST   = fs.existsSync(DIST_INDEX);
-const ICON_PATH       = path.join(__dirname, '../build/icon.ico');
-const API_BASE        = 'http://localhost/SmartTrack/api';
+const ICON_PATH       = path.join(__dirname, '../build', process.platform === 'darwin' ? 'icon.png' : 'icon.ico');
+const API_BASE        = process.env.SMARTTRACK_API_URL || 'http://127.0.0.1/SmartTrack/api';
 
 // ─── State ────────────────────────────────────────────────────────────────────
 let mainWindow  = null;
@@ -54,7 +54,8 @@ const startedServices = new Set();   // Windows service names we net-started
 const startedProcesses = [];         // child processes (httpd.exe / mysqld.exe) we spawned
 
 // ─── XAMPP auto-start ─────────────────────────────────────────────────────────
-const XAMPP_DIR = 'C:\\xampp';
+const XAMPP_DIR = process.env.SMARTTRACK_XAMPP_DIR ||
+  (process.platform === 'win32' ? 'C:\\xampp' : '/Applications/XAMPP/xamppfiles');
 
 /**
  * Run a shell command and resolve with { code, stdout, stderr }.
@@ -80,7 +81,7 @@ async function isServiceRunning(serviceName) {
  */
 function probeApi() {
   return new Promise((resolve) => {
-    const req = http.get(`${API_BASE}/diagnostic`, { timeout: 3000 }, (res) => {
+    const req = http.get(`${API_BASE}/health`, { timeout: 3000 }, (res) => {
       let body = '';
       res.on('data', (c) => { body += c; });
       res.on('end', () => {
@@ -291,6 +292,17 @@ async function ensureXamppRunning() {
   if (await probeApi()) {
     log('XAMPP API already reachable — skipping auto-start.');
     return true;
+  }
+
+  if (process.platform === 'darwin') {
+    dialog.showMessageBoxSync({
+      type: 'warning',
+      title: 'SmartTrack — XAMPP Not Running',
+      message: 'Could not connect to the local SmartTrack API.',
+      detail: 'Open XAMPP Manager, start Apache and MySQL, and make sure the SmartTrack database is configured before signing in.',
+      buttons: ['OK'],
+    });
+    return false;
   }
 
   log('API not reachable — attempting to start Apache and MySQL independently…');
@@ -517,7 +529,7 @@ async function startShareTunnel() {
       publishShareStatus();
       try {
         const health = await new Promise((resolve, reject) => {
-          const request = http.get(`${API_BASE}/diagnostic`, { timeout: 5000 }, (response) => {
+          const request = http.get(`${API_BASE}/health`, { timeout: 5000 }, (response) => {
             let body = '';
             response.setEncoding('utf8');
             response.on('data', (chunk) => { body += chunk; });
@@ -663,7 +675,7 @@ function setupSession() {
             "script-src 'self'; " +
             "style-src 'self' 'unsafe-inline'; " +
             "img-src 'self' data: http://localhost; " +
-            "connect-src 'self' http://localhost;",
+            "connect-src 'self' http://localhost http://127.0.0.1;",
           ],
         },
       });
@@ -686,7 +698,7 @@ function registerIpcHandlers() {
   // Check whether XAMPP / the local API is reachable
   ipcMain.handle('check-xampp', async () => {
     return new Promise((resolve) => {
-      const req = http.get(`${API_BASE}/diagnostic`, { timeout: 4000 }, (res) => {
+      const req = http.get(`${API_BASE}/health`, { timeout: 4000 }, (res) => {
         let body = '';
         res.on('data', (chunk) => { body += chunk; });
         res.on('end', () => {
@@ -835,8 +847,8 @@ function buildAppMenu() {
           },
         },
         {
-          label: 'Open Diagnostic',
-          click: () => shell.openExternal(`${API_BASE}/diagnostic`),
+          label: 'Check API Health',
+          click: () => shell.openExternal(`${API_BASE}/health`),
         },
       ],
     },
@@ -874,8 +886,8 @@ function setupTray() {
         click: () => mainWindow?.webContents.reload(),
       },
       {
-        label: 'Open Diagnostic',
-        click: () => shell.openExternal(`${API_BASE}/diagnostic`),
+        label: 'Check API Health',
+        click: () => shell.openExternal(`${API_BASE}/health`),
       },
       { type: 'separator' },
       {

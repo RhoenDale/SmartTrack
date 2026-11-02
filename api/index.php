@@ -4,11 +4,6 @@
  * URL pattern: http://localhost/SmartTrack/api/{resource}/{id}/{sub}
  */
 
-require_once __DIR__ . '/config.php';
-require_once __DIR__ . '/db.php';
-require_once __DIR__ . '/helpers.php';
-require_once __DIR__ . '/auth.php';
-
 // ─── CORS ─────────────────────────────────────────────────────────────────────
 $origin = $_SERVER['HTTP_ORIGIN'] ?? '';
 $allowed = [
@@ -36,6 +31,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     exit;
 }
 
+// config.php contains machine-specific database credentials and is intentionally
+// excluded from Git. Return JSON rather than a PHP warning page when it is absent.
+$configPath = __DIR__ . '/config.php';
+if (!is_file($configPath)) {
+    http_response_code(503);
+    echo json_encode([
+        'error' => 'API is not configured. Copy api/config.example.php to api/config.php and set your database credentials.',
+    ]);
+    exit;
+}
+
+require_once $configPath;
+require_once __DIR__ . '/db.php';
+require_once __DIR__ . '/helpers.php';
+require_once __DIR__ . '/auth.php';
+
 // ─── Parse URI ────────────────────────────────────────────────────────────────
 $method = $_SERVER['REQUEST_METHOD'];
 $uri    = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
@@ -58,14 +69,20 @@ $sub2     = $segments[3] ?? null; // batchId under /products/{id}/batches/{batch
 try {
     switch ($resource) {
         case 'test-complete-flow': require __DIR__ . '/test-complete-flow.php'; break;
+        case 'health':
+            db();
+            json_response(['status' => 'ok', 'database' => ['status' => 'connected']]);
+            break;
         case 'setup-test-users': require __DIR__ . '/setup-test-users.php'; break;
         case 'diagnostic':   require __DIR__ . '/diagnostic.php';         break;
         case 'auth':         require __DIR__ . '/routes/auth.php';         break;
         case 'products':     require __DIR__ . '/routes/products.php';     break;
+        case 'purchase-orders': require __DIR__ . '/routes/purchase_orders.php'; break;
         case 'categories':   require __DIR__ . '/routes/categories.php';   break;
         case 'transactions': require __DIR__ . '/routes/transactions.php'; break;
         case 'return-requests': require __DIR__ . '/routes/return_requests.php'; break;
         case 'users':        require __DIR__ . '/routes/users.php';        break;
+        case 'roles':        require __DIR__ . '/routes/roles.php';        break;
         case 'settings':     require __DIR__ . '/routes/settings.php';     break;
         case 'notifications':require __DIR__ . '/routes/notifications.php';break;
         case 'analytics':    require __DIR__ . '/routes/analytics.php';    break;
@@ -77,7 +94,22 @@ try {
             json_response(['error' => "Route '$resource' not found."], 404);
     }
 } catch (PDOException $e) {
-    json_response(['error' => 'Database error: ' . $e->getMessage()], 500);
+    error_log('SmartTrack database error: ' . $e->getMessage());
+    $driverCode = (int)($e->errorInfo[1] ?? 0);
+    if ($driverCode === 1062) {
+        json_response(['error' => 'A record with the same unique value already exists.'], 409);
+    }
+    if ($driverCode === 1451) {
+        json_response(['error' => 'This record is still referenced and cannot be deleted.'], 409);
+    }
+    if ($driverCode === 1452) {
+        json_response(['error' => 'A referenced record does not exist.'], 422);
+    }
+    if ($driverCode === 1265) {
+        json_response(['error' => 'A supplied value is not supported by the current database schema. Apply the required database migration.'], 503);
+    }
+    json_response(['error' => 'A database error occurred. Check the server log for details.'], 500);
 } catch (Throwable $e) {
-    json_response(['error' => $e->getMessage()], 500);
+    error_log('SmartTrack server error: ' . $e->getMessage());
+    json_response(['error' => 'An unexpected server error occurred. Check the server log for details.'], 500);
 }

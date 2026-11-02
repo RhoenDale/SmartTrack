@@ -1,4 +1,4 @@
-import { defineConfig } from 'vite'
+import { defineConfig, loadEnv } from 'vite'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import tailwindcss from '@tailwindcss/vite'
@@ -18,34 +18,38 @@ function figmaAssetResolver() {
   }
 }
 
-export default defineConfig({
-  // Build output uses relative paths — works when served from any sub-folder
-  base: './',
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, process.cwd(), 'VITE_')
 
-  plugins: [figmaAssetResolver(), react(), tailwindcss()],
+  return {
+    // Build output uses relative paths — works when served from any sub-folder
+    base: './',
 
-  resolve: {
-    alias: { '@': resolve(__dirname, './src') },
-  },
+    plugins: [figmaAssetResolver(), react(), tailwindcss()],
 
-  assetsInclude: ['**/*.svg', '**/*.csv'],
+    resolve: {
+      alias: { '@': resolve(__dirname, './src') },
+    },
 
-  build: {
-    // Output into dist/ (default)
-    outDir: 'dist',
-    emptyOutDir: true,
-  },
+    assetsInclude: ['**/*.svg', '**/*.csv'],
 
-  server: {
-    // Vite dev server — proxy all /SmartTrack/api calls to XAMPP port 80
-    port: 5173,
-    allowedHosts: ['.trycloudflare.com'],
-    proxy: {
-      '/SmartTrack/api': {
-        target: 'http://localhost:80',
-        changeOrigin: true,
-        // Preserve the full path — XAMPP expects /SmartTrack/api/...
+    build: {
+      // Output into dist/ (default)
+      outDir: 'dist',
+      emptyOutDir: true,
+    },
+
+    server: {
+      // Override the target for XAMPP installations that use a non-default port.
+      port: 5173,
+      allowedHosts: ['.trycloudflare.com'],
+      proxy: {
+        '/SmartTrack/api': {
+          target: env.VITE_API_PROXY_TARGET || 'http://127.0.0.1:80',
+          changeOrigin: true,
+          // Preserve the full path — XAMPP expects /SmartTrack/api/...
+        },
       },
     },
-  },
+  }
 })

@@ -12,8 +12,8 @@
     "electron": "electron .",
     "electron:dev": "cross-env ELECTRON_START_URL=http://localhost:5173 electron .",
     "start": "npm run build && electron .",
-    "dist": "npm run build && electron-builder",
-    "dist:dir": "npm run build && electron-builder --dir"
+    "dist": "npm run build && cross-env NODE_OPTIONS=--experimental-require-module electron-builder --config electron-builder.config.cjs",
+    "dist:dir": "npm run build && cross-env NODE_OPTIONS=--experimental-require-module electron-builder --config electron-builder.config.cjs --dir"
   },
   "build": {
     "appId": "com.smarttrack.desktop",
@@ -24,6 +24,8 @@
       "dist/**/*",
       "electron/**/*",
       "build/icon.ico",
+      "build/icon.png",
+      "build/icon.icns",
       "package.json",
       "!node_modules/**/*",
       "!src/**/*",
@@ -45,6 +47,27 @@
         }
       ]
     },
+    "mac": {
+      "icon": "build/icon.icns",
+      "category": "public.app-category.business",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ],
+      "artifactName": "SmartTrack-${version}-mac-${arch}.${ext}"
+    },
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
@@ -53,7 +76,7 @@
       "shortcutName": "SmartTrack",
       "installerIcon": "build/icon.ico",
       "uninstallerIcon": "build/icon.ico",
-      "artifactName": "SmartTrack-Setup-${version}.exe",
+      "artifactName": "SmartTrack-Setup-${version}-win-${arch}.${ext}",
       "deleteAppDataOnUninstall": false,
       "license": null
     }
