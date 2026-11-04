@@ -2,82 +2,82 @@
 
 :root {
   --font-size: 16px;
-  --background: #f0f8ff;
-  --foreground: #0d1f2d;
+  --background: #eef2f6;
+  --foreground: #0f172a;
   --card: #ffffff;
-  --card-foreground: #0d1f2d;
+  --card-foreground: #0f172a;
   --popover: #ffffff;
-  --popover-foreground: #0d1f2d;
-  --primary: #0d9488;
+  --popover-foreground: #0f172a;
+  --primary: #2563eb;
   --primary-foreground: #ffffff;
-  --secondary: #ccfbf1;
-  --secondary-foreground: #134e4a;
-  --muted: #e8f5f5;
-  --muted-foreground: #5c7d7a;
-  --accent: #f0fdfa;
-  --accent-foreground: #0d9488;
+  --secondary: #eff6ff;
+  --secondary-foreground: #1d4ed8;
+  --muted: #e2e8f0;
+  --muted-foreground: #64748b;
+  --accent: #f0f7ff;
+  --accent-foreground: #2563eb;
   --destructive: #dc2626;
   --destructive-foreground: #ffffff;
-  --border: rgba(0, 0, 0, 0.08);
+  --border: rgba(37, 99, 235, 0.12);
   --input: #ffffff;
-  --input-background: #f8fffe;
-  --switch-background: #cbd5e1;
+  --input-background: #ffffff;
+  --switch-background: #93c5fd;
   --font-weight-medium: 500;
   --font-weight-normal: 400;
-  --ring: #0d9488;
-  --chart-1: #0d9488;
-  --chart-2: #06b6d4;
-  --chart-3: #8b5cf6;
+  --ring: #2563eb;
+  --chart-1: #2563eb;
+  --chart-2: #0ea5e9;
+  --chart-3: #6366f1;
   --chart-4: #f59e0b;
   --chart-5: #f43f5e;
   --radius: 0.5rem;
-  --sidebar: #1a3040;
-  --sidebar-foreground: #94b9cc;
-  --sidebar-primary: #14b8a6;
-  --sidebar-primary-foreground: #042f2e;
-  --sidebar-accent: #1f3d50;
-  --sidebar-accent-foreground: #e0f2f1;
-  --sidebar-border: rgba(255, 255, 255, 0.07);
-  --sidebar-ring: #14b8a6;
+  --sidebar: #0b1528;
+  --sidebar-foreground: #94a3b8;
+  --sidebar-primary: #3b82f6;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #172554;
+  --sidebar-accent-foreground: #eff6ff;
+  --sidebar-border: rgba(255, 255, 255, 0.08);
+  --sidebar-ring: #3b82f6;
 }
 
 .dark {
-  --background: #020918;
-  --foreground: #dde8f5;
-  --card: #07192f;
-  --card-foreground: #dde8f5;
-  --popover: #07192f;
-  --popover-foreground: #dde8f5;
-  --primary: #14b8a6;
-  --primary-foreground: #000d0c;
-  --secondary: #0a1f3d;
-  --secondary-foreground: #8aaec8;
-  --muted: #071224;
-  --muted-foreground: #7a9ab5;
-  --accent: #061324;
-  --accent-foreground: #14b8a6;
+  --background: #070d18;
+  --foreground: #f1f5f9;
+  --card: #0f1a2c;
+  --card-foreground: #f1f5f9;
+  --popover: #0f1a2c;
+  --popover-foreground: #f1f5f9;
+  --primary: #3b82f6;
+  --primary-foreground: #ffffff;
+  --secondary: #172554;
+  --secondary-foreground: #bfdbfe;
+  --muted: #111f36;
+  --muted-foreground: #8ca3ba;
+  --accent: #162744;
+  --accent-foreground: #60a5fa;
   --destructive: #ef4444;
   --destructive-foreground: #ffffff;
-  --border: rgba(255, 255, 255, 0.07);
-  --input: #08172f;
-  --input-background: #08172f;
-  --switch-background: #122a50;
+  --border: rgba(255, 255, 255, 0.08);
+  --input: #0c1626;
+  --input-background: #0c1626;
+  --switch-background: #1e3a8a;
   --font-weight-medium: 500;
   --font-weight-normal: 400;
-  --ring: #14b8a6;
-  --chart-1: #14b8a6;
-  --chart-2: #06b6d4;
-  --chart-3: #8b5cf6;
+  --ring: #3b82f6;
+  --chart-1: #3b82f6;
+  --chart-2: #38bdf8;
+  --chart-3: #818cf8;
   --chart-4: #f59e0b;
   --chart-5: #f43f5e;
-  --sidebar: #030810;
-  --sidebar-foreground: #7a9ab5;
-  --sidebar-primary: #14b8a6;
-  --sidebar-primary-foreground: #000d0c;
-  --sidebar-accent: #0e1929;
-  --sidebar-accent-foreground: #dde8f5;
-  --sidebar-border: rgba(255, 255, 255, 0.05);
-  --sidebar-ring: #14b8a6;
+  --sidebar: #040810;
+  --sidebar-foreground: #8ca3ba;
+  --sidebar-primary: #3b82f6;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #0e1828;
+  --sidebar-accent-foreground: #f1f5f9;
+  --sidebar-border: rgba(255, 255, 255, 0.06);
+  --sidebar-ring: #3b82f6;
 }
 
 @theme inline {
@@ -151,4 +151,350 @@
   label  { font-size: var(--text-base); font-weight: var(--font-weight-medium); line-height: 1.5; }
   button { font-size: var(--text-base); font-weight: var(--font-weight-medium); line-height: 1.5; }
   input  { font-size: var(--text-base); font-weight: var(--font-weight-normal); line-height: 1.5; }
+}
+
+@layer utilities {
+  /* Keep native select arrows centered and consistently inset across browsers. */
+  select.app-select {
+    appearance: none;
+    -webkit-appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.75rem center;
+    background-size: 1rem 1rem;
+    padding-right: 2.5rem;
+  }
+
+  .dark select.app-select {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='%238ca3ba' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  }
+}
+
+/* ─── SmartTrack Motion System ──────────────────────────────────────────────
+ *
+ * All animations use only transform + opacity (GPU-composited, zero layout
+ * triggers). The spring easing cubic-bezier(0.16, 1, 0.3, 1) matches the
+ * existing TrackHub pill and feels naturally weighted across all screen sizes.
+ *
+ * Reduced-motion: all animations collapse to a simple opacity cross-fade at
+ * half duration, keeping the UI functional while respecting the OS setting.
+ * ─────────────────────────────────────────────────────────────────────────── */
+
+/* ── Keyframes ────────────────────────────────────────────────────────────── */
+
+@keyframes st-modal-in {
+  from { opacity: 0; transform: scale(0.96) translateY(4px); }
+  to   { opacity: 1; transform: scale(1)    translateY(0);   }
+}
+@keyframes st-modal-out {
+  from { opacity: 1; transform: scale(1)    translateY(0);   }
+  to   { opacity: 0; transform: scale(0.96) translateY(4px); }
+}
+@keyframes st-overlay-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes st-overlay-out {
+  from { opacity: 1; }
+  to   { opacity: 0; }
+}
+@keyframes st-page-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0);   }
+}
+@keyframes st-fade-up {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0);    }
+}
+@keyframes st-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes st-dropdown-in {
+  from { opacity: 0; transform: scale(0.97) translateY(-4px); }
+  to   { opacity: 1; transform: scale(1)    translateY(0);    }
+}
+@keyframes st-dropdown-out {
+  from { opacity: 1; transform: scale(1)    translateY(0);    }
+  to   { opacity: 0; transform: scale(0.97) translateY(-4px); }
+}
+@keyframes st-slide-in-right {
+  from { opacity: 0; transform: translateX(8px); }
+  to   { opacity: 1; transform: translateX(0);   }
+}
+@keyframes st-tab-indicator {
+  from { transform: scaleX(0); }
+  to   { transform: scaleX(1); }
+}
+@keyframes smartbot-float {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-4px); }
+}
+@keyframes st-login-arrive {
+  from { opacity: 0; transform: translateY(18px) scale(0.985); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes st-login-card-arrive {
+  from { opacity: 0; transform: translateY(24px) scale(0.975); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* ── Utility classes ──────────────────────────────────────────────────────── */
+@layer utilities {
+  /* Modal panel */
+  .st-modal-in {
+    animation: st-modal-in 320ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+  .st-modal-out {
+    animation: st-modal-out 200ms cubic-bezier(0.4, 0, 1, 1) both;
+  }
+
+  /* Backdrop */
+  .st-overlay-in {
+    animation: st-overlay-in 220ms ease both;
+  }
+
+  /* Page content on mount */
+  .st-page-in {
+    animation: st-page-in 280ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  /* Staggered list items — use with [animation-delay:var(--delay)] */
+  .st-fade-up {
+    animation: st-fade-up 300ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  /* Generic fade */
+  .st-fade-in {
+    animation: st-fade-in 200ms ease both;
+  }
+
+  .smartbot-mascot-float {
+    transform-box: fill-box;
+    transform-origin: center;
+    animation: smartbot-float 3s ease-in-out infinite;
+  }
+
+  .st-login-enter {
+    animation: st-login-arrive 650ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+  .st-login-brand {
+    animation: st-login-arrive 700ms cubic-bezier(0.16, 1, 0.3, 1) 80ms both;
+  }
+  .st-login-card {
+    animation: st-login-card-arrive 750ms cubic-bezier(0.16, 1, 0.3, 1) 140ms both;
+  }
+  .st-login-feature {
+    animation: st-login-arrive 550ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+  .st-home-enter {
+    animation: st-login-arrive 520ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+  /* Dropdown / popover */
+  .st-dropdown-in {
+    animation: st-dropdown-in 200ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  /* Card hover lift — combine with group-hover */
+  .st-card {
+    transition: box-shadow 220ms cubic-bezier(0.16, 1, 0.3, 1),
+                transform   220ms cubic-bezier(0.16, 1, 0.3, 1);
+    will-change: transform, box-shadow;
+  }
+  .st-card:hover {
+    transform: translateY(-1px);
+  }
+
+  /* Button press */
+  .st-btn {
+    transition: opacity   150ms ease,
+                transform 150ms cubic-bezier(0.16, 1, 0.3, 1),
+                box-shadow 150ms ease,
+                background-color 150ms ease;
+    will-change: transform, opacity;
+  }
+  .st-btn:hover  { opacity: 0.92; }
+  .st-btn:active { transform: scale(0.97); opacity: 0.85; }
+
+  /* Subtle press for secondary / ghost buttons */
+  .st-btn-ghost {
+    transition: background-color 150ms ease,
+                color            150ms ease,
+                transform        150ms cubic-bezier(0.16, 1, 0.3, 1);
+    will-change: transform;
+  }
+  .st-btn-ghost:active { transform: scale(0.97); }
+
+  /* Focus ring glow */
+  .st-focus {
+    transition: box-shadow 150ms ease, border-color 150ms ease;
+  }
+  .st-focus:focus-within {
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.18);
+  }
+  .dark .st-focus:focus-within {
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.22);
+  }
+
+  /* Sidebar nav item */
+  .st-nav-item {
+    transition: background-color 140ms ease,
+                color            140ms ease,
+                border-color     140ms ease,
+                transform        200ms cubic-bezier(0.16, 1, 0.3, 1);
+    will-change: transform;
+  }
+  .st-nav-item:active { transform: scale(0.98); }
+}
+
+/* ── Reduced-motion overrides ──────────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  .st-modal-in,
+  .st-modal-out,
+  .st-overlay-in,
+  .st-page-in,
+  .st-fade-up,
+  .st-fade-in,
+  .st-login-enter,
+  .st-login-brand,
+  .st-login-card,
+  .st-login-feature,
+  .st-home-enter,
+  .smartbot-mascot-float,
+  .st-dropdown-in {
+    animation: st-fade-in 120ms ease both;
+  }
+  .st-card:hover         { transform: none; }
+  .st-btn:active         { transform: none; }
+  .st-btn-ghost:active   { transform: none; }
+  .st-nav-item:active    { transform: none; }
+  .st-card,
+  .st-btn,
+  .st-btn-ghost,
+  .st-nav-item,
+  .st-focus {
+    transition-duration: 0ms !important;
+  }
+}
+
+/* ── Staggered grid children on page mount ────────────────────────────────── */
+/* Cards inside a .st-grid get a cascading delay so they appear one after     */
+/* another rather than all at once. Uses st-fade-up keyframe.                  */
+@layer utilities {
+  .st-grid > * {
+    animation: st-fade-up 320ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+  .st-grid > *:nth-child(1)  { animation-delay:  0ms; }
+  .st-grid > *:nth-child(2)  { animation-delay: 40ms; }
+  .st-grid > *:nth-child(3)  { animation-delay: 80ms; }
+  .st-grid > *:nth-child(4)  { animation-delay:120ms; }
+  .st-grid > *:nth-child(5)  { animation-delay:160ms; }
+  .st-grid > *:nth-child(6)  { animation-delay:200ms; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .st-grid > * {
+      animation: st-fade-in 120ms ease both;
+      animation-delay: 0ms !important;
+    }
+  }
+}
+
+/* ── TrackHub-specific keyframes ──────────────────────────────────────────── */
+
+/* Pill content (icon + label) slides up and scales in smoothly when page changes */
+@keyframes th-pill-content-in {
+  0% {
+    opacity: 0.15;
+    transform: translateY(6px) scale(0.94);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* Label slides up from below when the active page changes in the collapsed pill */
+@keyframes th-label-in {
+  from { opacity: 0.3; transform: translateY(5px) scale(0.96); }
+  to   { opacity: 1;   transform: translateY(0)   scale(1);    }
+}
+
+/* Nav grid items cascade in when the hub opens */
+@keyframes th-item-in {
+  from { opacity: 0; transform: translateY(8px) scale(0.93); }
+  to   { opacity: 1; transform: translateY(0)   scale(1);    }
+}
+
+.th-assistant-morph {
+  animation: th-assistant-morph-in 360ms cubic-bezier(0.16, 1, 0.3, 1) 60ms both;
+  will-change: transform, opacity;
+}
+
+@keyframes th-assistant-morph-in {
+  from {
+    opacity: 0;
+    transform: scale(0.62);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  @keyframes th-pill-content-in {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+  }
+  @keyframes th-label-in {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+  }
+  @keyframes th-item-in {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+  }
+  .th-assistant-morph {
+    animation: st-fade-in 120ms ease both;
+    will-change: auto;
+  }
+}
+
+/* ── TrackHub ConfirmDialog drop animation ──────────────────────────────────── */
+@keyframes th-confirm-drop {
+  from { opacity: 0; transform: translateY(-12px) scale(0.96); }
+  to   { opacity: 1; transform: translateY(0)     scale(1);    }
+}
+
+@layer utilities {
+  .th-confirm-drop {
+    animation: th-confirm-drop 280ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .th-confirm-drop { animation: st-fade-in 120ms ease both; }
+  }
+}
+
+/* ── TrackHub island confirm expand animation ───────────────────────────────── */
+/* Morphs from the collapsed pill (215×40) to the expanded confirm panel        */
+@keyframes th-island-confirm {
+  from {
+    width: 215px;
+    height: 40px;
+    border-radius: 9999px;
+    opacity: 0.6;
+  }
+  to {
+    width: 400px;
+    height: auto;
+    border-radius: 26px;
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  @keyframes th-island-confirm {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+  }
 }
