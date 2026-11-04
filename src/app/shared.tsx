@@ -1,6 +1,7 @@
 // ─── Shared utilities, UI components and small modals used across pages ───────
 import React from "react";
-import { X, ArrowUpRight, ArrowDownRight, Package, Trash2, Eye, EyeOff, AlertTriangle, ShieldAlert, CircleCheck } from "lucide-react";
+import { createPortal } from "react-dom";
+import { X, ArrowUpRight, ArrowDownRight, Package, Trash2, Eye, EyeOff, AlertTriangle, ShieldAlert, CircleCheck, Info } from "lucide-react";
 import { getReorderUnits, type Product, type StockStatus, type Transaction, type TxStatus, type TxType } from "./data";
 import type { ReceiptSettings } from "./api";
 
@@ -8,6 +9,165 @@ import type { ReceiptSettings } from "./api";
 export const PESO = "\u20b1";
 export const fmt = (n: number) =>
   `${PESO}${n.toLocaleString("en-PH", { minimumFractionDigits: 2 })}`;
+
+// ─── Universal ConfirmDialog ──────────────────────────────────────────────────
+// In TrackHub mode: directly morphs the TrackHub Dynamic Island into the confirm card.
+// No background blur, no disconnected floating scrim over the island.
+export interface IslandConfirmConfig {
+  id: string;
+  title: string;
+  message: React.ReactNode;
+  confirmLabel?: string;
+  cancelLabel?: string;
+  variant?: "danger" | "warning" | "info";
+  icon?: React.ReactNode;
+  onConfirm: () => void;
+  onCancel: () => void;
+}
+
+type ConfirmListener = (config: IslandConfirmConfig | null) => void;
+const confirmListeners = new Set<ConfirmListener>();
+let currentConfirmConfig: IslandConfirmConfig | null = null;
+
+export function registerIslandConfirm(config: IslandConfirmConfig) {
+  currentConfirmConfig = config;
+  confirmListeners.forEach(l => l(config));
+}
+
+export function unregisterIslandConfirm(id: string) {
+  if (currentConfirmConfig?.id === id) {
+    currentConfirmConfig = null;
+    confirmListeners.forEach(l => l(null));
+  }
+}
+
+export function useIslandConfirm() {
+  const [config, setConfig] = React.useState<IslandConfirmConfig | null>(currentConfirmConfig);
+  React.useEffect(() => {
+    confirmListeners.add(setConfig);
+    return () => { confirmListeners.delete(setConfig); };
+  }, []);
+  return config;
+}
+
+export function ConfirmDialog({
+  title,
+  message,
+  confirmLabel = "Confirm",
+  cancelLabel  = "Cancel",
+  variant      = "danger",
+  icon,
+  onConfirm,
+  onCancel,
+  forceModal   = false,
+}: {
+  title:        string;
+  message:      React.ReactNode;
+  confirmLabel?: string;
+  cancelLabel?:  string;
+  variant?:     "danger" | "warning" | "info";
+  icon?:        React.ReactNode;
+  onConfirm:    () => void;
+  onCancel:     () => void;
+  /** When true, always renders as a centered modal overlay regardless of nav mode.
+   *  Use this when the dialog is triggered from inside another modal. */
+  forceModal?:  boolean;
+}) {
+  const colors = {
+    danger:  { ring: "bg-red-500/15 text-red-400",    btn: "bg-red-600 hover:bg-red-500 text-white shadow-md shadow-red-600/30",       dot: "text-red-400",   accent: "#ef4444" },
+    warning: { ring: "bg-amber-500/15 text-amber-400", btn: "bg-amber-500 hover:bg-amber-400 text-white shadow-md shadow-amber-500/30",   dot: "text-amber-400", accent: "#f59e0b" },
+    info:    { ring: "bg-blue-500/15 text-blue-400",   btn: "bg-blue-600 hover:bg-blue-500 text-white shadow-md shadow-blue-600/30", dot: "text-blue-400", accent: "#2563eb" },
+  }[variant];
+
+  const isIslandMode = React.useMemo(() => {
+    if (forceModal) return false;
+    try { return (localStorage.getItem("st_nav_mode") ?? "island") === "island"; }
+    catch { return true; }
+  }, [forceModal]);
+
+  const id = React.useId();
+
+  // Stable refs for ALL props — prevents the registration effect from re-firing
+  // when callers pass new JSX/object/function references on every render.
+  const onConfirmRef   = React.useRef(onConfirm);
+  const onCancelRef    = React.useRef(onCancel);
+  const messageRef     = React.useRef(message);
+  const titleRef       = React.useRef(title);
+  const confirmLabelRef = React.useRef(confirmLabel);
+  const cancelLabelRef  = React.useRef(cancelLabel);
+  const variantRef     = React.useRef(variant);
+  const iconRef        = React.useRef(icon);
+  React.useLayoutEffect(() => {
+    onConfirmRef.current    = onConfirm;
+    onCancelRef.current     = onCancel;
+    messageRef.current      = message;
+    titleRef.current        = title;
+    confirmLabelRef.current = confirmLabel;
+    cancelLabelRef.current  = cancelLabel;
+    variantRef.current      = variant;
+    iconRef.current         = icon;
+  });
+
+  React.useEffect(() => {
+    if (isIslandMode) {
+      registerIslandConfirm({
+        id,
+        // All values proxied through refs — effect runs once on mount only
+        get title()        { return titleRef.current; },
+        get message()      { return messageRef.current; },
+        get confirmLabel() { return confirmLabelRef.current; },
+        get cancelLabel()  { return cancelLabelRef.current; },
+        get variant()      { return variantRef.current; },
+        get icon()         { return iconRef.current; },
+        onConfirm: () => onConfirmRef.current(),
+        onCancel:  () => onCancelRef.current(),
+      });
+      return () => unregisterIslandConfirm(id);
+    }
+  // All props intentionally omitted — proxied via stable refs above
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id, isIslandMode]);
+
+  // Close on Escape for non-island mode
+  React.useEffect(() => {
+    if (isIslandMode) return;
+    const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onCancelRef.current(); };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [isIslandMode]);
+
+  // In TrackHub mode, the dialog is natively embedded inside the TrackHub island (no blur, no detached overlay)
+  if (isIslandMode) {
+    return null;
+  }
+
+  // ── Sidebar mode: clean centered modal without heavy background blur ────────
+  return (
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4">
+      {/* Clean backdrop without blur */}
+      <div className="absolute inset-0 bg-black/40 st-overlay-in" onClick={onCancel} />
+      <div className="relative bg-card border border-border rounded-2xl shadow-2xl w-full max-w-sm p-6 text-center space-y-4 st-modal-in">
+        <div className={`w-14 h-14 rounded-full flex items-center justify-center mx-auto ${colors.ring}`}>
+          {icon ?? <AlertTriangle size={26} className={colors.dot} />}
+        </div>
+        <div className="space-y-1">
+          <h3 className="text-base font-bold text-foreground">{title}</h3>
+          <div className="text-sm text-muted-foreground leading-relaxed">{message}</div>
+        </div>
+        <div className="flex gap-3 pt-1">
+          <button type="button" onClick={onCancel}
+            className="flex-1 py-2.5 border border-border rounded-xl text-sm font-semibold text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-all st-btn-ghost">
+            {cancelLabel}
+          </button>
+          <button type="button" onClick={onConfirm}
+            className={`flex-1 py-2.5 rounded-xl text-sm font-bold transition-all st-btn ${colors.btn}`}>
+            {confirmLabel}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export function PesoIcon({ size, style }: { size?: number; style?: React.CSSProperties }) {
   return <span style={{ ...style, fontSize: size, lineHeight: 1 }}>{PESO}</span>;
@@ -54,10 +214,12 @@ export function SvgAreaChart({
   data,
   lines,
   yFormatter = (v: number) => String(v),
+  xTickInterval = 1,
 }: {
   data: Record<string, any>[];
   lines: { key: string; color: string; name: string; axis?: "left" | "right" }[];
   yFormatter?: (v: number) => string;
+  xTickInterval?: number;
 }) {
   const [hoveredIndex, setHoveredIndex] = React.useState<number | null>(null);
 
@@ -82,16 +244,16 @@ export function SvgAreaChart({
   ) * 1.08;
   const leftMax = maxForAxis("left");
   const rightMax = hasRightAxis ? maxForAxis("right") : leftMax;
-  
+
   // Safe calculation for x position
   const xs = (i: number) => {
     if (data.length === 1) return pad.l + cw / 2; // Center single point
     return pad.l + (i / (data.length - 1)) * cw;
   };
-  
+
   const ys = (v: number, axis: "left" | "right" = "left") =>
     pad.t + ch - (v / (axis === "right" ? rightMax : leftMax)) * ch;
-  
+
   return (
     <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-full" style={{ overflow: "visible" }}>
       {[0, 0.25, 0.5, 0.75, 1].map(t => {
@@ -108,8 +270,8 @@ export function SvgAreaChart({
           </g>
         );
       })}
-      {data.map((d, i) => (
-        <text key={String(d.day ?? d.month ?? i)} x={xs(i)} y={H - 5} textAnchor="middle" fontSize={10} fill="currentColor" opacity={0.45}>{d.day ?? d.month}</text>
+      {data.map((d, i) => (i % Math.max(1, xTickInterval) === 0 || i === data.length - 1) && (
+        <text key={String(d.day ?? d.month ?? i)} x={xs(i)} y={H - 5} textAnchor="middle" fontSize={10} fill="currentColor" opacity={0.55}>{d.day ?? d.month}</text>
       ))}
       {lines.map(line => {
         const axis = line.axis ?? "left";
@@ -162,6 +324,9 @@ export function SvgAreaChart({
 }
 
 export function SvgBarChart({ data }: { data: { name: string; sold: number }[] }) {
+  if (data.length === 0) {
+    return <div className="w-full h-full flex items-center justify-center text-xs text-muted-foreground">No sales recorded yet.</div>;
+  }
   const W = 280; const H = 210;
   const pad = { t: 4, r: 12, b: 4, l: 82 };
   const cw = W - pad.l - pad.r; const ch = H - pad.t - pad.b;
@@ -175,8 +340,10 @@ export function SvgBarChart({ data }: { data: { name: string; sold: number }[] }
         const bw = (d.sold / maxV) * cw;
         return (
           <g key={d.name}>
-            <text x={pad.l - 6} y={y + barH / 2 + 3.5} textAnchor="end" fontSize={10} fill="currentColor" opacity={0.6}>{d.name}</text>
-            <rect x={pad.l} y={y} width={bw} height={barH} rx={3} fill="#0d9488" fillOpacity={0.8} />
+            <text x={pad.l - 6} y={y + barH / 2 + 3.5} textAnchor="end" fontSize={10} fill="currentColor" opacity={0.6}>
+              <title>{d.name}</title>{d.name.length > 13 ? `${d.name.slice(0, 12)}…` : d.name}
+            </text>
+            <rect x={pad.l} y={y} width={bw} height={barH} rx={3} fill="#2563eb" fillOpacity={0.8} />
             <text x={pad.l + bw + 4} y={y + barH / 2 + 3.5} fontSize={9} fill="currentColor" opacity={0.45}>{d.sold}</text>
           </g>
         );
@@ -187,17 +354,17 @@ export function SvgBarChart({ data }: { data: { name: string; sold: number }[] }
 
 // ─── Base UI components ───────────────────────────────────────────────────────
 export function FieldInput({
-  label, type = "text", value, onChange, placeholder, required, min, step, helperText, autoFocus, readOnly, onKeyDown,
+  label, type = "text", value, onChange, placeholder, required, min, step, helperText, autoFocus, readOnly, onKeyDown, list,
 }: {
   label: string; type?: string; value: string | number; onChange: (v: string) => void;
   placeholder?: string; required?: boolean; min?: number; step?: number; helperText?: string;
-  autoFocus?: boolean; readOnly?: boolean; onKeyDown?: (event: React.KeyboardEvent<HTMLInputElement>) => void;
+  autoFocus?: boolean; readOnly?: boolean; onKeyDown?: (event: React.KeyboardEvent<HTMLInputElement>) => void; list?: string;
 }) {
   return (
     <div>
       <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">{label}</label>
       <input
-        type={type} value={value} onChange={e => onChange(e.target.value)} autoFocus={autoFocus} readOnly={readOnly} onKeyDown={onKeyDown}
+        type={type} value={value} onChange={e => onChange(e.target.value)} autoFocus={autoFocus} readOnly={readOnly} onKeyDown={onKeyDown} list={list}
         placeholder={placeholder} required={required} min={min} step={step}
         className="w-full bg-background border border-border rounded-lg px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all"
       />
@@ -218,7 +385,7 @@ export function FieldSelect({
       <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">{label}</label>
       <select
         value={value} onChange={e => onChange(e.target.value)} required={required}
-        className="w-full bg-background border border-border rounded-lg px-3 py-2.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all"
+        className="app-select w-full bg-background border border-border rounded-lg px-3 py-2.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all"
       >
         {/* Placeholder option — visible only when nothing is selected, hidden in the open dropdown */}
         {placeholder !== undefined && (
@@ -231,18 +398,150 @@ export function FieldSelect({
   );
 }
 
-export function Modal({
-  title, onClose, children, wide, closeOnOverlay = true,
+// ─── Help & Guide Popover (?) ────────────────────────────────────────────────
+export function InfoTip({
+  title,
+  lines,
+  color = "default",
+  trigger,
 }: {
-  title: string; onClose: () => void; children: React.ReactNode; wide?: boolean; closeOnOverlay?: boolean;
+  title: string;
+  lines: (string | { label: string; value: string })[];
+  color?: "default" | "emerald" | "sky" | "amber";
+  trigger?: React.ReactNode;
+}) {
+  const [open, setOpen] = React.useState(false);
+  const ref = React.useRef<HTMLDivElement>(null);
+  const popoverRef = React.useRef<HTMLDivElement>(null);
+  const [coords, setCoords] = React.useState<{ top: number; left: number; placeAbove: boolean } | null>(null);
+
+  const updateCoords = React.useCallback(() => {
+    if (!ref.current) return;
+    const rect = ref.current.getBoundingClientRect();
+    const width = Math.min(320, window.innerWidth - 32);
+    let left = rect.left + rect.width / 2 - width / 2;
+    if (left < 16) left = 16;
+    if (left + width > window.innerWidth - 16) {
+      left = window.innerWidth - 16 - width;
+    }
+    const spaceBelow = window.innerHeight - rect.bottom;
+    const placeAbove = spaceBelow < 260 && rect.top > 260;
+    const top = placeAbove ? rect.top - 8 : rect.bottom + 8;
+    setCoords({ top, left, placeAbove });
+  }, []);
+
+  React.useEffect(() => {
+    if (!open) return;
+    updateCoords();
+
+    const handleScroll = () => updateCoords();
+    const handleResize = () => updateCoords();
+    window.addEventListener("scroll", handleScroll, true);
+    window.addEventListener("resize", handleResize);
+
+    function handleClick(e: MouseEvent) {
+      const target = e.target as Node;
+      if (
+        ref.current && !ref.current.contains(target) &&
+        popoverRef.current && !popoverRef.current.contains(target)
+      ) {
+        setOpen(false);
+      }
+    }
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") setOpen(false);
+    }
+    document.addEventListener("mousedown", handleClick);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("scroll", handleScroll, true);
+      window.removeEventListener("resize", handleResize);
+      document.removeEventListener("mousedown", handleClick);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [open, updateCoords]);
+
+  const ringColor = {
+    default: "ring-1 ring-border/80 bg-muted/60 text-muted-foreground hover:text-primary hover:bg-primary/10 hover:ring-primary/40",
+    emerald: "ring-1 ring-emerald-300 dark:ring-emerald-700 text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 hover:bg-emerald-100",
+    sky:     "ring-1 ring-sky-300 dark:ring-sky-700 text-sky-600 dark:text-sky-400 bg-sky-50 dark:bg-sky-950/40 hover:bg-sky-100",
+    amber:   "ring-1 ring-amber-300 dark:ring-amber-700 text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 hover:bg-amber-100",
+  }[color];
+
+  return (
+    <div ref={ref} className="relative inline-flex items-center">
+      {trigger ? (
+        <div onClick={() => setOpen(v => !v)} className="cursor-pointer inline-flex items-center">
+          {trigger}
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setOpen(v => !v)}
+          className={`inline-flex items-center justify-center w-5 h-5 rounded-full transition-all cursor-pointer shadow-2xs hover:scale-110 active:scale-95 ${ringColor}`}
+          aria-label="Help and information"
+          title="Click for guide and information"
+        >
+          <Info size={13.5} strokeWidth={2.4} className="shrink-0" />
+        </button>
+      )}
+      {open && coords && createPortal(
+        <div
+          ref={popoverRef}
+          style={{
+            position: "fixed",
+            top: coords.placeAbove ? undefined : `${coords.top}px`,
+            bottom: coords.placeAbove ? `${window.innerHeight - coords.top}px` : undefined,
+            left: `${coords.left}px`,
+            zIndex: 99999,
+          }}
+          className="w-72 sm:w-80 bg-card border border-border rounded-xl shadow-2xl p-4 space-y-2.5 st-dropdown-in text-left"
+        >
+          <div className="flex items-start justify-between gap-2 border-b border-border/50 pb-2">
+            <p className="text-xs font-semibold text-foreground leading-snug flex items-center gap-1.5">
+              <Info size={13} className="text-primary shrink-0 stroke-[2.2]" />
+              {title}
+            </p>
+            <button
+              type="button"
+              onClick={() => setOpen(false)}
+              className="text-muted-foreground hover:text-foreground text-xs p-1 rounded hover:bg-muted cursor-pointer leading-none"
+              aria-label="Close"
+            >
+              ✕
+            </button>
+          </div>
+          <div className="space-y-1.5 max-h-64 overflow-y-auto pr-1">
+            {lines.map((line, i) =>
+              typeof line === "string" ? (
+                <p key={i} className="text-[11px] text-muted-foreground leading-relaxed">{line}</p>
+              ) : (
+                <div key={i} className="flex items-start justify-between gap-2 bg-muted/30 px-2.5 py-1.5 rounded-lg text-[10px]">
+                  <span className="text-muted-foreground shrink-0 font-medium">{line.label}</span>
+                  <span className="font-semibold text-foreground text-right font-mono">{line.value}</span>
+                </div>
+              )
+            )}
+          </div>
+        </div>,
+        document.body
+      )}
+    </div>
+  );
+}
+
+export function Modal({
+  title, onClose, children, wide, compact = false, hideCloseButton = false, closeOnOverlay = true,
+}: {
+  title: string; onClose: () => void; children: React.ReactNode; wide?: boolean; compact?: boolean; hideCloseButton?: boolean; closeOnOverlay?: boolean;
 }) {
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center p-4 pt-16 sm:items-center sm:pt-4">
-      <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" onClick={closeOnOverlay ? onClose : undefined} />
-      <div className={`relative bg-card border border-border rounded-2xl shadow-2xl w-full ${wide ? "max-w-6xl" : "max-w-md"} max-h-[90vh] flex flex-col`}>
-        <div className="flex items-center justify-between px-6 py-4 border-b border-border flex-shrink-0">
+      <div className="absolute inset-0 bg-slate-950/40 backdrop-blur-xs st-overlay-in" onClick={closeOnOverlay ? onClose : undefined} />
+      <div className={`relative bg-card border border-border/80 rounded-2xl shadow-[0_20px_50px_-15px_rgba(13,148,136,0.15),0_10px_25px_-5px_rgba(0,0,0,0.06)] w-full ${wide ? compact ? "max-w-4xl" : "max-w-6xl" : "max-w-md"} max-h-[90vh] flex flex-col overflow-hidden st-modal-in`}>
+        <div className="flex items-center justify-between px-6 py-4 border-b border-border/60 flex-shrink-0 bg-card/50">
           <h2 className="text-sm font-bold text-foreground">{title}</h2>
-          <button onClick={onClose} className="text-muted-foreground hover:text-foreground transition-colors"><X size={16} /></button>
+          {!hideCloseButton && <button onClick={onClose} aria-label="Close dialog" className="w-7 h-7 rounded-lg flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors st-btn-ghost"><X size={15} /></button>}
         </div>
         <div className="p-6 overflow-y-auto space-y-4">{children}</div>
       </div>
@@ -256,81 +555,63 @@ export function DeleteConfirmModal({
   product: Product; onClose: () => void; onConfirm: () => void;
 }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative bg-card border border-border rounded-2xl shadow-2xl w-full max-w-sm flex flex-col overflow-hidden">
-        <div className="h-1 w-full bg-gradient-to-r from-red-500 to-red-400" />
-        <div className="p-6 flex flex-col items-center text-center gap-4">
-          <div className="w-14 h-14 rounded-full bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 flex items-center justify-center flex-shrink-0">
-            <Trash2 size={24} className="text-red-500" />
-          </div>
-          <div className="space-y-1">
-            <h2 className="text-base font-bold text-foreground">Delete Product?</h2>
-            <p className="text-sm text-muted-foreground leading-relaxed">
-              You're about to permanently delete{" "}
-              <span className="font-semibold text-foreground">{product.name}</span>.
-              This action cannot be undone.
-            </p>
-          </div>
-          <div className="w-full bg-muted/40 border border-border rounded-xl px-4 py-3 flex items-center gap-3 text-left">
-            <div className="w-8 h-8 rounded-lg bg-red-100 dark:bg-red-500/10 flex items-center justify-center flex-shrink-0">
-              <Package size={14} className="text-red-500" />
-            </div>
-            <div>
-              <p className="text-xs font-bold text-foreground">{product.name}</p>
-              <p className="text-[10px] text-muted-foreground">{product.id} · {product.category} · {product.stock} units in stock</p>
-            </div>
-          </div>
-          <div className="flex gap-3 w-full pt-1">
-            <button onClick={onClose} className="flex-1 py-2.5 rounded-xl border border-border text-sm font-semibold text-foreground hover:bg-muted/50 transition-colors">
-              Cancel
-            </button>
-            <button onClick={onConfirm} className="flex-1 py-2.5 rounded-xl bg-red-500 hover:bg-red-600 text-white text-sm font-bold transition-colors shadow-sm shadow-red-500/20">
-              Delete Product
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
+    <ConfirmDialog
+      title="Delete Product?"
+      message={
+        <span>
+          Move <span className="font-semibold text-foreground">{product.name}</span> to the recycle bin?
+          You can restore it within 30 days.
+        </span>
+      }
+      confirmLabel="Delete Product"
+      cancelLabel="Cancel"
+      variant="danger"
+      onConfirm={onConfirm}
+      onCancel={onClose}
+    />
   );
 }
 
 export function StockBadge({ status }: { status: StockStatus }) {
   const cls: Record<StockStatus, string> = {
-    out_of_stock: "bg-red-100 text-red-800 border-red-300 dark:bg-red-500/20 dark:text-red-300 dark:border-red-500/40",
-    good: "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/20",
-    moderate: "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-500/10 dark:text-amber-400 dark:border-amber-500/20",
-    low: "bg-orange-50 text-orange-700 border-orange-200 dark:bg-orange-500/10 dark:text-orange-400 dark:border-orange-500/20",
-    critical: "bg-red-50 text-red-700 border-red-200 dark:bg-red-500/10 dark:text-red-400 dark:border-red-500/20",
+    out_of_stock: "bg-red-500/10 text-red-700 border-red-200/80 dark:bg-red-500/20 dark:text-red-300 dark:border-red-500/30",
+    good: "bg-teal-500/10 text-teal-700 border-teal-200/80 dark:bg-teal-500/20 dark:text-teal-300 dark:border-teal-500/30",
+    moderate: "bg-amber-500/10 text-amber-700 border-amber-200/80 dark:bg-amber-500/20 dark:text-amber-300 dark:border-amber-500/30",
+    low: "bg-orange-500/10 text-orange-700 border-orange-200/80 dark:bg-orange-500/20 dark:text-orange-300 dark:border-orange-500/30",
+    critical: "bg-rose-500/10 text-rose-700 border-rose-200/80 dark:bg-rose-500/20 dark:text-rose-300 dark:border-rose-500/30",
   };
   const label = status === "out_of_stock" ? "Out of Stock" : status.charAt(0).toUpperCase() + status.slice(1);
-  return <span className={`px-2 py-0.5 rounded text-[10px] font-semibold border ${cls[status]}`}>{label}</span>;
+  return <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-semibold tracking-wide border shadow-2xs ${cls[status]}`}>{label}</span>;
 }
 
 export function TxBadge({ status }: { status: TxStatus }) {
-  return <span className="px-2 py-0.5 rounded text-[10px] font-semibold border bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/20">Completed</span>;
+  return <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-semibold tracking-wide border bg-teal-500/10 text-teal-700 border-teal-200/80 dark:bg-teal-500/20 dark:text-teal-300 dark:border-teal-500/30 shadow-2xs">Completed</span>;
 }
 
 export function TxTypeBadge({ type }: { type: TxType }) {
   const cfg: Record<TxType, { label: string; cls: string }> = {
-    sale: { label: "Sale", cls: "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/20" },
-    return: { label: "Return", cls: "bg-orange-50 text-orange-700 border-orange-200 dark:bg-orange-500/10 dark:text-orange-400 dark:border-orange-500/20" },
-    adjustment: { label: "Adjustment", cls: "bg-slate-50 text-slate-700 border-slate-200 dark:bg-slate-500/10 dark:text-slate-300 dark:border-slate-500/20" },
+    sale: { label: "Sale", cls: "bg-blue-500/10 text-blue-700 border-blue-200/80 dark:bg-blue-500/20 dark:text-blue-300 dark:border-blue-500/30" },
+    return: { label: "Return", cls: "bg-orange-500/10 text-orange-700 border-orange-200/80 dark:bg-orange-500/20 dark:text-orange-300 dark:border-orange-500/30" },
+    adjustment: { label: "Adjustment", cls: "bg-slate-500/10 text-slate-700 border-slate-200/80 dark:bg-slate-500/20 dark:text-slate-300 dark:border-slate-500/30" },
   };
   const { label, cls } = cfg[type];
-  return <span className={`px-2 py-0.5 rounded text-[10px] font-semibold border ${cls}`}>{label}</span>;
+  return <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-semibold tracking-wide border shadow-2xs ${cls}`}>{label}</span>;
 }
 
 export function StatCard({
-  label, value, sub, icon: Icon, trend, trendUp, color,
+  label, value, sub, icon: Icon, trend, trendUp, color, showTrendIcon = true, tip,
 }: {
-  label: string; value: string; sub: string; icon: any; trend?: React.ReactNode; trendUp?: boolean; color: string;
+  label: string; value: string; sub: string; icon: any; trend?: React.ReactNode; trendUp?: boolean; color: string; showTrendIcon?: boolean;
+  tip?: { title: string; lines: (string | { label: string; value: string })[] };
 }) {
   return (
-    <div className="bg-card border border-border rounded-xl p-5 shadow-sm flex flex-col gap-3 hover:shadow-md transition-shadow duration-200">
+    <div className="bg-card border border-border/80 rounded-2xl p-5 shadow-[0_2px_12px_-4px_rgba(13,148,136,0.06),0_1px_3px_rgba(0,0,0,0.02)] flex flex-col gap-3 hover:shadow-[0_8px_24px_-6px_rgba(13,148,136,0.12),0_2px_6px_rgba(0,0,0,0.03)] transition-all duration-200 st-card">
       <div className="flex items-center justify-between">
-        <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">{label}</span>
-        <div className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: color + "18" }}>
+        <div className="flex items-center gap-1.5">
+          <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">{label}</span>
+          {tip && <InfoTip title={tip.title} lines={tip.lines} />}
+        </div>
+        <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 shadow-2xs" style={{ backgroundColor: color + "14", border: `1px solid ${color}24` }}>
           <Icon size={17} style={{ color }} />
         </div>
       </div>
@@ -339,11 +620,86 @@ export function StatCard({
         <p className="text-[11px] text-muted-foreground mt-0.5">{sub}</p>
       </div>
       {trend && (
-        <div className={`flex items-center gap-1 text-xs font-medium ${trendUp ? "text-emerald-600 dark:text-emerald-400" : "text-red-500 dark:text-red-400"}`}>
-          {trendUp ? <ArrowUpRight size={13} /> : <ArrowDownRight size={13} />}
+        <div className={`flex items-center gap-1 text-xs font-medium ${trendUp ? "text-emerald-600 dark:text-emerald-400" : "text-rose-500 dark:text-rose-400"}`}>
+          {showTrendIcon && (trendUp ? <ArrowUpRight size={13} /> : <ArrowDownRight size={13} />)}
           {trend}
         </div>
       )}
+    </div>
+  );
+}
+
+/* ---------- Shared Table Pagination Controls ---------- */
+export function TablePager({
+  total,
+  page,
+  pageSize,
+  onPage,
+  alwaysShow,
+}: {
+  total: number;
+  page: number;
+  pageSize: number;
+  onPage: (p: number) => void;
+  alwaysShow?: boolean;
+}) {
+  if (total === 0) return null;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  if (totalPages <= 1 && !alwaysShow) return null;
+  const start = total === 0 ? 0 : (page - 1) * pageSize + 1;
+  const end = Math.min(page * pageSize, total);
+
+  const pages: (number | "…")[] = [];
+  for (let i = 1; i <= totalPages; i++) {
+    if (i === 1 || i === totalPages || (i >= page - 1 && i <= page + 1)) {
+      pages.push(i);
+    } else if (pages[pages.length - 1] !== "…") {
+      pages.push("…");
+    }
+  }
+
+  return (
+    <div className="flex items-center justify-between px-5 py-3 border-t border-border/70 bg-muted/10">
+      <span className="text-[11px] text-muted-foreground">
+        Showing <span className="font-semibold text-foreground">{start}–{end}</span> of{" "}
+        <span className="font-semibold text-foreground">{total}</span> results
+      </span>
+      <div className="flex items-center gap-1">
+        <button
+          type="button"
+          onClick={() => onPage(page - 1)}
+          disabled={page === 1}
+          className="px-2.5 py-1 rounded-lg text-[11px] font-semibold border border-border/80 bg-card/90 hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer shadow-2xs"
+        >
+          ← Prev
+        </button>
+        {pages.map((p, i) =>
+          p === "…" ? (
+            <span key={`e${i}`} className="px-1 text-[11px] text-muted-foreground">…</span>
+          ) : (
+            <button
+              key={p}
+              type="button"
+              onClick={() => onPage(p as number)}
+              className={`w-7 h-7 rounded-lg text-[11px] font-semibold border transition-colors cursor-pointer ${
+                p === page
+                  ? "bg-primary text-primary-foreground border-primary shadow-2xs"
+                  : "bg-card/90 border-border/80 hover:bg-muted text-foreground"
+              }`}
+            >
+              {p}
+            </button>
+          )
+        )}
+        <button
+          type="button"
+          onClick={() => onPage(page + 1)}
+          disabled={page === totalPages}
+          className="px-2.5 py-1 rounded-lg text-[11px] font-semibold border border-border/80 bg-card/90 hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer shadow-2xs"
+        >
+          Next →
+        </button>
+      </div>
     </div>
   );
 }
@@ -365,7 +721,6 @@ export function ViewReasonModal({ tx, onClose }: { tx: Transaction; onClose: () 
             {tx.note || "No reason provided."}
           </p>
         </div>
-        <button onClick={onClose} className="w-full py-2.5 bg-primary text-primary-foreground rounded-xl text-sm font-bold hover:opacity-90 transition-opacity">Close</button>
       </div>
     </Modal>
   );
@@ -403,8 +758,8 @@ export function NotificationPanel({
   };
 
   return (
-    <div ref={ref} className="absolute right-0 top-full mt-2 w-80 sm:w-96 bg-card border border-border rounded-2xl shadow-2xl overflow-hidden" style={{ zIndex: 200 }}>
-      <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+    <div ref={ref} className="absolute right-0 top-full mt-2 w-80 sm:w-96 bg-card border border-border/80 rounded-2xl shadow-[0_20px_50px_-10px_rgba(13,148,136,0.15),0_10px_20px_-5px_rgba(0,0,0,0.08)] overflow-hidden st-dropdown-in" style={{ zIndex: 200 }}>
+      <div className="flex items-center justify-between px-4 py-3 border-b border-border/60 bg-card/50">
         <div>
           <p className="text-sm font-bold text-foreground">Notifications</p>
           <p className="text-[10px] text-muted-foreground">{notifs.filter(n => !n.read).length} unread</p>
@@ -413,14 +768,14 @@ export function NotificationPanel({
           <CheckCheck size={12} />Mark all read
         </button>
       </div>
-      <div className="max-h-72 overflow-y-auto divide-y divide-border">
+      <div className="max-h-72 overflow-y-auto divide-y divide-border/60">
         {notifs.map(n => (
           <div
             key={n.id}
             onClick={() => onNotificationClick(n)}
             onMouseEnter={() => onNotificationHover(n.productId ?? null)}
             onMouseLeave={() => onNotificationHover(null)}
-            className={`flex gap-3 px-4 py-3 cursor-pointer transition-colors hover:bg-muted/50 ${n.read ? "opacity-60" : ""}`}
+            className={`flex gap-3 px-4 py-3 cursor-pointer transition-colors hover:bg-muted/40 ${n.read ? "opacity-60" : ""}`}
           >
             <div className="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5"
               style={{ background: n.type === "alert" ? "#fef3c7" : n.type === "order" ? "#ccfbf1" : "#f0fdf4" }}>
@@ -447,15 +802,26 @@ export function NotificationPanel({
 
 // ─── Product Form Modal ───────────────────────────────────────────────────────
 export function ProductFormModal({
-  initial, categories, onClose, onSave, onAddCategory,
+  initial, inventory, categories, onClose, onSave, onAddCategory, suggestedBatchQty = 0,
 }: {
   initial?: Product;
+  inventory: Product[];
   categories: string[];
   onClose: () => void;
   onSave: (original: Product | null, updated: Product) => void;
   onAddCategory: (cat: string) => void;
+  suggestedBatchQty?: number;
 }) {
   const isEdit = !!initial;
+  const supplierListId = React.useId();
+  const supplierSuggestions = React.useMemo(() => {
+    const suppliers = new Map<string, string>();
+    inventory.forEach(product => {
+      const supplier = product.supplier.trim();
+      if (supplier) suppliers.set(supplier.toLocaleLowerCase(), supplier);
+    });
+    return [...suppliers.values()].sort((a, b) => a.localeCompare(b));
+  }, [inventory]);
   const [form, setForm] = useState({
     barcode: initial?.barcode ?? "",
     name: initial?.name ?? "",
@@ -474,7 +840,7 @@ export function ProductFormModal({
   const set = (k: keyof typeof form) => (v: string) => setForm(f => ({ ...f, [k]: v }));
 
   const [batches, setBatches] = useState<ProductBatch[]>(initial?.batches ?? []);
-  const [newBatchQty, setNewBatchQty] = useState("");
+  const [newBatchQty, setNewBatchQty] = useState(suggestedBatchQty > 0 ? String(suggestedBatchQty) : "");
   const [newBatchExpiry, setNewBatchExpiry] = useState("");
   const [newBatchTotalCost, setNewBatchTotalCost] = useState("");
 
@@ -529,7 +895,28 @@ export function ProductFormModal({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (batches.length === 0) return;
+    let currentBatches = [...batches];
+    const pendingQty = parseInt(newBatchQty, 10);
+    if (pendingQty > 0) {
+      const batchNum = currentBatches.length + 1;
+      const batchId = `${initial?.id ?? "NEW"}-B${Date.now()}-${batchNum}`;
+      const expiryDate = newBatchExpiry.trim() ? parseExpiry(newBatchExpiry.trim()) : null;
+      if (!expiryDate || !Number.isNaN(expiryDate.getTime())) {
+        const totalCost = newBatchTotalCost.trim() !== "" ? parseFloat(newBatchTotalCost) : null;
+        const unitCost  = totalCost != null && pendingQty > 0 ? parseFloat((totalCost / pendingQty).toFixed(4)) : null;
+        currentBatches.push({
+          batchId,
+          qty: pendingQty,
+          expiry: expiryDate ? formatExpiryString(expiryDate) : null,
+          expiryDate: expiryDate ? formatExpiryString(expiryDate) : null,
+          receivedDate: new Date().toLocaleDateString("en-PH"),
+          batchTotalCost: totalCost,
+          unitCost,
+        });
+      }
+    }
+
+    if (currentBatches.length === 0) return;
     const reorder = parseInt(form.reorder, 10) || 0;
     const price = parseFloat(form.price) || 0;
     const salePriceVal = form.salePrice.trim() !== "" ? parseFloat(form.salePrice) : undefined;
@@ -546,7 +933,7 @@ export function ProductFormModal({
       }
     }
     if (finalCategories.length === 0) return;
-    const sortedBatches = sortBatchesFIFO(batches);
+    const sortedBatches = sortBatchesFIFO(currentBatches);
     const totalStock = getTotalStock(sortedBatches);
     const updated: Product = {
       id: initial?.id ?? "", barcode: form.barcode.trim(), name: form.name, category: finalCategories.join(", "), categories: finalCategories, supplier: form.supplier.trim(),
@@ -559,8 +946,17 @@ export function ProductFormModal({
   };
 
   return (
-    <Modal title={isEdit ? "Edit Product" : "Add New Product"} onClose={onClose} wide>
-      <form onSubmit={handleSubmit} className="space-y-4">
+    <Modal title={isEdit ? "Edit Product" : "Add New Product"} onClose={onClose} wide compact hideCloseButton>
+      <form onSubmit={handleSubmit} className="space-y-3">
+        <details open className="group rounded-xl border border-border/80 bg-card">
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 [&::-webkit-details-marker]:hidden">
+            <span>
+              <span className="block text-sm font-semibold text-foreground">Product details</span>
+              <span className="block text-[11px] text-muted-foreground">Name, barcode, supplier, and categories</span>
+            </span>
+            <span className="flex items-center justify-center w-7 h-7 rounded-full bg-muted/60 text-primary transition-transform group-open:rotate-180 text-base leading-none">⌄</span>
+          </summary>
+          <div className="space-y-3 border-t border-border/60 px-4 py-4">
         {isEdit && <FieldInput label="Product ID (auto-generated)" value={initial?.id ?? ""} onChange={() => {}} readOnly />}
         <FieldInput
           label="Barcode"
@@ -573,7 +969,10 @@ export function ProductFormModal({
           helperText="Use a USB or Bluetooth scanner, or type the code."
         />
         <FieldInput label="Product Name" value={form.name} onChange={set("name")} placeholder="e.g. Amoxicillin 500mg" required />
-        <FieldInput label="Supplier" value={form.supplier} onChange={set("supplier")} placeholder="e.g. Apex Pharma" required />
+        <FieldInput label="Supplier" value={form.supplier} onChange={set("supplier")} placeholder="e.g. Apex Pharma" required list={supplierListId} />
+        <datalist id={supplierListId}>
+          {supplierSuggestions.map(supplier => <option key={supplier} value={supplier} />)}
+        </datalist>
         <div className="space-y-2">
           <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">Categories (select all that apply)</label>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-36 overflow-y-auto rounded-lg border border-border p-3">
@@ -595,15 +994,18 @@ export function ProductFormModal({
           </div>
           {selectedCategories.length === 0 && <p className="text-xs text-muted-foreground">Select or add at least one category.</p>}
         </div>
-        <FieldInput
-          label={parseInt(form.unitsPerPack, 10) > 1 ? "Reorder Point (packs/boxes)" : `Reorder Point (${form.unitLabel.trim() || "units"})`}
-          type="number"
-          value={form.reorder}
-          onChange={set("reorder")}
-          placeholder="0"
-          required
-          min={0}
-        />
+          </div>
+        </details>
+
+        <details className="group rounded-xl border border-border/80 bg-card">
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 [&::-webkit-details-marker]:hidden">
+            <span>
+              <span className="block text-sm font-semibold text-foreground">Pricing & pack sizes</span>
+              <span className="block text-[11px] text-muted-foreground">Selling price, discount, unit, and pack pricing</span>
+            </span>
+            <span className="flex items-center justify-center w-7 h-7 rounded-full bg-muted/60 text-primary transition-transform group-open:rotate-180 text-base leading-none">⌄</span>
+          </summary>
+          <div className="space-y-3 border-t border-border/60 px-4 py-4">
         <div className="grid grid-cols-2 gap-3">
           <FieldInput label={`Selling Price (${PESO}) — VAT-inclusive`} type="number" value={form.price} onChange={set("price")} placeholder="0.00" required min={0} step={0.01} />
           <FieldInput label={`Sale/Discounted Price (${PESO})`} type="number" value={form.salePrice} onChange={set("salePrice")} placeholder="Optional" min={0} step={0.01} helperText="Discounted price (optional)" />
@@ -655,9 +1057,37 @@ export function ProductFormModal({
             </div>
           );
         })()}
+          </div>
+        </details>
+
+        <details open className="group rounded-xl border border-border/80 bg-card">
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 [&::-webkit-details-marker]:hidden">
+            <span>
+              <span className="block text-sm font-semibold text-foreground">Stock & reorder</span>
+              <span className="block text-[11px] text-muted-foreground">Set the low-stock alert and manage received batches</span>
+            </span>
+            <span className="flex items-center justify-center w-7 h-7 rounded-full bg-muted/60 text-primary transition-transform group-open:rotate-180 text-base leading-none">⌄</span>
+          </summary>
+          <div className="space-y-3 border-t border-border/60 px-4 py-4">
+        <FieldInput
+          label={parseInt(form.unitsPerPack, 10) > 1 ? "Alert me when stock is below (packs/boxes)" : `Alert me when stock is below (${form.unitLabel.trim() || "units"})`}
+          type="number"
+          value={form.reorder}
+          onChange={set("reorder")}
+          placeholder="0"
+          required
+          min={0}
+          helperText="This is the low-stock alert threshold, not the quantity to order."
+        />
+        {suggestedBatchQty > 0 && (
+          <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-200">
+            <strong>Suggested reorder: {suggestedBatchQty.toLocaleString()} {form.unitLabel || "units"}.</strong>
+            {" "}The quantity is prefilled below; adjust it to match your supplier pack size.
+          </div>
+        )}
         <div className="space-y-2">
           <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">
-            Stock Batches <span className="text-primary">(FIFO — first in first out)</span>
+            Current batches <span className="text-primary">(oldest received stock is used first)</span>
           </label>
           {batches.length > 0 && (
             <div className="bg-muted/30 border border-border rounded-xl overflow-hidden">
@@ -713,22 +1143,39 @@ export function ProductFormModal({
               )}
             </div>
             <button type="button" onClick={handleAddBatch}
-              className="px-3 py-2 bg-primary text-primary-foreground rounded-lg text-xs font-bold hover:opacity-90 transition-opacity whitespace-nowrap flex-shrink-0 self-end mb-0">
+              className={`px-3 py-2 rounded-lg text-xs font-bold transition-all whitespace-nowrap flex-shrink-0 self-end mb-0 ${
+                newBatchQty && parseInt(newBatchQty, 10) > 0
+                  ? "bg-primary text-primary-foreground shadow-md ring-2 ring-primary/40 hover:opacity-90 animate-pulse"
+                  : "bg-primary text-primary-foreground hover:opacity-90"
+              }`}>
               + Add Batch
             </button>
           </div>
           <p className="text-[10px] text-muted-foreground">
             Enter inventory in base units. Pack/box stock is calculated from the configured units per pack.
           </p>
-          {batches.length === 0 && (
-            <p className="text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1">
-              <_AlertTriangle size={11} /> Add at least one batch to set the stock quantity.
+          {batches.length === 0 && !newBatchQty && (
+            <p className="text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1.5 font-medium">
+              <_AlertTriangle size={12} className="flex-shrink-0" />
+              <span>Enter quantity in <strong>Qty</strong> above, then click <strong>+ Add Batch</strong> (or Save Changes) to set stock under FIFO.</span>
+            </p>
+          )}
+          {newBatchQty && parseInt(newBatchQty, 10) > 0 && (
+            <p className="text-xs text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5 font-medium">
+              <_Check size={12} className="flex-shrink-0" />
+              <span><strong>{parseInt(newBatchQty, 10).toLocaleString()} {form.unitLabel || "units"}</strong> will be added as a new stock batch when saved.</span>
             </p>
           )}
         </div>
+          </div>
+        </details>
         <div className="flex gap-3 pt-2">
           <button type="button" onClick={onClose} className="flex-1 py-2.5 border border-border rounded-xl text-sm font-semibold text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-all">Cancel</button>
-          <button type="submit" disabled={batches.length === 0} className="flex-1 py-2.5 bg-primary text-primary-foreground rounded-xl text-sm font-bold hover:opacity-90 transition-opacity disabled:opacity-50">
+          <button
+            type="submit"
+            disabled={batches.length === 0 && !(newBatchQty && parseInt(newBatchQty, 10) > 0)}
+            className="flex-1 py-2.5 bg-primary text-primary-foreground rounded-xl text-sm font-bold hover:opacity-90 transition-opacity disabled:opacity-50"
+          >
             {isEdit ? "Save Changes" : "Add Product"}
           </button>
         </div>
@@ -778,7 +1225,7 @@ export function ExpiryBlockDialog({
 
   return (
     <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.6)" }}>
-      <div className="bg-card border border-border rounded-2xl shadow-2xl max-w-sm w-full p-6 space-y-4 animate-in fade-in zoom-in-95 duration-200">
+      <div className="bg-card border border-border rounded-2xl shadow-2xl max-w-sm w-full p-6 space-y-4 st-modal-in">
         {/* Icon */}
         <div className="flex flex-col items-center gap-3">
           <div className={`w-14 h-14 rounded-full flex items-center justify-center ${expired ? "bg-red-100 dark:bg-red-500/20" : "bg-amber-100 dark:bg-amber-500/20"}`}>
@@ -1025,43 +1472,20 @@ export function NewSaleModal({
   return (
     <>
       {confirmDialog && (
-        <div className="fixed inset-0 z-[10001] flex items-center justify-center bg-black/60 p-4">
-          <div className="w-full max-w-sm space-y-4 rounded-2xl border border-border bg-card p-6 shadow-2xl animate-in fade-in zoom-in-95 duration-200">
-            <div className="flex flex-col items-center gap-3">
-              <div className="w-14 h-14 rounded-full flex items-center justify-center bg-primary/10">
-                <ShoppingCart size={26} className="text-primary" />
-              </div>
-              <h2 className="text-base font-bold text-foreground text-center">Confirm Sale?</h2>
-            </div>
-            <div className="bg-muted/40 border border-border rounded-xl p-3 space-y-1.5 text-xs">
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Items</span>
-                <span className="font-semibold text-foreground">
-                  {cart.length > 0 ? `${cart.length} product${cart.length !== 1 ? "s" : ""}` : "1 product"}
-                </span>
-              </div>
-              <div className="flex justify-between border-t border-border pt-1.5">
-                <span className="text-muted-foreground font-semibold">Total</span>
-                <span className="font-bold text-primary text-sm">
-                  {fmt(cart.length > 0 ? cartTotal : shelfTotal)}
-                </span>
-              </div>
-            </div>
-            <p className="text-xs text-muted-foreground text-center leading-relaxed">
-              Once confirmed, this sale will be recorded and stock will be deducted.
-            </p>
-            <div className="flex gap-2 pt-1">
-              <button type="button" onClick={() => setConfirmDialog(false)}
-                className="flex-1 py-2.5 border border-border rounded-xl text-sm font-semibold text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-all">
-                Edit Sale
-              </button>
-              <button type="button" onClick={doSubmit}
-                className="flex-1 py-2.5 bg-primary text-primary-foreground rounded-xl text-sm font-bold hover:opacity-90 transition-opacity">
-                Complete Sale
-              </button>
-            </div>
-          </div>
-        </div>
+        <ConfirmDialog
+          title="Confirm Sale?"
+          message={
+            <span>
+              {cart.length > 0 ? `${cart.length} product${cart.length !== 1 ? "s" : ""}` : "1 product"} · Total <span className="font-semibold text-foreground">{fmt(cart.length > 0 ? cartTotal : shelfTotal)}</span>. Stock will be deducted once confirmed.
+            </span>
+          }
+          confirmLabel="Complete Sale"
+          cancelLabel="Edit Sale"
+          variant="info"
+          onConfirm={doSubmit}
+          onCancel={() => setConfirmDialog(false)}
+          forceModal
+        />
       )}
       {stockLimit && (
         <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/50 p-4">
@@ -1096,7 +1520,7 @@ export function NewSaleModal({
           canManage={canManage}
         />
       )}
-    <Modal title="New Sale" onClose={onClose} wide>
+    <Modal title="New Sale" onClose={onClose} wide hideCloseButton>
       <form noValidate onSubmit={handleSubmit} className="space-y-4">
         <div className="grid gap-4 lg:grid-cols-[minmax(0,1.6fr)_minmax(260px,0.9fr)] lg:items-start">
           <div className="space-y-4">
@@ -1216,7 +1640,7 @@ export function NewSaleModal({
                   <div>
                     <label className="block text-[10px] text-muted-foreground mb-1">ID Type</label>
                     <select value={customerExemptionType} onChange={e => setCustomerExemptionType(e.target.value as CustomerExemptionType)}
-                      className="w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all">
+                      className="app-select w-full bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all">
                       {CUSTOMER_EXEMPTION_TYPES.map(type => <option key={type} value={type}>{type}</option>)}
                     </select>
                   </div>
@@ -1304,6 +1728,7 @@ export function ReturnModal({
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState("");
   const [submitted, setSubmitted] = useState(false);
+  const [confirmReturn, setConfirmReturn] = useState(false);
   const qtyNum = parseInt(qty) || 0;
   const unitPrice = selectedSaleItem.qty > 0 ? selectedSaleItem.amount / selectedSaleItem.qty : product ? (product.salePrice ?? product.price) : 0;
   const refund = qtyNum * unitPrice;
@@ -1312,6 +1737,13 @@ export function ReturnModal({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedSaleItem.productId || qtyNum <= 0 || qtyNum > maxQty || !reason.trim() || submitting) return;
+    // Show confirm before recording the refund
+    setConfirmReturn(true);
+  };
+
+  const doSubmitReturn = async () => {
+    setConfirmReturn(false);
+    if (!selectedSaleItem.productId || qtyNum <= 0) return;
     const tx: Transaction = {
       id: `RET-${Date.now().toString().slice(-4)}`, type: "return", product: selectedSaleItem.product,
       qty: qtyNum, amount: refund, staff: staffAbbrev(currentUser.name), date: nowDateStr(),
@@ -1330,7 +1762,8 @@ export function ReturnModal({
   };
 
   return (
-    <Modal title="Process Return" onClose={onClose} wide>
+    <>
+    <Modal title="Process Return" onClose={onClose} wide hideCloseButton>
       <form onSubmit={handleSubmit} className="space-y-4">
         {submitted ? (
           <div className="py-3 text-center">
@@ -1351,7 +1784,7 @@ export function ReturnModal({
           {saleItems.length > 1 ? (
             <label className="block">
               <span className="mb-1 block text-muted-foreground">Product</span>
-              <select value={selectedSaleItemId} onChange={e => { setSelectedSaleItemId(e.target.value); setQty("1"); }} className="w-full rounded-lg border border-border bg-background px-2 py-1.5 text-foreground">
+              <select value={selectedSaleItemId} onChange={e => { setSelectedSaleItemId(e.target.value); setQty("1"); }} className="app-select w-full rounded-lg border border-border bg-background px-2 py-1.5 text-foreground">
                 {saleItems.map(item => <option key={item.id} value={item.id}>{item.product} · {item.qty} units</option>)}
               </select>
             </label>
@@ -1359,7 +1792,7 @@ export function ReturnModal({
           <div className="flex justify-between"><span className="text-muted-foreground">Max Returnable</span><span className="font-semibold text-foreground">{maxQty} units</span></div>
         </div>
         <FieldInput label="Quantity to Return" type="number" value={qty} onChange={setQty} placeholder="1" required min={1} />
-        {qtyNum > maxQty && <p className="text-xs text-red-500 flex items-center gap-1"><_AlertTriangle size={11} /> Cannot exceed sold quantity ({maxQty} units)</p>}
+        {qtyNum > maxQty && <p className="text-xs text-red-500 flex items-center gap-1"><AlertTriangle size={11} /> Cannot exceed sold quantity ({maxQty} units)</p>}
         <div>
           <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">Reason for Return <span className="text-red-500">*</span></label>
           <textarea value={reason} onChange={e => setReason(e.target.value)} placeholder="Explain reason for return..." required rows={3}
@@ -1382,6 +1815,18 @@ export function ReturnModal({
         )}
       </form>
     </Modal>
+    {confirmReturn && (
+      <ConfirmDialog
+        title="Submit Return & Refund?"
+        message={<>Record a refund of <span className="font-semibold text-foreground">{fmt(refund)}</span> for <span className="font-semibold text-foreground">{qtyNum} unit{qtyNum !== 1 ? "s" : ""}</span> of <span className="font-semibold text-foreground">{selectedSaleItem.product}</span>? This cannot be undone.</>}
+        confirmLabel="Yes, Submit Return"
+        variant="warning"
+        onConfirm={() => void doSubmitReturn()}
+        onCancel={() => setConfirmReturn(false)}
+        forceModal
+      />
+    )}
+    </>
   );
 }
 
@@ -1416,7 +1861,7 @@ export function InventoryAdjustmentModal({
   };
 
   return (
-    <Modal title="Record Inventory Adjustment" onClose={onClose} wide>
+    <Modal title="Record Inventory Adjustment" onClose={onClose} wide hideCloseButton>
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="flex gap-2">
           {(["damage", "correction"] as const).map(t => (
@@ -1453,12 +1898,13 @@ export function InventoryAdjustmentModal({
 
 // ─── User Form Modal ──────────────────────────────────────────────────────────
 export function UserFormModal({
-  initial, onClose, onSave, currentUserRole,
+  initial, onClose, onSave, currentUserRole, roles = [],
 }: {
   initial?: import("./data").StaffMember;
   onClose: () => void;
   onSave: (original: import("./data").StaffMember | null, updated: import("./data").StaffMember, password?: string) => void;
   currentUserRole?: string;
+  roles?: import("./data").CustomRole[];
 }) {
   const isEdit = !!initial;
   const [form, setForm] = React.useState({
@@ -1471,18 +1917,38 @@ export function UserFormModal({
   const [showPassword, setShowPassword] = React.useState(false);
   const set = (k: keyof typeof form) => (v: string) => setForm(f => ({ ...f, [k]: v }));
 
-  // Filter available roles based on current user's role
-  const availableRoles = React.useMemo(() => {
-    const allRoles = [...ROLES].filter(r => r !== "admin/owner"); // Never allow creating admin/owner
-    
-    // Admin can only create cashier and inventory_manager
+  // Dynamically map all role labels (system + custom roles from database)
+  const roleLabelsMap = React.useMemo(() => {
+    const map: Record<string, string> = { ...ROLE_LABELS };
+    if (roles && roles.length > 0) {
+      roles.forEach(r => {
+        map[r.id] = r.name;
+      });
+    }
+    return map;
+  }, [roles]);
+
+  // Filter available roles based on current user's role and database roles
+  const availableRoleIds = React.useMemo(() => {
+    if (roles && roles.length > 0) {
+      let list = roles.filter(r => r.id !== "admin/owner"); // Never allow creating admin/owner
+      if (currentUserRole === "admin") {
+        // Admin can create cashier, inventory_manager, and custom roles (not admin)
+        list = list.filter(r => r.id !== "admin");
+      }
+      return list.map(r => r.id);
+    }
+
+    const allRoles = [...ROLES].filter(r => r !== "admin/owner");
     if (currentUserRole === "admin") {
       return allRoles.filter(r => r === "cashier" || r === "inventory_manager");
     }
-    
-    // Admin/Owner can create any role except admin/owner
     return allRoles;
-  }, [currentUserRole]);
+  }, [roles, currentUserRole]);
+
+  const selectedRoleObj = React.useMemo(() => {
+    return roles.find(r => r.id === form.role);
+  }, [roles, form.role]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -1506,12 +1972,12 @@ export function UserFormModal({
   // ── Edit mode: only status is editable ──
   if (isEdit && initial) {
     return (
-      <Modal title="Edit User" onClose={onClose}>
+      <Modal title="Edit User" onClose={onClose} hideCloseButton>
         <form onSubmit={handleSubmit} className="space-y-4">
           {/* Read-only info */}
           {[
             { label: "Full Name",     value: initial.name },
-            { label: "Role",          value: ROLE_LABELS[initial.role] ?? initial.role },
+            { label: "Role",          value: roleLabelsMap[initial.role] ?? initial.role },
             { label: "Email Address", value: initial.email },
           ].map(({ label, value }) => (
             <div key={label}>
@@ -1549,10 +2015,51 @@ export function UserFormModal({
 
   // ── Add mode: full form ──
   return (
-    <Modal title="Add New User" onClose={onClose}>
+    <Modal title="Add New User" onClose={onClose} hideCloseButton>
       <form onSubmit={handleSubmit} className="space-y-4">
         <FieldInput label="Full Name" value={form.name} onChange={set("name")} placeholder="e.g. Juan Dela Cruz" required />
-        <FieldSelect label="Role" value={form.role} onChange={set("role")} options={availableRoles} required roleLabels={ROLE_LABELS} placeholder="Select role" />
+
+        <div>
+          <FieldSelect
+            label="Role"
+            value={form.role}
+            onChange={set("role")}
+            options={availableRoleIds}
+            required
+            roleLabels={roleLabelsMap}
+            placeholder="Select role"
+          />
+          {selectedRoleObj && (
+            <div className="mt-2 p-2.5 rounded-xl bg-muted/50 border border-border text-xs space-y-1.5 animate-in fade-in duration-200">
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-foreground flex items-center gap-1.5 text-[11px]">
+                  <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+                  {selectedRoleObj.name}
+                </span>
+                <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full border ${
+                  selectedRoleObj.isSystem
+                    ? "bg-blue-500/10 text-blue-500 border-blue-500/20"
+                    : "bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-500/20"
+                }`}>
+                  {selectedRoleObj.isSystem ? "Built-in System Role" : "Custom Role"}
+                </span>
+              </div>
+              {selectedRoleObj.description && (
+                <p className="text-[11px] text-muted-foreground leading-relaxed">{selectedRoleObj.description}</p>
+              )}
+              {selectedRoleObj.permissions && selectedRoleObj.permissions.length > 0 && (
+                <div className="pt-0.5 flex flex-wrap gap-1">
+                  {selectedRoleObj.permissions.map(p => (
+                    <span key={p} className="text-[9px] px-1.5 py-0.5 rounded bg-background border border-border/80 font-medium text-foreground/80">
+                      {p}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
         <FieldInput label="Email Address" type="email" value={form.email} onChange={set("email")} placeholder="user@tangub.ph" required />
         <FieldSelect label="Status" value={form.status} onChange={set("status")} options={["active", "inactive"]} required placeholder="Select status" />
 
@@ -1656,13 +2163,13 @@ export function UserInfoModal({
     if (!editName.trim()) { setProfileError("Name cannot be empty."); return; }
     if (editName.length > 120) { setProfileError("Name must be 120 characters or less."); return; }
     if (!editEmail.trim()) { setProfileError("Email cannot be empty."); return; }
-    
+
     setProfileLoading(true);
     try {
       await onUpdateProfile?.(editName.trim(), editEmail.trim());
       setProfileSuccess(true);
-      setTimeout(() => { 
-        setProfileSuccess(false); 
+      setTimeout(() => {
+        setProfileSuccess(false);
         setIsEditingProfile(false);
       }, 1500);
     } catch (err: unknown) {
@@ -1734,7 +2241,7 @@ export function UserInfoModal({
                 ✓ Profile updated successfully.
               </div>
             )}
-            
+
             <div className="space-y-1.5">
               <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Name</label>
               <input
@@ -1802,7 +2309,7 @@ export function UserInfoModal({
                 )}
                 <PwdField label="New Password"     value={newPwd}     onChange={setNewPwd}     show={showNew}  onToggle={() => setShowNew(v => !v)} />
                 <PwdField label="Confirm Password" value={confirmPwd} onChange={setConfirmPwd} show={showConf} onToggle={() => setShowConf(v => !v)} />
-                
+
                 {/* Real-time password mismatch warning */}
                 {confirmPwd && newPwd && newPwd !== confirmPwd && (
                   <div className="flex items-center gap-2 text-amber-600 dark:text-amber-400 text-xs bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 rounded-lg px-3 py-2">
@@ -1810,7 +2317,7 @@ export function UserInfoModal({
                     Passwords do not match
                   </div>
                 )}
-                
+
                 {pwdError && (
                   <div className="flex items-center gap-2 text-red-600 dark:text-red-400 text-xs bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 rounded-lg px-3 py-2">
                     <AlertTriangle size={12} />
@@ -1832,10 +2339,7 @@ export function UserInfoModal({
           </div>
         )}
 
-        <button onClick={onClose}
-          className="w-full py-2.5 border border-border rounded-xl text-sm font-semibold text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-all">
-          Close
-        </button>
+
       </div>
     </Modal>
   );
@@ -1895,7 +2399,7 @@ export function ResetPasswordModal({
   );
 
   return (
-    <Modal title="Reset Password" onClose={onClose}>
+    <Modal title="Reset Password" onClose={onClose} hideCloseButton>
       <form onSubmit={handleSubmit} className="space-y-4">
         <PwdField label="New Password"     value={newPwd}     onChange={setNewPwd}     show={showNew}  onToggle={() => setShowNew(v => !v)} />
         <PwdField label="Confirm Password" value={confirmPwd} onChange={setConfirmPwd} show={showConf} onToggle={() => setShowConf(v => !v)} />

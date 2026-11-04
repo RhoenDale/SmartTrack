@@ -101,8 +101,9 @@ export default function TransactionsPage({
   };
 
   return (
-    <div className="p-4 sm:p-6 space-y-5 max-w-[1400px]">
-      <div className="sticky top-0 z-20 -mx-4 px-4 sm:-mx-6 sm:px-6 pt-4 sm:pt-6 pb-4 bg-background">
+    <div className="flex flex-col max-w-[1400px]" style={{ height: "calc(100dvh - 56px)" }}>
+      {/* ── Fixed header: title + stats ── */}
+      <div className="flex-shrink-0 px-4 sm:px-6 pt-4 sm:pt-6 pb-4 bg-background border-b border-border/50 z-20">
         <div className="flex items-start sm:items-center justify-between gap-3">
           <div>
             <h1 className="text-xl font-bold text-foreground">Transactions</h1>
@@ -123,38 +124,25 @@ export default function TransactionsPage({
           )}
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-5">
-        {[
-          {
-            label: "Sales Today",
-            val: fmt(salesTodayAmt),
-            sub: `${salesToday.length} transaction${salesToday.length !== 1 ? "s" : ""}`,
-            color: "text-emerald-600 dark:text-emerald-400",
-          },
-          {
-            label: "All Sales",
-            val: fmt(allSalesAmt),
-            sub: `${allSales.length} total sale${allSales.length !== 1 ? "s" : ""}`,
-            color: "text-sky-600 dark:text-sky-400",
-          },
-          {
-            label: "Returns / Refunds",
-            val: fmt(allReturnsAmt),
-            sub: `${allReturns.length} return${allReturns.length !== 1 ? "s" : ""}`,
-            color: "text-orange-600 dark:text-orange-400",
-          },
-        ].map(c => (
-          <div key={c.label} className="bg-card border border-border rounded-xl p-4 shadow-sm">
-            <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">{c.label}</p>
-            <p className="text-xl font-bold text-foreground mt-2 tabular-nums tracking-tight">{c.val}</p>
-            <p className={`text-xs mt-1 font-medium ${c.color}`}>{c.sub}</p>
-          </div>
-        ))}
-      </div>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-4">
+          {[
+            { label: "Sales Today",       val: fmt(salesTodayAmt), sub: `${salesToday.length} transaction${salesToday.length !== 1 ? "s" : ""}`,    color: "text-emerald-600 dark:text-emerald-400" },
+            { label: "All Sales",         val: fmt(allSalesAmt),   sub: `${allSales.length} total sale${allSales.length !== 1 ? "s" : ""}`,          color: "text-sky-600 dark:text-sky-400" },
+            { label: "Returns / Refunds", val: fmt(allReturnsAmt), sub: `${allReturns.length} return${allReturns.length !== 1 ? "s" : ""}`,           color: "text-orange-600 dark:text-orange-400" },
+          ].map(c => (
+            <div key={c.label} className="bg-card border border-border rounded-xl p-4 shadow-sm">
+              <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">{c.label}</p>
+              <p className="text-xl font-bold text-foreground mt-2 tabular-nums tracking-tight">{c.val}</p>
+              <p className={`text-xs mt-1 font-medium ${c.color}`}>{c.sub}</p>
+            </div>
+          ))}
+        </div>
       </div>
 
-      <div className="bg-card border border-border rounded-xl overflow-hidden shadow-sm">
-        <div className="flex flex-col gap-3 px-5 py-3.5 border-b border-border sm:flex-row sm:items-center sm:justify-between">
+      {/* ── Scrollable table ── */}
+      <div className="flex-1 overflow-hidden flex flex-col mx-4 sm:mx-6 my-4 bg-card border border-border rounded-xl shadow-sm">
+        {/* Filters bar — fixed inside the card */}
+        <div className="flex-shrink-0 flex flex-col gap-3 px-5 py-3.5 border-b border-border sm:flex-row sm:items-center sm:justify-between">
           <div className="flex flex-wrap items-center gap-1.5">
             {(["all", "sale", "return", "adjustment"] as const).map(f => (
               <button
@@ -174,11 +162,13 @@ export default function TransactionsPage({
             <label className="text-[10px] uppercase tracking-wide text-muted-foreground">To</label>
             <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="w-32 rounded-lg border border-border bg-background px-3 py-2 text-xs text-foreground" />
             {(dateFrom !== todayISO || dateTo !== "") && (
-              <button
-                onClick={() => { setDateFrom(todayISO); setDateTo(""); }}
-                className="text-xs text-primary hover:text-primary/80 font-semibold transition-colors"
-              >
+              <button onClick={() => { setDateFrom(todayISO); setDateTo(""); }} className="text-xs text-primary hover:text-primary/80 font-semibold transition-colors">
                 Reset
+              </button>
+            )}
+            {(dateFrom || dateTo) && (
+              <button onClick={() => { setDateFrom(""); setDateTo(""); }} className="text-xs text-muted-foreground hover:text-foreground border border-border rounded-lg px-2 py-1 transition-colors font-semibold">
+                Clear dates
               </button>
             )}
             {isAdmin && (
@@ -189,7 +179,7 @@ export default function TransactionsPage({
           </div>
         </div>
 
-        <div className="overflow-x-auto" data-table-scroll="fixed">
+        <div className="overflow-x-auto overflow-y-auto flex-1" data-table-scroll="fixed">
           <table className="w-full">
             <thead className="sticky top-0 z-10 bg-card shadow-sm">
               <tr className="border-b border-border/60 bg-muted/20">

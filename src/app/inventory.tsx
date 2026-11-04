@@ -1,10 +1,11 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { Search, Plus, Pencil, Trash2, Download } from "lucide-react";
-import { getReorderUnits, sortBatchesByExpiry, type Product } from "./data";
+import { getReorderUnits, sortBatchesByExpiry, type Product, type Transaction } from "./data";
 import { fmt, StockBadge } from "./shared";
 
 export default function InventoryPage({
   inventory,
+  transactions,
   categories,
   onAddProduct,
   onEditProduct,
@@ -15,6 +16,7 @@ export default function InventoryPage({
   userRole,
 }: {
   inventory: Product[];
+  transactions: Transaction[];
   categories: string[];
   onAddProduct: () => void;
   onEditProduct: (p: Product) => void;
@@ -33,6 +35,17 @@ export default function InventoryPage({
   const isCashier = userRole === "cashier";
   // Only inventory_manager can add, edit, or delete products
   const canModify = !isAdmin && !isCashier;
+
+  // Units sold per product from sale transactions
+  const soldByProductId = useMemo(() => {
+    const map: Record<string, number> = {};
+    transactions.forEach(t => {
+      if (t.type !== "sale") return;
+      const id = t.productId ?? t.product; // fall back to name key if no id
+      map[id] = (map[id] ?? 0) + t.qty;
+    });
+    return map;
+  }, [transactions]);
 
   useEffect(() => {
     if (selectedProductId) {
@@ -97,8 +110,9 @@ export default function InventoryPage({
   };
 
   return (
-    <div className="p-4 sm:p-6 space-y-5 max-w-[1400px]">
-      <div className="sticky top-0 z-20 -mx-4 px-4 sm:-mx-6 sm:px-6 pt-4 sm:pt-6 pb-4 bg-background">
+    <div className="flex flex-col max-w-[1400px]" style={{ height: "calc(100dvh - 56px)" }}>
+      {/* ── Sticky header: title + actions + search/filter ── */}
+      <div className="flex-shrink-0 px-4 sm:px-6 pt-4 sm:pt-6 pb-4 bg-background border-b border-border/50 z-20">
         <div className="flex items-start sm:items-center justify-between gap-3">
           <div>
             <h1 className="text-xl font-bold text-foreground">Products</h1>
@@ -126,41 +140,42 @@ export default function InventoryPage({
           </div>
         </div>
 
-        <div className="flex flex-col sm:flex-row gap-3 mt-5">
-        <div className="relative flex-1 max-w-sm">
-          <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-          <input
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            placeholder="Search products"
-            className="w-full bg-card border border-border rounded-xl pl-8 pr-4 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary shadow-sm"
-          />
-        </div>
-        <div className="flex items-center gap-1.5 flex-wrap">
-          {["all", "out_of_stock", "critical", "low", "moderate", "good"].map(f => (
-            <button
-              key={f}
-              onClick={() => setStatusFilter(f)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                statusFilter === f
-                  ? "bg-primary text-primary-foreground shadow-sm"
-                  : "bg-card border border-border text-muted-foreground hover:text-foreground shadow-sm"
-              }`}
-            >
+        <div className="flex flex-col sm:flex-row gap-3 mt-4">
+          <div className="relative flex-1 max-w-sm">
+            <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+            <input
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Search products"
+              className="w-full bg-card border border-border rounded-xl pl-8 pr-4 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary shadow-sm"
+            />
+          </div>
+          <div className="flex items-center gap-1.5 flex-wrap">
+            {["all", "out_of_stock", "critical", "low", "moderate", "good"].map(f => (
+              <button
+                key={f}
+                onClick={() => setStatusFilter(f)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                  statusFilter === f
+                    ? "bg-primary text-primary-foreground shadow-sm"
+                    : "bg-card border border-border text-muted-foreground hover:text-foreground shadow-sm"
+                }`}
+              >
                 {f === "out_of_stock" ? "Out of Stock" : f.charAt(0).toUpperCase() + f.slice(1)}
-            </button>
-          ))}
+              </button>
+            ))}
+          </div>
         </div>
-      </div>
       </div>
 
-      <div className="bg-card border border-border rounded-xl overflow-hidden shadow-sm">
-        <div className="overflow-x-auto" data-table-scroll="fixed">
+      {/* ── Scrollable table ── */}
+      <div className="flex-1 overflow-hidden flex flex-col mx-4 sm:mx-6 my-4 bg-card border border-border rounded-xl shadow-sm">
+        <div className="overflow-x-auto overflow-y-auto flex-1" data-table-scroll="fixed">
           <table className="w-full">
             <thead className="sticky top-0 z-10 bg-card shadow-sm">
               <tr className="border-b border-border bg-muted/30">
-                {["Product / Barcode", "Category", "Supplier", "Stock (Packs / Units)", "Reorder At", "Unit Price", "Expiry", "Stock Status", ""].map(h => (
-                  <th key={h} className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide py-3 text-left px-4 first:px-5">{h}</th>
+                {["Product / Barcode", "Category", "Supplier", "Stock (Packs / Units)", "Sold", "Reorder At", "Unit Price", "Expiry", "Stock Status", ""].map(h => (
+                  <th key={h} className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide py-3 text-left px-4 first:px-5 whitespace-nowrap">{h}</th>
                 ))}
               </tr>
             </thead>
@@ -206,6 +221,29 @@ export default function InventoryPage({
                       );
                     })()}
                   </td>
+                  {/* Units Sold */}
+                  <td className="px-3 py-3 text-xs text-foreground w-24">
+                    {(() => {
+                      const totalSold = soldByProductId[item.id] ?? soldByProductId[item.name] ?? 0;
+                      if (totalSold === 0) return <span className="text-muted-foreground">—</span>;
+                      const unitsPerPack = Math.max(1, item.unitsPerPack ?? 1);
+                      const unitLabel = item.unitLabel ?? "unit";
+                      if (unitsPerPack > 1) {
+                        const packsSold = Math.floor(totalSold / unitsPerPack);
+                        const looseSold = totalSold % unitsPerPack;
+                        return (
+                          <div className="flex flex-col gap-0.5">
+                            <span className="font-semibold tabular-nums">{packsSold.toLocaleString()} pk</span>
+                            <span className="text-[10px] text-muted-foreground tabular-nums">
+                              {totalSold.toLocaleString()} {unitLabel}s{looseSold > 0 ? ` · ${looseSold}L` : ""}
+                            </span>
+                          </div>
+                        );
+                      }
+                      return <span className="tabular-nums font-semibold">{totalSold.toLocaleString()} <span className="font-normal text-muted-foreground">{unitLabel}{totalSold !== 1 ? "s" : ""}</span></span>;
+                    })()}
+                  </td>
+                  {/* Reorder At */}
                   <td className="px-4 py-3 text-xs text-muted-foreground">
                     {(() => {
                       const unitsPerPack = Math.max(1, item.unitsPerPack ?? 1);
@@ -248,11 +286,11 @@ export default function InventoryPage({
                   <td className="px-4 py-3">
                     {canModify ? (
                       <div className="flex items-center gap-2">
-                        <button onClick={() => onEditProduct(item)} className="text-muted-foreground hover:text-primary transition-colors" title="Edit product">
-                          <Pencil size={13} />
+                        <button onClick={() => onEditProduct(item)} className="p-1.5 rounded-lg text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors" title="Edit product">
+                          <Pencil size={16} />
                         </button>
-                        <button onClick={() => onDeleteProduct(item)} className="text-muted-foreground hover:text-red-500 transition-colors" title="Delete product">
-                          <Trash2 size={13} />
+                        <button onClick={() => onDeleteProduct(item)} className="p-1.5 rounded-lg text-muted-foreground hover:text-red-500 hover:bg-red-500/10 transition-colors" title="Delete product">
+                          <Trash2 size={16} />
                         </button>
                       </div>
                     ) : (
@@ -265,7 +303,7 @@ export default function InventoryPage({
               ))}
               {filtered.length === 0 && (
                 <tr>
-                  <td colSpan={9} className="text-center py-10 text-sm text-muted-foreground">
+                  <td colSpan={10} className="text-center py-10 text-sm text-muted-foreground">
                     No products match your filter.
                   </td>
                 </tr>

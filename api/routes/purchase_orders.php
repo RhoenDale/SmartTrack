@@ -12,7 +12,7 @@
  */
 
 $actor = require_auth();
-require_role(['admin/owner', 'admin', 'inventory_manager']);
+// Read access for all authenticated roles; write operations check role individually below.
 $pdo = db();
 
 foreach (['purchase_orders', 'purchase_order_items', 'purchase_order_receipts'] as $requiredTable) {
@@ -20,6 +20,9 @@ foreach (['purchase_orders', 'purchase_order_items', 'purchase_order_receipts'] 
     if (!$table) {
         json_response(['error' => 'Purchase-order schema migration is required. Apply create_supplier_purchase_orders.sql before using this section.'], 503);
     }
+}
+if (!product_purge_history_ready($pdo)) {
+    json_response(['error' => 'Apply recycle_bin_product_history.sql before using purchase orders so product purge preserves order history.'], 503);
 }
 
 function purchase_order_actor_columns_ready(PDO $pdo): bool {
@@ -73,13 +76,13 @@ if ($method === 'GET' && $id === null) {
          FROM purchase_orders ORDER BY ordered_at DESC, id DESC'
     )->fetchAll(PDO::FETCH_ASSOC);
     $itemStmt = $pdo->prepare(
-        'SELECT i.id, i.product_id, p.name AS product_name, i.qty_ordered,
+        'SELECT i.id, i.product_id, COALESCE(i.product_name_snapshot, p.name) AS product_name, i.qty_ordered,
                 COALESCE(SUM(r.qty_received), 0) AS qty_received
          FROM purchase_order_items i
-         JOIN products p ON p.id = i.product_id
+         LEFT JOIN products p ON p.id = i.product_id
          LEFT JOIN purchase_order_receipts r ON r.purchase_order_item_id = i.id
          WHERE i.purchase_order_id = ?
-         GROUP BY i.id, i.product_id, p.name, i.qty_ordered
+         GROUP BY i.id, i.product_id, i.product_name_snapshot, p.name, i.qty_ordered
          ORDER BY i.id'
     );
     foreach ($orders as &$order) {
@@ -89,7 +92,7 @@ if ($method === 'GET' && $id === null) {
             $received = (int)$item['qty_received'];
             return [
                 'id' => (int)$item['id'],
-                'productId' => (string)$item['product_id'],
+                'productId' => (string)($item['product_id'] ?? ''),
                 'productName' => $item['product_name'],
                 'qtyOrdered' => $ordered,
                 'qtyReceived' => $received,
@@ -111,6 +114,7 @@ if ($method === 'GET' && $id === null) {
 }
 
 if ($method === 'POST' && $id === null) {
+    require_role(['admin/owner', 'admin', 'inventory_manager']);
     if (!purchase_order_actor_columns_ready($pdo)) {
         json_response(['error' => 'Purchase-order audit migration is required. Apply harden_purchase_order_relations.sql before creating orders.'], 503);
     }
@@ -132,14 +136,14 @@ if ($method === 'POST' && $id === null) {
         if (!$productId || !$qty || $qty < 1 || isset($seenProducts[$productId])) {
             json_response(['error' => 'Each product must be unique and have an ordered quantity greater than zero.'], 422);
         }
-        $productStmt = $pdo->prepare('SELECT supplier FROM products WHERE id = ? LIMIT 1');
+        $productStmt = $pdo->prepare('SELECT supplier, name FROM products WHERE id = ? LIMIT 1');
         $productStmt->execute([$productId]);
-        $productSupplier = $productStmt->fetchColumn();
-        if ($productSupplier === false || strcasecmp(trim((string)$productSupplier), $supplier) !== 0) {
+        $product = $productStmt->fetch(PDO::FETCH_ASSOC);
+        if (!$product || strcasecmp(trim((string)$product['supplier']), $supplier) !== 0) {
             json_response(['error' => 'Every ordered product must belong to the selected supplier.'], 422);
         }
         $seenProducts[$productId] = true;
-        $normalizedItems[] = ['productId' => $productId, 'qtyOrdered' => $qty];
+        $normalizedItems[] = ['productId' => $productId, 'productName' => $product['name'], 'qtyOrdered' => $qty];
     }
 
     $pdo->beginTransaction();
@@ -150,11 +154,11 @@ if ($method === 'POST' && $id === null) {
         )->execute([$supplier, $orderedAt, $expectedDate, $actor['id'] ?? null]);
         $orderId = (int)$pdo->lastInsertId();
         $insertItem = $pdo->prepare(
-            'INSERT INTO purchase_order_items (purchase_order_id, product_id, qty_ordered)
-             VALUES (?, ?, ?)'
+            'INSERT INTO purchase_order_items (purchase_order_id, product_id, product_name_snapshot, qty_ordered)
+             VALUES (?, ?, ?, ?)'
         );
         foreach ($normalizedItems as $item) {
-            $insertItem->execute([$orderId, $item['productId'], $item['qtyOrdered']]);
+            $insertItem->execute([$orderId, $item['productId'], $item['productName'], $item['qtyOrdered']]);
         }
         $pdo->commit();
         json_response(['id' => $orderId, 'message' => 'Purchase order created.'], 201);
@@ -165,6 +169,7 @@ if ($method === 'POST' && $id === null) {
 }
 
 if ($method === 'POST' && ctype_digit((string)$id) && $sub === 'receipts') {
+    require_role(['admin/owner', 'admin', 'inventory_manager']);
     if (!purchase_order_actor_columns_ready($pdo)) {
         json_response(['error' => 'Purchase-order audit migration is required. Apply harden_purchase_order_relations.sql before recording deliveries.'], 503);
     }
@@ -216,6 +221,9 @@ if ($method === 'POST' && ctype_digit((string)$id) && $sub === 'receipts') {
             $lineStmt->execute([$itemId, $id]);
             $line = $lineStmt->fetch(PDO::FETCH_ASSOC);
             if (!$line) throw new InvalidArgumentException('A received item does not belong to this order.');
+            if ($line['product_id'] === null) {
+                throw new InvalidArgumentException('This product was permanently deleted, so the order line cannot receive new stock.');
+            }
             $receivedStmt = $pdo->prepare(
                 'SELECT COALESCE(SUM(qty_received), 0) FROM purchase_order_receipts WHERE purchase_order_item_id = ?'
             );
@@ -287,13 +295,13 @@ if ($method === 'GET' && ctype_digit((string)$id)) {
         json_response(['error' => 'Purchase order not found.'], 404);
     }
     $itemStmt = $pdo->prepare(
-        'SELECT i.id, i.product_id, p.name AS product_name, i.qty_ordered,
+        'SELECT i.id, i.product_id, COALESCE(i.product_name_snapshot, p.name) AS product_name, i.qty_ordered,
                 COALESCE(SUM(r.qty_received), 0) AS qty_received
          FROM purchase_order_items i
-         JOIN products p ON p.id = i.product_id
+         LEFT JOIN products p ON p.id = i.product_id
          LEFT JOIN purchase_order_receipts r ON r.purchase_order_item_id = i.id
          WHERE i.purchase_order_id = ?
-         GROUP BY i.id, i.product_id, p.name, i.qty_ordered
+         GROUP BY i.id, i.product_id, i.product_name_snapshot, p.name, i.qty_ordered
          ORDER BY i.id'
     );
     $itemStmt->execute([$id]);
@@ -302,7 +310,7 @@ if ($method === 'GET' && ctype_digit((string)$id)) {
         $received = (int)$item['qty_received'];
         return [
             'id' => (int)$item['id'],
-            'productId' => (string)$item['product_id'],
+            'productId' => (string)($item['product_id'] ?? ''),
             'productName' => $item['product_name'],
             'qtyOrdered' => $ordered,
             'qtyReceived' => $received,
@@ -322,6 +330,7 @@ if ($method === 'GET' && ctype_digit((string)$id)) {
 
 // ─── PUT edit purchase order (only when status = ordered) ─────────────────────
 if ($method === 'PUT' && ctype_digit((string)$id)) {
+    require_role(['admin/owner', 'admin', 'inventory_manager']);
     $data = body();
 
     $pdo->beginTransaction();
@@ -336,6 +345,12 @@ if ($method === 'PUT' && ctype_digit((string)$id)) {
         if ($order['status'] !== 'ordered') {
             $pdo->rollBack();
             json_response(['error' => 'Only orders that have not received any deliveries can be edited.'], 409);
+        }
+        $purgedItemStmt = $pdo->prepare('SELECT 1 FROM purchase_order_items WHERE purchase_order_id = ? AND product_id IS NULL LIMIT 1');
+        $purgedItemStmt->execute([$id]);
+        if ($purgedItemStmt->fetchColumn()) {
+            $pdo->rollBack();
+            json_response(['error' => 'This order contains a permanently deleted product and cannot be edited.'], 409);
         }
 
         $newSupplier = isset($data['supplier']) ? trim((string)$data['supplier']) : null;
@@ -367,14 +382,14 @@ if ($method === 'PUT' && ctype_digit((string)$id)) {
                 if (!$productId || !$qty || $qty < 1 || isset($seenProducts[$productId])) {
                     throw new InvalidArgumentException('Each product must be unique and have an ordered quantity greater than zero.');
                 }
-                $productStmt = $pdo->prepare('SELECT supplier FROM products WHERE id = ? LIMIT 1');
+                $productStmt = $pdo->prepare('SELECT supplier, name FROM products WHERE id = ? LIMIT 1');
                 $productStmt->execute([$productId]);
-                $productSupplier = $productStmt->fetchColumn();
-                if ($productSupplier === false || strcasecmp(trim((string)$productSupplier), $effectiveSupplier) !== 0) {
+                $product = $productStmt->fetch(PDO::FETCH_ASSOC);
+                if (!$product || strcasecmp(trim((string)$product['supplier']), $effectiveSupplier) !== 0) {
                     throw new InvalidArgumentException('Every ordered product must belong to the selected supplier.');
                 }
                 $seenProducts[$productId] = true;
-                $normalizedItems[] = ['productId' => $productId, 'qtyOrdered' => $qty];
+                $normalizedItems[] = ['productId' => $productId, 'productName' => $product['name'], 'qtyOrdered' => $qty];
             }
         }
 
@@ -393,11 +408,11 @@ if ($method === 'PUT' && ctype_digit((string)$id)) {
         if ($normalizedItems !== null) {
             $pdo->prepare('DELETE FROM purchase_order_items WHERE purchase_order_id = ?')->execute([$id]);
             $insertItem = $pdo->prepare(
-                'INSERT INTO purchase_order_items (purchase_order_id, product_id, qty_ordered)
-                 VALUES (?, ?, ?)'
+                'INSERT INTO purchase_order_items (purchase_order_id, product_id, product_name_snapshot, qty_ordered)
+                 VALUES (?, ?, ?, ?)'
             );
             foreach ($normalizedItems as $item) {
-                $insertItem->execute([$id, $item['productId'], $item['qtyOrdered']]);
+                $insertItem->execute([$id, $item['productId'], $item['productName'], $item['qtyOrdered']]);
             }
         }
 
@@ -414,6 +429,7 @@ if ($method === 'PUT' && ctype_digit((string)$id)) {
 
 // ─── DELETE cancel purchase order (only when status = ordered) ───────────────
 if ($method === 'DELETE' && ctype_digit((string)$id)) {
+    require_role(['admin/owner', 'admin', 'inventory_manager']);
     if (!purchase_order_cancellation_ready($pdo)) {
         json_response(['error' => 'Purchase-order cancellation migration is required. Apply add_cancelled_status_to_purchase_orders.sql before cancelling orders.'], 503);
     }

@@ -36,7 +36,8 @@ switch ($method . ':' . $action) {
         $category  = trim((string)($_GET['category'] ?? ''));
 
         // Monthly demand
-        $demandSql = "SELECT DATE_FORMAT(t.transacted_at, '%b %Y') AS month,
+        $demandSql = "SELECT DATE_FORMAT(t.transacted_at, '%Y-%m') AS monthKey,
+                             DATE_FORMAT(t.transacted_at, '%b %Y') AS month,
                              SUM(t.qty) AS demand
                       FROM transactions t
                       LEFT JOIN products p ON p.id = t.product_id
@@ -56,14 +57,17 @@ switch ($method . ':' . $action) {
         $demandStmt->execute($demandParams);
         $demandRows = $demandStmt->fetchAll(PDO::FETCH_ASSOC);
 
-        // Monthly supply from batches
-        $supplySql = "SELECT DATE_FORMAT(b.received_date, '%b %Y') AS month,
-                             SUM(b.qty) AS supply
-                      FROM product_batches b
-                      JOIN products p ON p.id = b.product_id
+        // Monthly delivered supply from recorded purchase receipts. Batch qty
+        // is the remaining stock after sales, so it cannot represent historical
+        // receipt quantities accurately.
+        $supplySql = "SELECT DATE_FORMAT(r.received_date, '%Y-%m') AS monthKey,
+                             DATE_FORMAT(r.received_date, '%b %Y') AS month,
+                             SUM(r.qty_received) AS supply
+                      FROM purchase_order_receipts r
+                      LEFT JOIN products p ON p.id = r.product_id
                       WHERE 1=1";
         $supplyParams = [];
-        if ($productId !== '') { $supplySql .= ' AND b.product_id = ?'; $supplyParams[] = $productId; }
+        if ($productId !== '') { $supplySql .= ' AND r.product_id = ?'; $supplyParams[] = $productId; }
         if ($category !== '') {
             $supplySql .= ' AND EXISTS (
                 SELECT 1 FROM product_category_map pcm
@@ -72,27 +76,73 @@ switch ($method . ':' . $action) {
             )';
             $supplyParams[] = $category;
         }
-        $supplySql .= " GROUP BY DATE_FORMAT(b.received_date, '%Y-%m') ORDER BY MIN(b.received_date) ASC";
-        $supplyStmt = $pdo->prepare($supplySql);
-        $supplyStmt->execute($supplyParams);
+        $supplySql .= " GROUP BY DATE_FORMAT(r.received_date, '%Y-%m') ORDER BY MIN(r.received_date) ASC";
+        try {
+            $supplyStmt = $pdo->prepare($supplySql);
+            $supplyStmt->execute($supplyParams);
+            $supplyRows = $supplyStmt->fetchAll(PDO::FETCH_ASSOC);
+        } catch (PDOException $e) {
+            // Older installations may not yet have the optional purchasing
+            // tables. Keep sales forecasting available and report no recorded
+            // receipt history until the Purchases migration has been applied.
+            error_log('Analytics receipt history unavailable: ' . $e->getMessage());
+            $supplyRows = [];
+        }
         $supplyMap = [];
-        foreach ($supplyStmt->fetchAll(PDO::FETCH_ASSOC) as $s) {
-            $supplyMap[$s['month']] = (int)$s['supply'];
+        $monthLabels = [];
+        foreach ($supplyRows as $s) {
+            $supplyMap[$s['monthKey']] = (int)$s['supply'];
+            $monthLabels[$s['monthKey']] = $s['month'];
         }
 
-        $demandValues = array_column($demandRows, 'demand');
+        $demandMap = [];
+        foreach ($demandRows as $row) {
+            $demandMap[$row['monthKey']] = (int)$row['demand'];
+            $monthLabels[$row['monthKey']] = $row['month'];
+        }
+        $forecastRows = [];
+        if ($demandRows) {
+            $month = new DateTimeImmutable($demandRows[0]['monthKey'] . '-01');
+            $lastMonth = new DateTimeImmutable($demandRows[count($demandRows) - 1]['monthKey'] . '-01');
+            while ($month <= $lastMonth) {
+                $monthKey = $month->format('Y-m');
+                $monthLabels[$monthKey] ??= $month->format('M Y');
+                $forecastRows[] = [
+                    'monthKey' => $monthKey,
+                    'month' => $monthLabels[$monthKey],
+                    'demand' => $demandMap[$monthKey] ?? 0,
+                ];
+                $month = $month->modify('+1 month');
+            }
+        }
+        $demandValues = array_column($forecastRows, 'demand');
         $result = [];
-        foreach ($demandRows as $i => $row) {
+        foreach ($forecastRows as $i => $row) {
             $demand = (int)$row['demand'];
-            $supply = $supplyMap[$row['month']] ?? 0;
+            $supply = $supplyMap[$row['monthKey']] ?? 0;
             $result[] = [
                 'month'  => $row['month'],
                 'demand' => $demand,
                 'supply' => $supply,
-                'sma3'   => $i >= 2  ? sma(array_slice($demandValues, 0, $i+1), 3)  : null,
-                'sma6'   => $i >= 5  ? sma(array_slice($demandValues, 0, $i+1), 6)  : null,
+                // Back-test each month using earlier sales only. Never include
+                // the month being evaluated in its own forecast window.
+                'sma3'   => $i >= 3  ? sma(array_slice($demandValues, 0, $i), 3)  : null,
+                'sma6'   => $i >= 6  ? sma(array_slice($demandValues, 0, $i), 6)  : null,
             ];
         }
+
+        // Separate same-unit monthly flow series for the supply/demand view.
+        // This includes receipt-only months while leaving SMA's historical
+        // demand windows and back-test calculations based on demandRows intact.
+        $flowMonths = array_unique(array_merge(array_column($forecastRows, 'monthKey'), array_keys($supplyMap)));
+        sort($flowMonths, SORT_STRING);
+        $supplyDemandData = array_map(static function ($monthKey) use ($monthLabels, $demandMap, $supplyMap) {
+            return [
+                'month' => $monthLabels[$monthKey],
+                'demand' => $demandMap[$monthKey] ?? 0,
+                'supply' => $supplyMap[$monthKey] ?? 0,
+            ];
+        }, $flowMonths);
 
         // Also return headline metrics
         $allDemand = array_map('intval', $demandValues);
@@ -146,6 +196,7 @@ switch ($method . ':' . $action) {
 
         json_response([
             'chartData'    => $result,
+            'supplyDemandData' => $supplyDemandData,
             'sma3'         => round($sma3Val),
             'sma6'         => round($sma6Val),
             'eoq'          => $eoq,
@@ -181,13 +232,12 @@ switch ($method . ':' . $action) {
 
         $recs = [];
         foreach ($lowStock as $p) {
-            $totalSold = (int)$pdo->prepare(
+            $soldStmt = $pdo->prepare(
                 "SELECT COALESCE(SUM(qty),0) FROM transactions
                  WHERE type='sale' AND product_id = ?"
-            )->execute([$p['id']]) ? $pdo->query(
-                "SELECT COALESCE(SUM(qty),0) FROM transactions
-                 WHERE type='sale' AND product_id='{$p['id']}'"
-            )->fetchColumn() : 0;
+            );
+            $soldStmt->execute([$p['id']]);
+            $totalSold = (int)$soldStmt->fetchColumn();
 
             $annDemand = ($totalSold / $monthCount) * 12;
             $eoq = estimate_eoq(max((int)round($annDemand), $p['reorder'] * 4), (float)$p['price']);

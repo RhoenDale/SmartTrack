@@ -5,9 +5,44 @@
 
 /** Send a JSON response and exit. */
 function json_response(mixed $data, int $status = 200): void {
+    record_activity_request($status);
     http_response_code($status);
     echo json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     exit;
+}
+
+/** Record each authenticated API request without persisting request payloads. */
+function record_activity_request(int $status): void {
+    global $resource, $id, $method, $uri;
+    static $tableAvailable = null;
+
+    if ($resource === 'health' || $resource === 'activity') return;
+
+    $isLogin = $resource === 'auth' && $id === 'login';
+
+    try {
+        if ($tableAvailable === null) {
+            $tableAvailable = (bool)db()->query("SHOW TABLES LIKE 'activity_logs'")->fetchColumn();
+        }
+        if (!$tableAvailable) return;
+
+        $actor = $GLOBALS['smarttrack_activity_actor'] ?? current_user();
+        if (!$actor && !$isLogin) return;
+
+        $path = '/' . trim((string)$uri, '/');
+        $path = mb_substr($path, 0, 500);
+        $actorId = is_array($actor) && isset($actor['id']) ? (string)$actor['id'] : null;
+        $actorName = is_array($actor) && !empty($actor['name'])
+            ? (string)$actor['name']
+            : 'Unauthenticated';
+
+        db()->prepare(
+            'INSERT INTO activity_logs (actor_user_id, actor_name, method, request_path, response_status)
+             VALUES (?, ?, ?, ?, ?)'
+        )->execute([$actorId, mb_substr($actorName, 0, 120), $method, $path, $status]);
+    } catch (PDOException $error) {
+        error_log('SmartTrack activity log write failed: ' . $error->getMessage());
+    }
 }
 
 /** Read and decode the JSON request body. */
@@ -30,10 +65,10 @@ function require_fields(array $data, array $fields): void {
 }
 
 /** Normalize an optional batch expiry date, accepting API and display formats. */
-function normalize_optional_date(mixed $value): ?string {
+function normalize_optional_date(mixed $value, string $field = 'Expiry date'): ?string {
     if ($value === null || $value === '') return null;
     if (!is_string($value)) {
-        json_response(['error' => 'Expiry date must be a valid date or left blank.'], 422);
+        json_response(['error' => "$field must be a valid date or left blank."], 422);
     }
 
     $value = trim($value);
@@ -47,7 +82,38 @@ function normalize_optional_date(mixed $value): ?string {
         }
     }
 
-    json_response(['error' => 'Expiry date must be a valid date or left blank.'], 422);
+    json_response(['error' => "$field must be a valid date or left blank."], 422);
+}
+
+/** Validate and normalize a product batch before opening a write transaction. */
+function normalize_product_batch(mixed $batch): array {
+    if (!is_array($batch)) {
+        json_response(['error' => 'Each batch must be an object.'], 422);
+    }
+
+    $batchId = trim((string)($batch['batchId'] ?? ''));
+    $qty = filter_var($batch['qty'] ?? null, FILTER_VALIDATE_INT);
+    if ($batchId === '' || mb_strlen($batchId) > 30 || $qty === false || $qty <= 0) {
+        json_response(['error' => 'Each batch needs an ID of 1 to 30 characters and a positive whole-number quantity.'], 422);
+    }
+
+    $costValue = $batch['batchTotalCost'] ?? null;
+    $totalCost = ($costValue === '' || $costValue === null)
+        ? null
+        : filter_var($costValue, FILTER_VALIDATE_FLOAT);
+    if ($totalCost === false || ($totalCost !== null && $totalCost < 0)) {
+        json_response(['error' => 'Batch cost must be zero or greater.'], 422);
+    }
+
+    $receivedDate = normalize_optional_date($batch['receivedDate'] ?? date('Y-m-d'), 'Received date');
+    return [
+        'batchId' => $batchId,
+        'qty' => $qty,
+        'expiryDate' => normalize_optional_date($batch['expiryDate'] ?? $batch['expiry'] ?? null),
+        'receivedDate' => $receivedDate ?? date('Y-m-d'),
+        'batchTotalCost' => $totalCost,
+        'unitCost' => $totalCost !== null ? round($totalCost / $qty, 4) : null,
+    ];
 }
 
 /**
@@ -201,6 +267,64 @@ function sync_product_status(string $productId): void {
     } else {
         $pdo->prepare('DELETE FROM notifications WHERE product_id = ? AND title = ?')
             ->execute([$productId, $title]);
+    }
+}
+
+function product_purge_history_ready(PDO $pdo): bool {
+    $itemTable = $pdo->query("SHOW TABLES LIKE 'purchase_order_items'")->fetchColumn();
+    $receiptTable = $pdo->query("SHOW TABLES LIKE 'purchase_order_receipts'")->fetchColumn();
+    if (!$itemTable && !$receiptTable) return true;
+    if (!$itemTable || !$receiptTable) return false;
+
+    $snapshot = $pdo->query("SHOW COLUMNS FROM purchase_order_items LIKE 'product_name_snapshot'")->fetch(PDO::FETCH_ASSOC);
+    $itemProduct = $pdo->query("SHOW COLUMNS FROM purchase_order_items LIKE 'product_id'")->fetch(PDO::FETCH_ASSOC);
+    $receiptProduct = $pdo->query("SHOW COLUMNS FROM purchase_order_receipts LIKE 'product_id'")->fetch(PDO::FETCH_ASSOC);
+    if (!$snapshot || ($itemProduct['Null'] ?? '') !== 'YES' || ($receiptProduct['Null'] ?? '') !== 'YES') {
+        return false;
+    }
+
+    $stmt = $pdo->prepare(
+        "SELECT COUNT(*)
+         FROM information_schema.REFERENTIAL_CONSTRAINTS
+         WHERE CONSTRAINT_SCHEMA = DATABASE()
+           AND CONSTRAINT_NAME IN ('fk_purchase_order_items_product_purge', 'fk_purchase_receipts_product_purge')
+           AND DELETE_RULE = 'SET NULL'"
+    );
+    $stmt->execute();
+    return (int)$stmt->fetchColumn() === 2;
+}
+
+function purge_expired_recycle_bin(PDO $pdo): void {
+    $lock = $pdo->query("SELECT GET_LOCK('smarttrack_recycle_bin_auto_purge', 0)")->fetchColumn();
+    if ((int)$lock !== 1) return;
+
+    try {
+        $userDeletedAt = $pdo->query("SHOW COLUMNS FROM users LIKE 'deleted_at'")->fetchColumn();
+        if ($userDeletedAt) {
+            $pdo->exec(
+                'DELETE FROM users
+                 WHERE deleted_at IS NOT NULL
+                   AND deleted_at <= DATE_SUB(NOW(), INTERVAL 30 DAY)'
+            );
+        }
+
+        $productDeletedAt = $pdo->query("SHOW COLUMNS FROM products LIKE 'deleted_at'")->fetchColumn();
+        if ($productDeletedAt && product_purge_history_ready($pdo)) {
+            $pdo->exec(
+                'DELETE n
+                 FROM notifications n
+                 INNER JOIN products p ON p.id = n.product_id
+                 WHERE p.deleted_at IS NOT NULL
+                   AND p.deleted_at <= DATE_SUB(NOW(), INTERVAL 30 DAY)'
+            );
+            $pdo->exec(
+                'DELETE FROM products
+                 WHERE deleted_at IS NOT NULL
+                   AND deleted_at <= DATE_SUB(NOW(), INTERVAL 30 DAY)'
+            );
+        }
+    } finally {
+        $pdo->query("SELECT RELEASE_LOCK('smarttrack_recycle_bin_auto_purge')");
     }
 }
 

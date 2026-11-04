@@ -1,7 +1,7 @@
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export type UserRole    = "admin/owner" | "admin" | "inventory_manager" | "cashier";
-export type Page        = "dashboard" | "inventory" | "transactions" | "analytics" | "users" | "stock-alerts" | "reports" | "returns" | "financial";
+export type Page        = "dashboard" | "inventory" | "transactions" | "analytics" | "users" | "stock-alerts" | "reports" | "returns" | "financial" | "purchases" | "activity-log" | "recycle-bin";
 export type StockStatus = "out_of_stock" | "critical" | "low" | "moderate" | "good";
 export type TxStatus    = "completed";
 export type TxType      = "sale" | "return" | "adjustment";
@@ -139,7 +139,38 @@ export interface Notification {
   productId?: string;
 }
 
-// ─── Role constants ───────────────────────────────────────────────────────────
+// ─── Role constants & types ───────────────────────────────────────────────────
+
+export interface CustomRole {
+  id: string;
+  name: string;
+  description?: string;
+  permissions: string[];
+  isSystem?: boolean;
+  userCount?: number;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface PermissionModule {
+  id: string;
+  name: string;
+  description: string;
+  category: string;
+}
+
+export const PERMISSION_MODULES: PermissionModule[] = [
+  { id: "dashboard",    name: "Dashboard",          description: "Store overview, daily stats, and revenue metrics", category: "Core" },
+  { id: "inventory",    name: "Inventory",          description: "Medicine stock catalog, batches, & unit pricing", category: "Stock" },
+  { id: "stock-alerts", name: "Stock Alerts",       description: "Low stock, critical alerts, and expiry monitors", category: "Stock" },
+  { id: "transactions", name: "Transactions / POS", description: "Cashier checkout, sales orders, & receipt printing", category: "Sales" },
+  { id: "analytics",    name: "Analytics",          description: "Sales trends, top selling products, & charts", category: "Sales" },
+  { id: "reports",      name: "Reports",            description: "Export financial & inventory summaries to CSV", category: "Reporting" },
+  { id: "returns",      name: "Returns",             description: "Customer returns, inspections, and damaged stock write-offs", category: "Operations" },
+  { id: "financial",    name: "Financial",          description: "Revenue, profit tracking, & tax settings", category: "Management" },
+  { id: "purchases",    name: "Purchase Orders",    description: "Supplier purchase orders & inventory receiving", category: "Operations" },
+  { id: "users",        name: "Users & Staff",      description: "Staff accounts, custom roles, & permission tables", category: "Management" },
+];
 
 export const ROLES = ["admin/owner", "admin", "inventory_manager", "cashier"] as const;
 

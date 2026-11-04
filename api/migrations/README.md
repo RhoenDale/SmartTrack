@@ -1,5 +1,61 @@
 # Database Migrations
 
+## Activity Logs
+
+Back up the `smarttrack` database, then run
+`create_activity_logs.sql` once in phpMyAdmin or with the MySQL CLI before
+deploying the updated app. The API records each authenticated request with the
+user, method, route, response status, and timestamp. It intentionally does not
+store request bodies, credentials, or query-string values. Admins can review
+the shared history and filter it by user. Other signed-in users can view only
+their own history from Preferences → My Activity Log.
+
+## Link Users to Roles
+
+Back up the `smarttrack` database and ensure `create_roles_table.sql` has been
+applied. Before adding the user-role foreign key, run the orphan check in
+`add_user_role_foreign_key.sql`. Every user role must match an existing
+`roles.id`; resolve any mismatches by assigning the intended role or creating
+the missing role rather than deleting user records. Then run the migration once.
+The API also validates role assignments when users are created or updated.
+
+## Supplier Purchase Orders and Delivery Tracking
+
+Back up the `smarttrack` database, then run
+`create_supplier_purchase_orders.sql` once in phpMyAdmin before using the
+Purchases page. The migration adds order, order-item, and partial-receipt
+records. Receiving a delivery also creates the corresponding inventory batch;
+creating an order alone does not change stock. The Purchases page is available
+to admins and inventory managers. Supplier fulfillment is calculated from
+recorded quantities and does not measure delivery timeliness.
+
+For databases that already have purchase-order tables, run
+`harden_purchase_order_relations.sql` once after backing up. First run all of its
+orphan-count checks separately and resolve any nonzero results before applying
+the migration. In particular, do not delete orphaned purchase history just to
+make the migration pass; identify and repair or archive those records first.
+It aligns user-ID columns, preserves creator/receiver IDs, and
+adds foreign keys for order items and receipts. Then run
+`add_cancelled_status_to_purchase_orders.sql` once so order cancellation is
+supported. New installations get those constraints and the `cancelled` status
+from `create_supplier_purchase_orders.sql`. The API returns a migration-required
+response rather than a database 500 when an existing installation is missing
+these schema updates.
+
+## Recycle Bin Product History and Automatic Purge
+
+Back up the `smarttrack` database. After applying
+`create_supplier_purchase_orders.sql` and
+`harden_purchase_order_relations.sql`, run `recycle_bin_product_history.sql`
+once. It saves product names on purchase-order lines and changes product links
+to `ON DELETE SET NULL`, preserving purchase and receipt history when a product
+is permanently purged. An open order whose product was purged cannot receive
+new stock; the API reports that condition.
+
+The API automatically permanently deletes users and products at least 30 days
+after they enter the Recycle Bin, on the next active notification refresh.
+Product auto-purge waits until the purchase-history migration is applied.
+
 ## Multiple Categories per Product
 
 Products can be assigned one or more categories. For an existing database, run

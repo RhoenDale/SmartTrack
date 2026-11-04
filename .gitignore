@@ -1,8 +1,8 @@
 node_modules/
 dist/
-electron/
 release/
 *.DS_Store
+release/win-unpacked.tmp/
 dist-build.log
 credentials.md
 .env
@@ -12,6 +12,7 @@ credentials.md
 /api/config.php
 /api/diagnostic.php
 /api/setup-test-users.php
+/api/test_tunnel.log
 /smarttrack.sql
 /.liveui.json
 /.kiro/hooks/auto-approve-all.json
