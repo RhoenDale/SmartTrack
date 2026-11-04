@@ -146,7 +146,7 @@ function FieldSelect({ label, value, onChange, options, required }: {
       <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">{label}</label>
       <select
         value={value} onChange={e => onChange(e.target.value)} required={required}
-        className="w-full bg-background border border-border rounded-lg px-3 py-2.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all"
+        className="app-select w-full bg-background border border-border rounded-lg px-3 py-2.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all"
       >
         <option value="">Select…</option>
         {options.map(o => <option key={o} value={o}>{o}</option>)}
@@ -362,7 +362,7 @@ function CategorySelect({ categories, value, onChange, onAddCategory }: {
         value={value}
         onChange={e => handleChange(e.target.value)}
         required
-        className="w-full bg-background border border-border rounded-lg px-3 py-2.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all"
+        className="app-select w-full bg-background border border-border rounded-lg px-3 py-2.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all"
       >
         <option value="">Select…</option>
         {categories.map(c => <option key={c} value={c}>{c}</option>)}
@@ -610,7 +610,7 @@ function ProductFormModal({ initial, inventory, categories, onClose, onSave, onA
             value={form.category}
             onChange={e => handleCategoryChange(e.target.value)}
             required
-            className="w-full bg-background border border-border rounded-lg px-3 py-2.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all"
+            className="app-select w-full bg-background border border-border rounded-lg px-3 py-2.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all"
           >
             <option value="">Select…</option>
             {categories.map(c => <option key={c} value={c}>{c}</option>)}

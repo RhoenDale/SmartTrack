@@ -244,16 +244,16 @@ export function SvgAreaChart({
   ) * 1.08;
   const leftMax = maxForAxis("left");
   const rightMax = hasRightAxis ? maxForAxis("right") : leftMax;
-
+  
   // Safe calculation for x position
   const xs = (i: number) => {
     if (data.length === 1) return pad.l + cw / 2; // Center single point
     return pad.l + (i / (data.length - 1)) * cw;
   };
-
+  
   const ys = (v: number, axis: "left" | "right" = "left") =>
     pad.t + ch - (v / (axis === "right" ? rightMax : leftMax)) * ch;
-
+  
   return (
     <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-full" style={{ overflow: "visible" }}>
       {[0, 0.25, 0.5, 0.75, 1].map(t => {
@@ -2018,16 +2018,16 @@ export function UserFormModal({
     <Modal title="Add New User" onClose={onClose} hideCloseButton>
       <form onSubmit={handleSubmit} className="space-y-4">
         <FieldInput label="Full Name" value={form.name} onChange={set("name")} placeholder="e.g. Juan Dela Cruz" required />
-
+        
         <div>
-          <FieldSelect
-            label="Role"
-            value={form.role}
-            onChange={set("role")}
-            options={availableRoleIds}
-            required
-            roleLabels={roleLabelsMap}
-            placeholder="Select role"
+          <FieldSelect 
+            label="Role" 
+            value={form.role} 
+            onChange={set("role")} 
+            options={availableRoleIds} 
+            required 
+            roleLabels={roleLabelsMap} 
+            placeholder="Select role" 
           />
           {selectedRoleObj && (
             <div className="mt-2 p-2.5 rounded-xl bg-muted/50 border border-border text-xs space-y-1.5 animate-in fade-in duration-200">
@@ -2037,8 +2037,8 @@ export function UserFormModal({
                   {selectedRoleObj.name}
                 </span>
                 <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full border ${
-                  selectedRoleObj.isSystem
-                    ? "bg-blue-500/10 text-blue-500 border-blue-500/20"
+                  selectedRoleObj.isSystem 
+                    ? "bg-blue-500/10 text-blue-500 border-blue-500/20" 
                     : "bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-500/20"
                 }`}>
                   {selectedRoleObj.isSystem ? "Built-in System Role" : "Custom Role"}
@@ -2163,13 +2163,13 @@ export function UserInfoModal({
     if (!editName.trim()) { setProfileError("Name cannot be empty."); return; }
     if (editName.length > 120) { setProfileError("Name must be 120 characters or less."); return; }
     if (!editEmail.trim()) { setProfileError("Email cannot be empty."); return; }
-
+    
     setProfileLoading(true);
     try {
       await onUpdateProfile?.(editName.trim(), editEmail.trim());
       setProfileSuccess(true);
-      setTimeout(() => {
-        setProfileSuccess(false);
+      setTimeout(() => { 
+        setProfileSuccess(false); 
         setIsEditingProfile(false);
       }, 1500);
     } catch (err: unknown) {
@@ -2241,7 +2241,7 @@ export function UserInfoModal({
                 ✓ Profile updated successfully.
               </div>
             )}
-
+            
             <div className="space-y-1.5">
               <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Name</label>
               <input
@@ -2309,7 +2309,7 @@ export function UserInfoModal({
                 )}
                 <PwdField label="New Password"     value={newPwd}     onChange={setNewPwd}     show={showNew}  onToggle={() => setShowNew(v => !v)} />
                 <PwdField label="Confirm Password" value={confirmPwd} onChange={setConfirmPwd} show={showConf} onToggle={() => setShowConf(v => !v)} />
-
+                
                 {/* Real-time password mismatch warning */}
                 {confirmPwd && newPwd && newPwd !== confirmPwd && (
                   <div className="flex items-center gap-2 text-amber-600 dark:text-amber-400 text-xs bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 rounded-lg px-3 py-2">
@@ -2317,7 +2317,7 @@ export function UserInfoModal({
                     Passwords do not match
                   </div>
                 )}
-
+                
                 {pwdError && (
                   <div className="flex items-center gap-2 text-red-600 dark:text-red-400 text-xs bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 rounded-lg px-3 py-2">
                     <AlertTriangle size={12} />

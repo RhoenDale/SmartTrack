@@ -412,6 +412,7 @@ switch ($tab) {
         }
 
         $totalRevenue = 0.0;
+        $costedRevenue = 0.0;
         $totalCogAll  = 0.0;
         $result = [];
 
@@ -431,7 +432,10 @@ switch ($tab) {
                            && $cogs['minUnitCost'] !== $cogs['maxUnitCost'];
 
             $totalRevenue += $revenue;
-            if ($totalCost !== null) $totalCogAll += $totalCost;
+            if ($totalCost !== null) {
+                $costedRevenue += $revenue;
+                $totalCogAll += $totalCost;
+            }
 
             $result[] = [
                 'productId'    => $pid,
@@ -452,10 +456,11 @@ switch ($tab) {
             'rows'   => $result,
             'totals' => [
                 'revenue'     => round($totalRevenue, 2),
+                'costedRevenue' => round($costedRevenue, 2),
                 'totalCost'   => round($totalCogAll,  2),
-                'grossProfit' => round($totalRevenue - $totalCogAll, 2),
-                'margin'      => $totalRevenue > 0
-                                 ? round((($totalRevenue - $totalCogAll) / $totalRevenue) * 100, 1)
+                'grossProfit' => round($costedRevenue - $totalCogAll, 2),
+                'margin'      => $costedRevenue > 0
+                                 ? round((($costedRevenue - $totalCogAll) / $costedRevenue) * 100, 1)
                                  : null,
             ],
         ]);

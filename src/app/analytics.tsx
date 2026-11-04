@@ -565,7 +565,7 @@ function EoqBreakdownModal({
                 <span>💡</span> Smart Decision Guidance:
               </p>
               <p className="leading-relaxed opacity-90">
-                Suggested ROP is decision support based on annualized demand and an assumed 7-day supplier lead time with a 20% buffer. The configured threshold ({product.reorder} packs / {getReorderUnits(product)} units) remains the active stock alert threshold. Ordering <strong>{eoq.toLocaleString()} units</strong> balances procurement order cost (₱{orderCost.toFixed(2)}) against annual holding cost (20%).
+                Suggested ROP is decision support based on annualized demand and an assumed 7-day supplier lead time with a 20% buffer. The configured threshold ({product.reorder} packs / {getReorderUnits(product)} units) remains the active stock alert threshold. Ordering <strong>{eoq.toLocaleString()} units</strong> balances procurement order cost (₱{orderCost.toFixed(2)}) against annual holding cost (20%). 
                 Under <strong>FIFO (First-In, First-Out)</strong>, ensure new batches from suppliers have sufficient shelf life to prevent expiry loss.
               </p>
             </div>

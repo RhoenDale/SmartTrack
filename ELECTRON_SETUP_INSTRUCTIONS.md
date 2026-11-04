@@ -85,17 +85,9 @@ C:\xampp\mysql\bin\mysql.exe -u root smarttrack -e "UPDATE users SET password = 
 ---
 
 ### Issue 3: Electron App Loads but No Data
-**Test:**
-```
-http://localhost/SmartTrack/api/test-complete-flow
-```
+**Check:** Sign in through the app, then inspect the authenticated API requests in DevTools.
 
-**Check:** Should show:
-- `"step_1_login": { "status": "success", ... }`
-- `"step_2_products": { "count": 10, ... }`
-- `"overall_status": "SUCCESS - All data fetched correctly!"`
-
-**Fix:** If any step fails:
+**Fix:** If data still does not load:
 1. Check XAMPP MySQL is running
 2. Verify `api/config.php` has correct credentials
 3. Run diagnostic endpoint
@@ -128,13 +120,6 @@ http://localhost/SmartTrack/api/test-complete-flow
 ---
 
 ## API Testing Endpoints
-
-### Test Everything at Once
-```
-GET http://localhost/SmartTrack/api/test-complete-flow
-```
-
-### Test Individual Components
 
 #### 1. Database Health
 ```
@@ -246,7 +231,6 @@ localStorage.getItem('st_token')
 - [ ] Add DB password to config.php
 - [ ] Remove /api/setup-test-users endpoint
 - [ ] Remove /api/diagnostic endpoint
-- [ ] Remove /api/test-complete-flow endpoint
 - [ ] Enable HTTPS in Apache
 - [ ] Set session cookies to secure + httponly
 - [ ] Add rate limiting to /auth/login

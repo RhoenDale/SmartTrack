@@ -52,13 +52,7 @@ GET http://localhost/SmartTrack/api/setup-test-users
 ```
 Returns: Updates 3 test users with working passwords
 
-### 3. Complete Flow Test
-```
-GET http://localhost/SmartTrack/api/test-complete-flow
-```
-Returns: Full test of login → token → data fetching
-
-### 4. Login
+### 3. Login
 ```
 POST http://localhost/SmartTrack/api/auth/login
 Content-Type: application/json
@@ -132,8 +126,6 @@ $login = @{ email = "admin@tangub.ph"; password = "admin123" } | ConvertTo-Json
 Invoke-WebRequest -Uri "http://localhost/SmartTrack/api/auth/login" `
   -Method POST -ContentType "application/json" -Body $login -UseBasicParsing
 
-# Test complete flow
-Invoke-WebRequest -Uri "http://localhost/SmartTrack/api/test-complete-flow" -UseBasicParsing
 ```
 
 ## Dashboard Display Issue - Root Cause
@@ -165,7 +157,7 @@ The dashboard initially showed 0 because:
 ## Next Steps for Production
 
 1. **Secure the database credentials** in `api/config.php` (currently blank password)
-2. **Remove test endpoints** (`setup-test-users`, `diagnostic`, `test-complete-flow`) before deployment
+2. **Remove remaining development endpoints** (`setup-test-users`, `diagnostic`) before deployment
 3. **Enable HTTPS** in production
 4. **Add rate limiting** to `/auth/login` endpoint
 5. **Implement proper error logging** beyond console.error
@@ -176,5 +168,5 @@ If the Electron app still doesn't show data:
 1. Check browser console (F12) for network errors
 2. Verify token is stored in localStorage
 3. Check that XAMPP MySQL is running
-4. Run `/api/test-complete-flow` to verify all layers
+4. Sign in and inspect authenticated API requests in DevTools
 5. Check that dates of transactions are within last 7 days for dashboard

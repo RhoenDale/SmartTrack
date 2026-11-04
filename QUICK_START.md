@@ -77,7 +77,7 @@ npm run electron
 npm run dist
 ```
 
-Creates: `C:\SmartTrack-build\release\SmartTrack-Setup.exe`
+Creates: `release/SmartTrack-Setup-<version>.exe`
 
 ## 📖 Full Guides
 

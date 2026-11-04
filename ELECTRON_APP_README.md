@@ -289,7 +289,6 @@ npm run dist           # Build + create Windows installer
 | `/transactions/sale` | POST | Record sale | Yes (Cashier) |
 | `/dashboard` | GET | Dashboard metrics | Yes (Admin) |
 | `/diagnostic` | GET | System health check | No |
-| `/test-complete-flow` | GET | Full integration test | No |
 
 ---
 
@@ -333,7 +332,7 @@ npm run dist           # Build + create Windows installer
 
 ```powershell
 npm run dist
-# Output: C:\SmartTrack-build\release\SmartTrack-Setup.exe
+# Output: release/SmartTrack-Setup-<version>.exe
 ```
 
 ### Distribute to Users
@@ -382,7 +381,6 @@ After login:
 
 ```
 System Health: http://localhost/SmartTrack/api/diagnostic
-Full Flow Test: http://localhost/SmartTrack/api/test-complete-flow
 Setup Users: http://localhost/SmartTrack/api/setup-test-users
 ```
 
