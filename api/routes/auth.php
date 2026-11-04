@@ -39,6 +39,7 @@ switch ($method . ':' . ($id ?? '')) {
 
         // Store in session (browser fallback)
         $_SESSION['smarttrack_user'] = $user;
+        $GLOBALS['smarttrack_activity_actor'] = $user;
 
         // Generate a persistent token for stateless clients (Electron)
         $token = create_token((string)$user['id']);
@@ -47,7 +48,8 @@ switch ($method . ':' . ($id ?? '')) {
         break;
 
     case 'POST:logout':
-        // Revoke Bearer token if present
+        $GLOBALS['smarttrack_activity_actor'] = current_user();
+        // Revoke bearer token if present
         $bearer = get_bearer_token();
         if ($bearer !== null) {
             revoke_token($bearer);

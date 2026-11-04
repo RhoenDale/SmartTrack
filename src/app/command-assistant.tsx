@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useId } from "react";
+import { createPortal } from "react-dom";
 import {
   X,
   ArrowRight,
@@ -10,7 +11,7 @@ import {
   CornerDownLeft,
   LoaderCircle,
 } from "lucide-react";
-import type { Product, Transaction, AuthUser, Page } from "./data";
+import { getReorderUnits, groupCartTransactions, type Product, type Transaction, type AuthUser, type Page } from "./data";
 import { analyticsApi } from "./api";
 import { fmt, InfoTip } from "./shared";
 
@@ -60,6 +61,19 @@ const MONTHS_MAP: Record<string, number> = {
   november: 10, nov: 10,
   december: 11, dec: 11,
 };
+
+function parseTransactionDate(value: string): Date | null {
+  const match = /^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:\s+(\d{1,2}):(\d{2}))?$/.exec(value.trim());
+  if (!match) return null;
+  const [, month, day, year, hour = "0", minute = "0"] = match;
+  const parsed = new Date(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute));
+  if (
+    parsed.getFullYear() !== Number(year) ||
+    parsed.getMonth() !== Number(month) - 1 ||
+    parsed.getDate() !== Number(day)
+  ) return null;
+  return parsed;
+}
 
 export function SmartBotMascot({ className = "" }: { className?: string }) {
   const gradientId = useId().replace(/:/g, "");
@@ -238,7 +252,7 @@ export default function CommandAssistant({
       let title = "";
       let desc = "";
       let features: { label: string; value: string }[] = [];
-      let pageTarget = "";
+      let pageTarget: Page | "" = "";
 
       if (q.includes("analytic") || q.includes("forecast") || q.includes("sma") || q.includes("eoq") || q.includes("tagna") || q.includes("hula")) {
         topic = "Analytics & Demand Forecasting";
@@ -383,7 +397,7 @@ export default function CommandAssistant({
           type: "info",
           details: features,
           actionLabel: lang === "ceb" ? `Ablihi ang ${topic}` : `Open ${topic}`,
-          onAction: pageTarget ? () => { onNavigate(pageTarget); setIsOpen(false); } : undefined,
+          onAction: pageTarget ? () => { onNavigate(pageTarget as Page); setIsOpen(false); } : undefined,
         });
         return;
       }
@@ -482,11 +496,19 @@ export default function CommandAssistant({
 
       if (matchedProduct && qty > 0) {
         const unitPrice = matchedProduct.price;
-        const unitCost = matchedProduct.costPrice ?? (matchedProduct.price * 0.7);
         const totalRevenue = unitPrice * qty;
-        const totalCost = unitCost * qty;
-        const totalProfit = totalRevenue - totalCost;
-        const marginPct = totalRevenue > 0 ? ((totalProfit / totalRevenue) * 100).toFixed(1) : "0.0";
+        const activeBatches = matchedProduct.batches.filter(batch => batch.qty > 0);
+        const hasCompleteUnitCosts = activeBatches.length > 0 && activeBatches.every(batch =>
+          typeof batch.unitCost === "number" && Number.isFinite(batch.unitCost) && batch.unitCost >= 0
+        );
+        const currentStock = activeBatches.reduce((sum, batch) => sum + batch.qty, 0);
+        const currentStockCost = activeBatches.reduce((sum, batch) => sum + batch.qty * (batch.unitCost ?? 0), 0);
+        const unitCost = hasCompleteUnitCosts && currentStock > 0 ? currentStockCost / currentStock : null;
+        const totalCost = unitCost === null ? null : unitCost * qty;
+        const totalProfit = totalCost === null ? null : totalRevenue - totalCost;
+        const marginPct = totalProfit === null || totalRevenue <= 0
+          ? null
+          : ((totalProfit / totalRevenue) * 100).toFixed(1);
 
         setLoading(false);
         const headTxt =
@@ -500,10 +522,14 @@ export default function CommandAssistant({
           type: "info",
           details: [
             { label: lang === "ceb" ? "Presyo/Unit" : "Unit Price", value: fmt(unitPrice) },
-            { label: lang === "ceb" ? "Puhonan/Unit" : "Est. Cost/Unit", value: fmt(unitCost) },
             { label: lang === "ceb" ? "Kinatibuk-ang Halin (Revenue)" : "Gross Revenue", value: fmt(totalRevenue) },
-            { label: lang === "ceb" ? "Kinatibuk-ang Puhonan (Cost)" : "Total Cost", value: fmt(totalCost) },
-            { label: lang === "ceb" ? "Gibanabana nga Tubo (Profit)" : "Estimated Profit", value: `${fmt(totalProfit)} (${marginPct}% margin)` },
+            ...(unitCost === null || totalCost === null || totalProfit === null || marginPct === null
+              ? [{ label: "Profit estimate", value: "Unavailable — batch cost data is missing." }]
+              : [
+                  { label: lang === "ceb" ? "Puhonan/Unit" : "Est. Cost/Unit (current batches)", value: fmt(unitCost) },
+                  { label: lang === "ceb" ? "Kinatibuk-ang Puhonan (Cost)" : "Estimated Total Cost", value: fmt(totalCost) },
+                  { label: lang === "ceb" ? "Gibanabana nga Tubo (Profit)" : "Estimated Profit", value: `${fmt(totalProfit)} (${marginPct}% margin)` },
+                ]),
           ],
         });
         return;
@@ -512,56 +538,49 @@ export default function CommandAssistant({
 
     // 7. Sales Query (English/Bisaya/Tagalog: "how much total sales from past october?", "pilay halin atong october?")
     if (q.includes("sale") || q.includes("revenue") || q.includes("earn") || q.includes("income") || q.includes("halin") || q.includes("benta") || q.includes("kita")) {
-      let filteredTx = transactions;
+      const salesTransactions = groupCartTransactions(transactions.filter(transaction => transaction.type === "sale"));
+      let dateFilter = (_date: Date) => true;
       let timeframeLabel = lang === "ceb" ? "Tanan (All-Time)" : "All-Time";
+      const now = new Date();
 
       // Detect month
       let foundMonth: number | null = null;
+      let foundMonthName = "";
       for (const [mName, mIdx] of Object.entries(MONTHS_MAP)) {
         if (q.includes(mName)) {
           foundMonth = mIdx;
-          timeframeLabel = mName.toUpperCase();
+          foundMonthName = mName;
           break;
         }
       }
 
-      const now = new Date();
       if (foundMonth !== null) {
-        filteredTx = transactions.filter(t => {
-          const d = new Date(t.timestamp);
-          return d.getMonth() === foundMonth;
-        });
+        const year = foundMonth > now.getMonth() ? now.getFullYear() - 1 : now.getFullYear();
+        timeframeLabel = `${foundMonthName.toUpperCase()} ${year}`;
+        dateFilter = date => date.getMonth() === foundMonth && date.getFullYear() === year;
       } else if (q.includes("today") || q.includes("karon") || q.includes("ngayong araw")) {
         timeframeLabel = lang === "ceb" ? "Karon (Today)" : "Today";
-        filteredTx = transactions.filter(t => {
-          const d = new Date(t.timestamp);
-          return d.toDateString() === now.toDateString();
-        });
+        dateFilter = date => date.toDateString() === now.toDateString();
       } else if (q.includes("yesterday") || q.includes("gahapon") || q.includes("kahapon")) {
         timeframeLabel = lang === "ceb" ? "Gahapon (Yesterday)" : "Yesterday";
         const yest = new Date(now);
         yest.setDate(yest.getDate() - 1);
-        filteredTx = transactions.filter(t => {
-          const d = new Date(t.timestamp);
-          return d.toDateString() === yest.toDateString();
-        });
+        dateFilter = date => date.toDateString() === yest.toDateString();
       } else if (q.includes("this month") || q.includes("karong bulana") || q.includes("ngayong buwan")) {
         timeframeLabel = lang === "ceb" ? "Karong Bulana (This Month)" : "This Month";
-        filteredTx = transactions.filter(t => {
-          const d = new Date(t.timestamp);
-          return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
-        });
+        dateFilter = date => date.getMonth() === now.getMonth() && date.getFullYear() === now.getFullYear();
       } else if (q.includes("last month") || q.includes("past month") || q.includes("miaging bulan") || q.includes("nakaraang buwan")) {
         timeframeLabel = lang === "ceb" ? "Miaging Bulan (Last Month)" : "Last Month";
-        const lastMonth = now.getMonth() === 0 ? 11 : now.getMonth() - 1;
-        filteredTx = transactions.filter(t => {
-          const d = new Date(t.timestamp);
-          return d.getMonth() === lastMonth;
-        });
+        const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+        dateFilter = date => date.getMonth() === lastMonth.getMonth() && date.getFullYear() === lastMonth.getFullYear();
       }
 
-      const totalSales = filteredTx.reduce((sum, t) => sum + (t.total || 0), 0);
-      const totalUnits = filteredTx.reduce((sum, t) => sum + (t.qty || 0), 0);
+      const filteredTx = salesTransactions.filter(transaction => {
+        const date = parseTransactionDate(transaction.date);
+        return date !== null && dateFilter(date);
+      });
+      const totalSales = filteredTx.reduce((sum, transaction) => sum + transaction.amount, 0);
+      const totalUnits = filteredTx.reduce((sum, transaction) => sum + transaction.qty, 0);
       const totalOrders = filteredTx.length;
 
       setLoading(false);
@@ -613,7 +632,13 @@ export default function CommandAssistant({
         });
         return;
       } catch (err) {
-        // Fallback
+        setLoading(false);
+        addMessage({
+          sender: "bot",
+          text: `I couldn't load the demand forecast: ${err instanceof Error ? err.message : String(err)}`,
+          type: "error",
+        });
+        return;
       }
     }
 
@@ -625,7 +650,9 @@ export default function CommandAssistant({
     if (matchedProducts.length > 0) {
       setLoading(false);
       const topProd = matchedProducts[0];
-      const statusColor = topProd.stock === 0 ? "Out of Stock" : topProd.stock <= topProd.minStock ? "Low Stock" : "Good Stock";
+      const reorderUnits = getReorderUnits(topProd);
+      const isLowStock = topProd.stock <= reorderUnits;
+      const statusColor = topProd.stock === 0 ? "Out of Stock" : isLowStock ? "Low Stock" : "Good Stock";
 
       const stockHead =
         lang === "ceb"
@@ -635,10 +662,10 @@ export default function CommandAssistant({
       addMessage({
         sender: "bot",
         text: stockHead,
-        type: topProd.stock <= topProd.minStock ? "warning" : "info",
+        type: isLowStock ? "warning" : "info",
         details: [
           { label: lang === "ceb" ? "Kasamtangang Stock" : "Current Stock", value: `${topProd.stock} units` },
-          { label: lang === "ceb" ? "Reorder Threshold" : "Reorder Threshold", value: `${topProd.minStock} units` },
+          { label: "Reorder Threshold", value: `${reorderUnits} units` },
           { label: lang === "ceb" ? "Presyo sa Pagbaligya" : "Selling Price", value: fmt(topProd.price) },
           { label: "Status", value: statusColor },
         ],
@@ -650,7 +677,7 @@ export default function CommandAssistant({
 
     // 10. Stock Alerts Summary
     if (q.includes("low stock") || q.includes("critical") || q.includes("out of stock") || q.includes("alert") || q.includes("mahurot") || q.includes("kulang") || q.includes("paubos")) {
-      const lowList = inventory.filter(p => p.stock <= p.minStock);
+      const lowList = inventory.filter(product => product.stock <= getReorderUnits(product));
       setLoading(false);
       const alertHead =
         lang === "ceb"
@@ -663,7 +690,7 @@ export default function CommandAssistant({
         type: lowList.length > 0 ? "warning" : "success",
         details: lowList.slice(0, 4).map(p => ({
           label: p.name,
-          value: `${p.stock} left (min ${p.minStock})`,
+          value: `${p.stock} left (reorder at ${getReorderUnits(p)})`,
         })),
         actionLabel: lang === "ceb" ? "Tan-awa ang Stock Alerts" : "View Stock Alerts",
         onAction: () => { onNavigate("stock-alerts"); setIsOpen(false); },
@@ -687,11 +714,14 @@ export default function CommandAssistant({
     { label: "Demand Forecast", icon: <TrendingUp size={12} />, cmd: "how many units will be sold next month?" },
     { label: "Sales Lookups", icon: <DollarSign size={12} />, cmd: "how much total sales from past october?" },
     { label: "Low Stock Items", icon: <AlertTriangle size={12} />, cmd: "show low stock items" },
-    { label: "New POS Sale", icon: <ShoppingCart size={12} />, cmd: "new sale" },
+    { label: "Today's Sales", icon: <ShoppingCart size={12} />, cmd: "how much total sales today?" },
     { label: "Profit Simulator", icon: <Calculator size={12} />, cmd: "if i sold 50 units of amoxicillin, how much do i earn?" },
   ];
 
   if (!enabled) return null;
+
+  // When sidebar button is clicked, always open as a centered modal overlay
+  const showModal = isOpen;
 
   return (
     <>
@@ -728,30 +758,35 @@ export default function CommandAssistant({
         </div>
       )}
 
-      {isOpen && (
-        <div className={
-          `${mode === "sidebar"
-            ? "mx-2 mb-2 flex max-h-[min(48vh,420px)] min-h-[280px] flex-col overflow-hidden rounded-xl border border-white/10 bg-white/[0.06] shadow-inner"
-            : "flex h-full min-h-0 flex-col overflow-hidden bg-[#0a0a0a] text-white"
-          }${isTrackHubMode ? " th-assistant-morph" : ""}`
-        } style={isTrackHubMode ? {
-          transformOrigin: "calc((100% - 280px) / 2 + 26px) 21px",
-        } : undefined}>
-            <div className={`flex items-center justify-between border-b px-4 py-3.5 shrink-0 ${
-              isTrackHubMode ? "border-white/10 bg-[#0a0a0a]" : "border-border bg-card"
-            }`}>
+      {/* Centered modal overlay — used for both sidebar and trackhub modes */}
+      {showModal && createPortal(
+        <div
+          data-assistant-portal
+          className="fixed inset-0 z-[9999] flex items-center justify-center p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Pharmacy Assistant"
+        >
+          {/* Click outside to close — no visible backdrop */}
+          <div
+            className="absolute inset-0"
+            onClick={() => setIsOpen(false)}
+          />
+
+          {/* Panel */}
+          <div className="relative z-10 flex flex-col overflow-hidden rounded-2xl shadow-2xl w-full max-w-lg h-[min(90dvh,600px)] border border-border bg-card text-foreground">
+            {/* Header */}
+            <div className="flex items-center justify-between border-b border-border bg-card px-4 py-3.5 shrink-0">
               <div className="flex items-center gap-3">
-                <div className={`flex h-11 w-11 items-center justify-center rounded-xl ${
-                  isTrackHubMode ? "bg-white/[0.07] ring-1 ring-white/10" : "bg-primary/10 ring-1 ring-primary/15"
-                }`}>
+                <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary/10 ring-1 ring-primary/15">
                   <SmartBotMascot className="h-10 w-10" />
                 </div>
                 <div>
                   <div className="flex items-center gap-1.5">
-                    <h3 className={`text-sm font-bold tracking-tight ${isTrackHubMode ? "text-white" : "text-foreground"}`}>Pharmacy Assistant</h3>
+                    <h3 className="text-sm font-bold tracking-tight text-foreground">Pharmacy Assistant</h3>
                     <InfoTip
                       title="About the Pharmacy Assistant"
-                      color="blue"
+                      color="sky"
                       lines={[
                         "A rule-based pharmacy shortcut assistant for common tasks.",
                         { label: "Can help with", value: "Stock checks, sales lookups, demand forecasts, calculations, and navigation" },
@@ -760,52 +795,40 @@ export default function CommandAssistant({
                       ]}
                     />
                   </div>
-                  <p className={`mt-0.5 text-[10px] ${isTrackHubMode ? "text-white/50" : "text-muted-foreground"}`}>Pharmacy shortcuts · Live stock &amp; sales</p>
+                  <p className="mt-0.5 text-[10px] text-muted-foreground">Pharmacy shortcuts · Live stock &amp; sales</p>
                 </div>
               </div>
-              <div className="flex items-center gap-1">
-                <button
-                  type="button"
-                  onClick={() => setIsOpen(false)}
-                  className={`rounded-lg p-2 transition-colors ${
-                    isTrackHubMode ? "text-white/50 hover:bg-white/10 hover:text-white" : "text-muted-foreground hover:bg-muted hover:text-foreground"
-                  }`}
-                  title="Close (Esc)"
-                  aria-label="Close Pharmacy Assistant"
-                >
-                  <X size={16} />
-                </button>
-              </div>
+              <button
+                type="button"
+                onClick={() => setIsOpen(false)}
+                className="rounded-lg p-2 transition-colors text-muted-foreground hover:bg-muted hover:text-foreground"
+                title="Close (Esc)"
+                aria-label="Close Pharmacy Assistant"
+              >
+                <X size={16} />
+              </button>
             </div>
 
-            <div className={`border-b px-3 py-2.5 shrink-0 ${
-              isTrackHubMode ? "border-white/10 bg-white/[0.025]" : "border-border/70 bg-muted/15"
-            }`}>
-              <p className={`mb-2 px-0.5 text-[9px] font-semibold uppercase tracking-[0.12em] ${
-                isTrackHubMode ? "text-white/50" : "text-muted-foreground"
-              }`}>Common tasks</p>
+            {/* Quick prompts */}
+            <div className="border-b border-border/70 bg-muted/15 px-3 py-2.5 shrink-0">
+              <p className="mb-2 px-0.5 text-[9px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Common tasks</p>
               <div className="flex gap-1.5 overflow-x-auto scrollbar-none">
                 {quickPrompts.map((p, idx) => (
                   <button
                     key={idx}
                     type="button"
                     onClick={() => handleCommand(p.cmd)}
-                    className={`flex shrink-0 items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[10px] font-medium transition-colors cursor-pointer ${
-                      isTrackHubMode
-                        ? "border-white/10 bg-white/[0.04] text-white/85 hover:border-blue-400/40 hover:bg-white/[0.08] hover:text-white"
-                        : "border-border bg-card text-foreground hover:border-primary/30 hover:bg-primary/5 hover:text-primary"
-                    }`}
+                    className="flex shrink-0 items-center gap-1.5 rounded-lg border border-border bg-card text-foreground hover:border-primary/30 hover:bg-primary/5 hover:text-primary px-2.5 py-1.5 text-[10px] font-medium transition-colors cursor-pointer"
                   >
-                    <span className={isTrackHubMode ? "text-white/50" : "text-muted-foreground"}>{p.icon}</span>
+                    <span className="text-muted-foreground">{p.icon}</span>
                     <span>{p.label}</span>
                   </button>
                 ))}
               </div>
             </div>
 
-            <div className={`flex-1 space-y-4 overflow-y-auto p-4 ${
-              isTrackHubMode ? "bg-[#0a0a0a]" : "bg-muted/[0.12]"
-            }`}>
+            {/* Messages */}
+            <div className="flex-1 space-y-4 overflow-y-auto p-4 bg-muted/[0.12]">
               {messages.map(m => (
                 <div
                   key={m.id}
@@ -820,19 +843,17 @@ export default function CommandAssistant({
                     className={`max-w-[84%] rounded-2xl px-3.5 py-3 text-xs leading-relaxed shadow-sm ${
                       m.sender === "user"
                         ? "rounded-br-md bg-primary text-primary-foreground"
-                        : isTrackHubMode
-                          ? "rounded-bl-md border border-white/10 bg-white/[0.045] text-white/90"
-                          : "rounded-bl-md border border-border/80 bg-card text-foreground"
+                        : "rounded-bl-md border border-border/80 bg-card text-foreground"
                     }`}
                   >
                     <p className="whitespace-pre-line">{m.text}</p>
 
                     {m.details && (
-                      <div className="mt-2 space-y-1 border-t border-border/60 pt-2">
+                      <div className="mt-2 space-y-1.5 border-t border-border/60 pt-2">
                         {m.details.map((d, i) => (
                           <div key={i} className="flex justify-between gap-3 text-[11px]">
                             <span className="text-muted-foreground">{d.label}:</span>
-                            <span className="font-semibold text-foreground">{d.value}</span>
+                            <span className="font-semibold tabular-nums text-foreground">{d.value}</span>
                           </div>
                         ))}
                       </div>
@@ -842,7 +863,7 @@ export default function CommandAssistant({
                       <button
                         type="button"
                         onClick={m.onAction}
-                        className="mt-2.5 inline-flex items-center gap-1.5 rounded-lg border border-primary/20 bg-primary/10 px-2.5 py-1 text-[11px] font-semibold text-primary transition-colors hover:bg-primary/20 cursor-pointer"
+                        className="mt-2.5 inline-flex items-center gap-1.5 rounded-lg border border-primary/30 bg-primary/15 px-2.5 py-1 text-[11px] font-semibold text-primary transition-colors hover:bg-primary/25 cursor-pointer"
                       >
                         {m.actionLabel}
                         <ArrowRight size={12} />
@@ -853,11 +874,9 @@ export default function CommandAssistant({
               ))}
 
               {loading && (
-                <div className="flex items-center gap-2.5 pl-1 text-[11px] text-muted-foreground">
+                <div className="flex items-center gap-2.5 pl-1 text-[11px]">
                   <SmartBotMascot className="h-7 w-7" />
-                  <span className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-2 ${
-                    isTrackHubMode ? "border-white/10 bg-white/[0.05] text-white/70" : "border-border bg-card"
-                  }`}>
+                  <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-card text-muted-foreground px-3 py-2">
                     <LoaderCircle size={12} className="animate-spin text-primary" />
                     Checking pharmacy data…
                   </span>
@@ -866,14 +885,13 @@ export default function CommandAssistant({
               <div ref={chatBottomRef} />
             </div>
 
+            {/* Input */}
             <form
               onSubmit={e => {
                 e.preventDefault();
                 handleCommand(query);
               }}
-              className={`flex shrink-0 flex-col gap-2 border-t p-3 ${
-                isTrackHubMode ? "border-white/10 bg-[#0a0a0a]" : "border-border bg-card"
-              }`}
+              className="flex shrink-0 flex-col gap-2 border-t border-border bg-card p-3"
             >
               <div className="flex items-center gap-2">
                 <div className="relative flex-1">
@@ -885,7 +903,7 @@ export default function CommandAssistant({
                     placeholder="Ask about stock, sales, or a task…"
                     className={`w-full rounded-xl border px-3.5 py-3 pr-8 text-xs transition-all focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 ${
                       isTrackHubMode
-                        ? "border-white/10 bg-white/[0.04] text-white placeholder:text-white/40"
+                        ? "border-white/10 bg-white/[0.06] text-white placeholder:text-white/40"
                         : "border-border bg-background text-foreground placeholder:text-muted-foreground"
                     }`}
                   />
@@ -893,9 +911,7 @@ export default function CommandAssistant({
                     <button
                       type="button"
                       onClick={() => setQuery("")}
-                      className={`absolute right-2.5 top-1/2 -translate-y-1/2 ${
-                        isTrackHubMode ? "text-white/45 hover:text-white" : "text-muted-foreground hover:text-foreground"
-                      }`}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
                       aria-label="Clear message"
                     >
                       <X size={12} />
@@ -911,15 +927,14 @@ export default function CommandAssistant({
                   <CornerDownLeft size={13} />
                 </button>
               </div>
-              <div className={`flex items-center justify-between px-1 text-[9px] ${
-                isTrackHubMode ? "text-white/45" : "text-muted-foreground"
-              }`}>
+              <div className="flex items-center justify-between px-1 text-[9px] text-muted-foreground">
                 <span>Rule-based · Pharmacy data only</span>
                 <span><kbd className="rounded border border-border bg-muted px-1 font-mono">Esc</kbd> to close</span>
               </div>
             </form>
+          </div>
         </div>
-      )}
+      , document.body)}
     </>
   );
 }

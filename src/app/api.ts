@@ -12,8 +12,6 @@
  *  - Token stored in localStorage and included in all requests
  */
 
-import { recordApiActivity } from "./activity";
-
 const TOKEN_KEY = 'st_token';
 
 // Debug logging
@@ -100,8 +98,7 @@ async function request<T = unknown>(
   const fullUrl = `${API_BASE}${path}`;
   const startTime = performance.now();
 
-  const method = options.method || 'GET';
-  log(`${method} ${path}`);
+  log(`${options.method || 'GET'} ${path}`);
 
   try {
     const res = await fetch(fullUrl, {
@@ -140,10 +137,7 @@ async function request<T = unknown>(
     }
 
     // 204 No Content
-    if (res.status === 204) {
-      recordApiActivity(method, path, options.body, undefined);
-      return undefined as T;
-    }
+    if (res.status === 204) return undefined as T;
 
     if (!res.headers.get('content-type')?.includes('application/json')) {
       throw new Error(
@@ -153,7 +147,6 @@ async function request<T = unknown>(
 
     const data = await res.json() as T;
     log(`Parsed response`, data);
-    recordApiActivity(method, path, options.body, data);
     return data;
   } catch (error) {
     const duration = performance.now() - startTime;
@@ -188,80 +181,66 @@ export const authApi = {
 };
 
 // ─── Products ─────────────────────────────────────────────────────────────────
+// ─── Deleted item types (Recycle Bin) ────────────────────────────────────────
 export interface DeletedProduct {
-  id: string; name: string; category: string; supplier: string;
-  stock: number; price: number;
-  deletedAt: string; deletedByName: string | null; deleteNote: string | null;
+  id: string;
+  name: string;
+  category: string;
+  stock: number;
+  deletedAt: string;
+  deletedByName?: string;
+  deleteNote?: string;
   daysSinceDelete: number;
+}
+
+export interface DeletedUser {
+  id: string;
+  name: string;
+  initials: string;
+  role: string;
+  deletedAt: string;
+  deletedByName?: string;
+  deleteNote?: string;
+  daysSinceDelete: number;
+}
+
+export interface ActivityLogEntry {
+  id: string;
+  actorId: string | null;
+  actor: string;
+  method: string;
+  path: string;
+  status: number;
+  ts: string;
+}
+
+export interface ActivityLogActor {
+  id: string | null;
+  name: string;
+}
+
+export interface ActivityLogPage {
+  entries: ActivityLogEntry[];
+  actors: ActivityLogActor[];
+  hasMore: boolean;
+  nextCursor: string | null;
 }
 
 export const productsApi = {
   list:         (search = '', status = 'all') =>
     get<import('./data').Product[]>(`/products?search=${encodeURIComponent(search)}&status=${status}`),
-  listDeleted:  () => get<DeletedProduct[]>('/products/deleted'),
   get:          (id: string) => get<import('./data').Product>(`/products/${id}`),
   create:       (data: unknown) => post<import('./data').Product>('/products', data),
   update:       (id: string, data: unknown) => put<import('./data').Product>(`/products/${id}`, data),
   delete:       (id: string) => del(`/products/${id}`),
-  restore:      (id: string) => post<{ message: string }>(`/products/${id}/restore`, {}),
-  purge:        (id: string) => del<{ message: string }>(`/products/${id}/purge`),
   addBatch:     (productId: string, data: unknown) =>
     post(`/products/${productId}/batches`, data),
-  setSupplier:  (productId: string, supplier: string) =>
-    post<{ message: string }>(`/products/${productId}/supplier`, { supplier }),
   deleteBatch:  (productId: string, batchId: string) =>
     del(`/products/${productId}/batches/${batchId}`),
-};
-
-export interface PurchaseOrderItem {
-  id: number;
-  productId: string;
-  productName: string;
-  qtyOrdered: number;
-  qtyReceived: number;
-  qtyRemaining: number;
-}
-
-export interface PurchaseOrder {
-  id: number;
-  supplier: string;
-  orderedAt: string;
-  expectedDeliveryDate: string | null;
-  status: "ordered" | "partially_received" | "received" | "cancelled";
-  createdAt: string;
-  items: PurchaseOrderItem[];
-}
-
-export interface SupplierPerformance {
-  supplier: string;
-  orderCount: number;
-  qtyOrdered: number;
-  qtyFulfilled: number;
-  fulfillmentRate: number | null;
-  openOrders: number;
-}
-
-export const purchaseOrdersApi = {
-  list: () => get<PurchaseOrder[]>('/purchase-orders'),
-  get: (id: number) => get<PurchaseOrder>(`/purchase-orders/${id}`),
-  performance: () => get<SupplierPerformance[]>('/purchase-orders/performance'),
-  create: (data: {
-    supplier: string;
-    orderedAt: string;
-    expectedDeliveryDate: string | null;
-    items: { productId: string; qtyOrdered: number }[];
-  }) => post<{ id: number; message: string }>('/purchase-orders', data),
-  update: (id: number, data: {
-    supplier?: string;
-    orderedAt?: string;
-    expectedDeliveryDate?: string | null;
-    items?: { productId: string; qtyOrdered: number }[];
-  }) => put<{ message: string }>(`/purchase-orders/${id}`, data),
-  cancel: (id: number) => del<{ message: string }>(`/purchase-orders/${id}`),
-  receive: (orderId: number, data: {
-    receivedAt: string;
-    items: { itemId: number; qtyReceived: number; expiryDate: string | null; batchTotalCost: number | null }[];
-  }) => post<{ message: string }>('/purchase-orders/' + orderId + '/receipts', data),
+  listDeleted:  () => get<DeletedProduct[]>('/products/deleted'),
+  restore:      (id: string) => post<{ message: string }>(`/products/${id}/restore`, {}),
+  purge:        (id: string) => del<{ message: string }>(`/products/${id}/purge`),
+  setSupplier:  (id: string, supplier: string) => put(`/products/${id}`, { supplier }),
 };
 
 // ─── Categories ───────────────────────────────────────────────────────────────
@@ -354,39 +333,30 @@ export const returnRequestsApi = {
 };
 
 // ─── Users ────────────────────────────────────────────────────────────────────
-export interface DeletedUser extends import('./data').StaffMember {
-  deletedAt: string;
-  deletedByName: string | null;
-  deleteNote: string | null;
-  daysSinceDelete: number;
-}
-
 export const usersApi = {
   list:           () => get<import('./data').StaffMember[]>('/users'),
-  listDeleted:    () => get<DeletedUser[]>('/users/deleted'),
   get:            (id: string) => get<import('./data').StaffMember>(`/users/${id}`),
   create:         (data: unknown) => post<import('./data').StaffMember>('/users', data),
   update:         (id: string, data: unknown) => put<import('./data').StaffMember>(`/users/${id}`, data),
-  delete:         (id: string, note?: string) => del<{ message: string }>(`/users/${id}`),
-  restore:        (id: string) => post<{ message: string }>(`/users/${id}/restore`, {}),
-  purge:          (id: string) => del<{ message: string }>(`/users/${id}/purge`),
+  delete:         (id: string) => del<{ message: string }>(`/users/${id}`),
   changePassword: (id: string, password: string) =>
     put(`/users/${id}/password`, { password }),
   resetPassword:  (id: string) =>
     post<{ message: string }>(`/users/${id}/reset-password`, {}),
   createPassword: (id: string, password: string) =>
     put<{ message: string }>(`/users/${id}/password`, { password }),
+  listDeleted:    () => get<DeletedUser[]>('/users/deleted'),
+  restore:        (id: string) => post<{ message: string }>(`/users/${id}/restore`, {}),
+  purge:          (id: string) => del<{ message: string }>(`/users/${id}/purge`),
 };
 
-// ─── Roles ────────────────────────────────────────────────────────────────────
-export const rolesApi = {
-  list:   () => get<import('./data').CustomRole[]>('/roles'),
-  get:    (id: string) => get<import('./data').CustomRole>(`/roles/${id}`),
-  create: (data: { id?: string; name: string; description?: string; permissions: string[] }) =>
-    post<import('./data').CustomRole>('/roles', data),
-  update: (id: string, data: { name: string; description?: string; permissions: string[] }) =>
-    put<import('./data').CustomRole>(`/roles/${id}`, data),
-  delete: (id: string) => del<{ message: string }>(`/roles/${id}`),
+export const activityApi = {
+  list: (options: { before?: string; actorId?: string } = {}) => {
+    const params = new URLSearchParams({ limit: '50' });
+    if (options.before) params.set('before', options.before);
+    if (options.actorId) params.set('actor_id', options.actorId);
+    return get<ActivityLogPage>(`/activity?${params.toString()}`);
+  },
 };
 
 // ─── Notifications ────────────────────────────────────────────────────────────
@@ -448,7 +418,6 @@ export const dashboardApi = {
 export const analyticsApi = {
   sma: (filters: { productId?: string; category?: string } = {}) => get<{
     chartData:    { month: string; demand: number; supply: number; sma3: number | null; sma6: number | null }[];
-    supplyDemandData: { month: string; demand: number; supply: number }[];
     sma3:         number;
     sma6:         number;
     eoq:          number;
@@ -537,7 +506,7 @@ export const financialApi = {
         margin: number | null; avgUnitCost: number | null;
         multiCost: boolean; hasCostData: boolean;
       }[];
-      totals: { revenue: number; costedRevenue: number; totalCost: number; grossProfit: number; margin: number | null };
+      totals: { revenue: number; totalCost: number; grossProfit: number; margin: number | null };
     }>(`/financial/income${qs}`);
   },
 };
@@ -547,4 +516,68 @@ export const stockAlertsApi = {
   all:    () => get('/stock-alerts'),
   stock:  () => get('/stock-alerts/stock'),
   expiry: () => get('/stock-alerts/expiry'),
+};
+
+
+// ─── Purchase Orders ───────────────────────────────────────────────────────────
+export interface PurchaseOrderItem {
+  id: number;
+  productId: string;
+  productName: string;
+  qtyOrdered: number;
+  qtyReceived: number;
+  qtyRemaining: number;
+}
+
+export interface PurchaseOrder {
+  id: number;
+  supplier: string;
+  orderedAt: string;
+  expectedDeliveryDate: string | null;
+  status: 'ordered' | 'partially_received' | 'received' | 'cancelled';
+  createdAt: string;
+  items: PurchaseOrderItem[];
+}
+
+export interface SupplierPerformance {
+  supplier: string;
+  orderCount: number;
+  qtyOrdered: number;
+  qtyFulfilled: number;
+  fulfillmentRate: number | null;
+  openOrders: number;
+}
+
+export const purchaseOrdersApi = {
+  list: () => get<PurchaseOrder[]>('/purchase-orders'),
+  performance: () => get<SupplierPerformance[]>('/purchase-orders/performance'),
+  get: (id: number) => get<PurchaseOrder>(`/purchase-orders/${id}`),
+  create: (data: {
+    supplier: string;
+    orderedAt: string;
+    expectedDeliveryDate: string | null;
+    items: { productId: string; qtyOrdered: number }[];
+  }) => post<{ id: number; message: string }>('/purchase-orders', data),
+  receive: (id: number, data: {
+    receivedAt: string;
+    items: { itemId: number; qtyReceived: number; expiryDate: string | null; batchTotalCost: number | null }[];
+  }) => post<{ message: string }>(`/purchase-orders/${id}/receipts`, data),
+  update: (id: number, data: {
+    supplier?: string;
+    orderedAt?: string;
+    expectedDeliveryDate?: string | null;
+    items?: { productId: string; qtyOrdered: number }[];
+  }) => put<{ message: string }>(`/purchase-orders/${id}`, data),
+  cancel: (id: number) => del<{ message: string }>(`/purchase-orders/${id}`),
+};
+
+// ─── Roles ────────────────────────────────────────────────────────────────────
+export const rolesApi = {
+  list:   () => get<import('./data').CustomRole[]>('/roles'),
+  get:    (id: string) => get<import('./data').CustomRole>(`/roles/${id}`),
+  create: (data: { name: string; description: string; permissions: string[] }) =>
+    post<import('./data').CustomRole>('/roles', data),
+  update: (id: string, data: { name: string; description: string; permissions: string[] }) =>
+    put<import('./data').CustomRole>(`/roles/${id}`, data),
+  delete: (id: string) => del<{ message: string }>(`/roles/${id}`),
 };

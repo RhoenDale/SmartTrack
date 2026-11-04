@@ -59,6 +59,7 @@ export function ConfirmDialog({
   icon,
   onConfirm,
   onCancel,
+  forceModal   = false,
 }: {
   title:        string;
   message:      React.ReactNode;
@@ -68,6 +69,9 @@ export function ConfirmDialog({
   icon?:        React.ReactNode;
   onConfirm:    () => void;
   onCancel:     () => void;
+  /** When true, always renders as a centered modal overlay regardless of nav mode.
+   *  Use this when the dialog is triggered from inside another modal. */
+  forceModal?:  boolean;
 }) {
   const colors = {
     danger:  { ring: "bg-red-500/15 text-red-400",    btn: "bg-red-600 hover:bg-red-500 text-white shadow-md shadow-red-600/30",       dot: "text-red-400",   accent: "#ef4444" },
@@ -76,36 +80,61 @@ export function ConfirmDialog({
   }[variant];
 
   const isIslandMode = React.useMemo(() => {
+    if (forceModal) return false;
     try { return (localStorage.getItem("st_nav_mode") ?? "island") === "island"; }
     catch { return true; }
-  }, []);
+  }, [forceModal]);
 
   const id = React.useId();
+
+  // Stable refs for ALL props — prevents the registration effect from re-firing
+  // when callers pass new JSX/object/function references on every render.
+  const onConfirmRef   = React.useRef(onConfirm);
+  const onCancelRef    = React.useRef(onCancel);
+  const messageRef     = React.useRef(message);
+  const titleRef       = React.useRef(title);
+  const confirmLabelRef = React.useRef(confirmLabel);
+  const cancelLabelRef  = React.useRef(cancelLabel);
+  const variantRef     = React.useRef(variant);
+  const iconRef        = React.useRef(icon);
+  React.useLayoutEffect(() => {
+    onConfirmRef.current    = onConfirm;
+    onCancelRef.current     = onCancel;
+    messageRef.current      = message;
+    titleRef.current        = title;
+    confirmLabelRef.current = confirmLabel;
+    cancelLabelRef.current  = cancelLabel;
+    variantRef.current      = variant;
+    iconRef.current         = icon;
+  });
 
   React.useEffect(() => {
     if (isIslandMode) {
       registerIslandConfirm({
         id,
-        title,
-        message,
-        confirmLabel,
-        cancelLabel,
-        variant,
-        icon,
-        onConfirm,
-        onCancel,
+        // All values proxied through refs — effect runs once on mount only
+        get title()        { return titleRef.current; },
+        get message()      { return messageRef.current; },
+        get confirmLabel() { return confirmLabelRef.current; },
+        get cancelLabel()  { return cancelLabelRef.current; },
+        get variant()      { return variantRef.current; },
+        get icon()         { return iconRef.current; },
+        onConfirm: () => onConfirmRef.current(),
+        onCancel:  () => onCancelRef.current(),
       });
       return () => unregisterIslandConfirm(id);
     }
-  }, [id, isIslandMode, title, message, confirmLabel, cancelLabel, variant, icon, onConfirm, onCancel]);
+  // All props intentionally omitted — proxied via stable refs above
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id, isIslandMode]);
 
   // Close on Escape for non-island mode
   React.useEffect(() => {
     if (isIslandMode) return;
-    const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onCancel(); };
+    const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onCancelRef.current(); };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [isIslandMode, onCancel]);
+  }, [isIslandMode]);
 
   // In TrackHub mode, the dialog is natively embedded inside the TrackHub island (no blur, no detached overlay)
   if (isIslandMode) {
@@ -325,17 +354,17 @@ export function SvgBarChart({ data }: { data: { name: string; sold: number }[] }
 
 // ─── Base UI components ───────────────────────────────────────────────────────
 export function FieldInput({
-  label, type = "text", value, onChange, placeholder, required, min, step, helperText, autoFocus, readOnly, onKeyDown,
+  label, type = "text", value, onChange, placeholder, required, min, step, helperText, autoFocus, readOnly, onKeyDown, list,
 }: {
   label: string; type?: string; value: string | number; onChange: (v: string) => void;
   placeholder?: string; required?: boolean; min?: number; step?: number; helperText?: string;
-  autoFocus?: boolean; readOnly?: boolean; onKeyDown?: (event: React.KeyboardEvent<HTMLInputElement>) => void;
+  autoFocus?: boolean; readOnly?: boolean; onKeyDown?: (event: React.KeyboardEvent<HTMLInputElement>) => void; list?: string;
 }) {
   return (
     <div>
       <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">{label}</label>
       <input
-        type={type} value={value} onChange={e => onChange(e.target.value)} autoFocus={autoFocus} readOnly={readOnly} onKeyDown={onKeyDown}
+        type={type} value={value} onChange={e => onChange(e.target.value)} autoFocus={autoFocus} readOnly={readOnly} onKeyDown={onKeyDown} list={list}
         placeholder={placeholder} required={required} min={min} step={step}
         className="w-full bg-background border border-border rounded-lg px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all"
       />
@@ -773,9 +802,10 @@ export function NotificationPanel({
 
 // ─── Product Form Modal ───────────────────────────────────────────────────────
 export function ProductFormModal({
-  initial, categories, onClose, onSave, onAddCategory, suggestedBatchQty = 0,
+  initial, inventory, categories, onClose, onSave, onAddCategory, suggestedBatchQty = 0,
 }: {
   initial?: Product;
+  inventory: Product[];
   categories: string[];
   onClose: () => void;
   onSave: (original: Product | null, updated: Product) => void;
@@ -783,6 +813,15 @@ export function ProductFormModal({
   suggestedBatchQty?: number;
 }) {
   const isEdit = !!initial;
+  const supplierListId = React.useId();
+  const supplierSuggestions = React.useMemo(() => {
+    const suppliers = new Map<string, string>();
+    inventory.forEach(product => {
+      const supplier = product.supplier.trim();
+      if (supplier) suppliers.set(supplier.toLocaleLowerCase(), supplier);
+    });
+    return [...suppliers.values()].sort((a, b) => a.localeCompare(b));
+  }, [inventory]);
   const [form, setForm] = useState({
     barcode: initial?.barcode ?? "",
     name: initial?.name ?? "",
@@ -915,7 +954,7 @@ export function ProductFormModal({
               <span className="block text-sm font-semibold text-foreground">Product details</span>
               <span className="block text-[11px] text-muted-foreground">Name, barcode, supplier, and categories</span>
             </span>
-            <span className="text-xs text-primary transition-transform group-open:rotate-180">⌄</span>
+            <span className="flex items-center justify-center w-7 h-7 rounded-full bg-muted/60 text-primary transition-transform group-open:rotate-180 text-base leading-none">⌄</span>
           </summary>
           <div className="space-y-3 border-t border-border/60 px-4 py-4">
         {isEdit && <FieldInput label="Product ID (auto-generated)" value={initial?.id ?? ""} onChange={() => {}} readOnly />}
@@ -930,7 +969,10 @@ export function ProductFormModal({
           helperText="Use a USB or Bluetooth scanner, or type the code."
         />
         <FieldInput label="Product Name" value={form.name} onChange={set("name")} placeholder="e.g. Amoxicillin 500mg" required />
-        <FieldInput label="Supplier" value={form.supplier} onChange={set("supplier")} placeholder="e.g. Apex Pharma" required />
+        <FieldInput label="Supplier" value={form.supplier} onChange={set("supplier")} placeholder="e.g. Apex Pharma" required list={supplierListId} />
+        <datalist id={supplierListId}>
+          {supplierSuggestions.map(supplier => <option key={supplier} value={supplier} />)}
+        </datalist>
         <div className="space-y-2">
           <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">Categories (select all that apply)</label>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-36 overflow-y-auto rounded-lg border border-border p-3">
@@ -961,7 +1003,7 @@ export function ProductFormModal({
               <span className="block text-sm font-semibold text-foreground">Pricing & pack sizes</span>
               <span className="block text-[11px] text-muted-foreground">Selling price, discount, unit, and pack pricing</span>
             </span>
-            <span className="text-xs text-primary transition-transform group-open:rotate-180">⌄</span>
+            <span className="flex items-center justify-center w-7 h-7 rounded-full bg-muted/60 text-primary transition-transform group-open:rotate-180 text-base leading-none">⌄</span>
           </summary>
           <div className="space-y-3 border-t border-border/60 px-4 py-4">
         <div className="grid grid-cols-2 gap-3">
@@ -1024,7 +1066,7 @@ export function ProductFormModal({
               <span className="block text-sm font-semibold text-foreground">Stock & reorder</span>
               <span className="block text-[11px] text-muted-foreground">Set the low-stock alert and manage received batches</span>
             </span>
-            <span className="text-xs text-primary transition-transform group-open:rotate-180">⌄</span>
+            <span className="flex items-center justify-center w-7 h-7 rounded-full bg-muted/60 text-primary transition-transform group-open:rotate-180 text-base leading-none">⌄</span>
           </summary>
           <div className="space-y-3 border-t border-border/60 px-4 py-4">
         <FieldInput
@@ -1442,6 +1484,7 @@ export function NewSaleModal({
           variant="info"
           onConfirm={doSubmit}
           onCancel={() => setConfirmDialog(false)}
+          forceModal
         />
       )}
       {stockLimit && (
@@ -1780,6 +1823,7 @@ export function ReturnModal({
         variant="warning"
         onConfirm={() => void doSubmitReturn()}
         onCancel={() => setConfirmReturn(false)}
+        forceModal
       />
     )}
     </>

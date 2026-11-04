@@ -30,6 +30,7 @@ if ($id === 'generate' && $method === 'POST') {
 }
 
 if ($method === 'GET') {
+    purge_expired_recycle_bin($pdo);
     generate_inventory_notifications($pdo);
     $stmt = $pdo->query(
         'SELECT id, type, title, body, product_id, is_read, created_at
@@ -59,27 +60,78 @@ json_response(['error' => 'Method not allowed.'], 405);
 // ─── Auto-generator ───────────────────────────────────────────────────────────
 function generate_inventory_notifications(PDO $pdo): void {
     $today = time();
+    $softDeleteEnabled = !empty($pdo->query("SHOW COLUMNS FROM products LIKE 'deleted_at'")->fetchAll());
+
+    $pdo->exec(
+        "DELETE n
+         FROM notifications n
+         LEFT JOIN products p ON p.id = n.product_id
+         WHERE (
+             (n.product_id IS NOT NULL AND (
+                 p.id IS NULL
+                 " . ($softDeleteEnabled ? 'OR p.deleted_at IS NOT NULL' : '') . "
+             ))
+             OR (
+                 n.product_id IS NULL
+                 AND NOT EXISTS (
+                     SELECT 1
+                     FROM products active_product
+                     WHERE (
+                         n.title = CONCAT('Out of Stock: ', active_product.name)
+                         OR n.title = CONCAT('Critical Stock: ', active_product.name)
+                         OR n.title = CONCAT('Low Stock: ', active_product.name)
+                         OR n.title = CONCAT('Expired: ', active_product.name)
+                         OR n.title = CONCAT('Expiring Soon: ', active_product.name)
+                         OR n.title = CONCAT('Expiry Alert: ', active_product.name)
+                     )" . ($softDeleteEnabled ? ' AND active_product.deleted_at IS NULL' : '') . "
+                 )
+             )
+         )
+           AND (
+               n.title LIKE 'Out of Stock:%'
+               OR n.title LIKE 'Critical Stock:%'
+               OR n.title LIKE 'Low Stock:%'
+               OR n.title LIKE 'Expired:%'
+               OR n.title LIKE 'Expiring Soon:%'
+               OR n.title LIKE 'Expiry Alert:%'
+           )"
+    );
 
     $products = $pdo->query(
-        'SELECT p.id, p.name, p.status, p.reorder,
+        'SELECT p.id, p.name, p.status, p.reorder, p.units_per_pack,
                 COALESCE(SUM(b.qty),0) AS stock,
                 MIN(b.expiry_date) AS earliest_expiry
          FROM products p
          LEFT JOIN product_batches b ON b.product_id = p.id AND b.qty > 0
-         GROUP BY p.id, p.name, p.status, p.reorder'
+         ' . ($softDeleteEnabled ? 'WHERE p.deleted_at IS NULL' : '') . '
+         GROUP BY p.id, p.name, p.status, p.reorder, p.units_per_pack'
     )->fetchAll();
 
     foreach ($products as $p) {
+        $stock = (int)$p['stock'];
+        $reorderUnits = (int)$p['reorder'] * max(1, (int)$p['units_per_pack']);
+        $currentStatus = compute_status($stock, $reorderUnits);
+        if ($currentStatus !== $p['status']) {
+            $pdo->prepare('UPDATE products SET status = ? WHERE id = ?')
+                ->execute([$currentStatus, $p['id']]);
+        }
+
         // Stock alerts
-        if (in_array($p['status'], ['out_of_stock', 'critical', 'low'])) {
-            $title = $p['status'] === 'out_of_stock'
+        if (in_array($currentStatus, ['out_of_stock', 'critical', 'low'], true)) {
+            $title = $currentStatus === 'out_of_stock'
                 ? "Out of Stock: {$p['name']}"
-                : ucfirst($p['status']) . " Stock: {$p['name']}";
-            $body  = $p['status'] === 'out_of_stock'
+                : ucfirst($currentStatus) . " Stock: {$p['name']}";
+            $body  = $currentStatus === 'out_of_stock'
                 ? "{$p['name']} has 0 units available. Reorder now."
-                : "{$p['name']} is {$p['status']} with {$p['stock']} units left "
+                : "{$p['name']} is {$currentStatus} with {$stock} units left "
                    . "and reorder point at {$p['reorder']}.";
             upsert_notification($pdo, 'alert', $title, $body, $p['id']);
+        } else {
+            $pdo->prepare(
+                "DELETE FROM notifications
+                 WHERE product_id = ?
+                   AND (title LIKE 'Out of Stock:%' OR title LIKE 'Critical Stock:%' OR title LIKE 'Low Stock:%')"
+            )->execute([$p['id']]);
         }
 
         // Keep only the expiry notification that currently applies, if any.
@@ -121,8 +173,8 @@ function generate_inventory_notifications(PDO $pdo): void {
 
 function upsert_notification(PDO $pdo, string $type, string $title, string $body, ?string $productId): void {
     // Keep polling from recreating an alert after it has been marked read.
-    $check = $pdo->prepare('SELECT id FROM notifications WHERE title = ? LIMIT 1');
-    $check->execute([$title]);
+    $check = $pdo->prepare('SELECT id FROM notifications WHERE product_id <=> ? AND title = ? LIMIT 1');
+    $check->execute([$productId, $title]);
     if ($check->fetchColumn()) return;
 
     $pdo->prepare(

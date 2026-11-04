@@ -194,7 +194,7 @@ function SmapeDetailsModal({
   const exampleSmape = average > 0 ? (difference / average) * 100 : 0;
   const comparisonScale = example ? Math.max(example.actual, example.forecast, 1) : 1;
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-x-0 bottom-0 z-50 flex items-center justify-center p-4" style={{ top: "56px" }}>
       <button type="button" aria-label="Close sMAPE details" className="absolute inset-0 bg-slate-950/45 backdrop-blur-[2px] cursor-default" onClick={onClose} />
       <section role="dialog" aria-modal="true" aria-labelledby="smape-modal-title" className="relative z-10 w-full max-w-lg overflow-hidden rounded-2xl border border-border bg-card shadow-2xl">
         <header className="flex items-center justify-between border-b border-border px-5 py-4">
@@ -390,7 +390,7 @@ function CalcInspectorModal({
   onClose: () => void;
 }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-x-0 bottom-0 z-50 flex items-center justify-center p-4" style={{ top: "56px" }}>
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
       <div className="relative bg-card border border-border rounded-2xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
         {/* Header */}
@@ -470,68 +470,75 @@ function EoqBreakdownModal({
   const ratio = holdingCost > 0 ? numerator / holdingCost : 0;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center p-4 pt-16 sm:items-center sm:pt-4">
+    <div className="fixed inset-x-0 bottom-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4" style={{ top: "56px" }}>
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div className="relative bg-card border border-border rounded-xl shadow-xl w-full max-w-lg flex flex-col overflow-hidden max-h-[90vh]">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-border flex-shrink-0">
-          <div>
-            <h3 className="text-sm font-semibold text-foreground">EOQ Calculation — {product.name}</h3>
+      <div className="relative bg-card border border-border rounded-t-2xl sm:rounded-xl shadow-xl w-full sm:max-w-lg flex flex-col overflow-hidden max-h-[92dvh] sm:max-h-[90vh]">
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-3.5 border-b border-border flex-shrink-0">
+          <div className="min-w-0 pr-2">
+            <h3 className="text-sm font-semibold text-foreground truncate">EOQ Calculation — {product.name}</h3>
             <p className="text-xs text-muted-foreground mt-0.5">{product.id} · {product.category}</p>
           </div>
-          <button type="button" onClick={onClose} className="text-muted-foreground hover:text-foreground p-1 rounded hover:bg-muted cursor-pointer">
+          <button type="button" onClick={onClose} className="flex-shrink-0 text-muted-foreground hover:text-foreground p-1.5 rounded hover:bg-muted cursor-pointer">
             <X size={16} />
           </button>
         </div>
 
+        {/* Scrollable body */}
         <div className="overflow-y-auto flex-1 divide-y divide-border/40">
-          <div className="px-5 pt-4 pb-2">
-            <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">Mathematical Formula</p>
-            <EoqFormulaVisual />
+          {/* Formula */}
+          <div className="px-4 pt-4 pb-3">
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">Mathematical Formula</p>
+            <div className="overflow-x-auto">
+              <EoqFormulaVisual />
+            </div>
           </div>
 
-          <div className="px-5 py-3">
-            <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">Variables (from database)</p>
+          {/* Variables */}
+          <div className="px-4 py-3">
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">Variables (from database)</p>
             <div className="divide-y divide-border border border-border rounded-lg overflow-hidden text-[11px]">
               {[
                 { label: "Annual Demand (D)", value: `${annualDemand.toLocaleString()} units/yr` },
-                { label: "Order Cost (S)", value: `₱${orderCost.toFixed(2)} / procurement batch` },
+                { label: "Order Cost (S)", value: `₱${orderCost.toFixed(2)} / batch` },
                 { label: "Unit Purchase Cost (C)", value: `₱${unitCost.toFixed(2)}` },
                 { label: "Annual Carrying Rate (I)", value: `20%` },
                 { label: "Unit Holding Cost (H = C × I)", value: `₱${holdingCost.toFixed(2)} / unit / yr` },
               ].map((v, i) => (
-                <div key={i} className={`flex items-center justify-between px-3.5 py-2 ${i % 2 === 0 ? "bg-muted/20" : ""}`}>
+                <div key={i} className={`flex items-start justify-between gap-3 px-3.5 py-2 ${i % 2 === 0 ? "bg-muted/20" : ""}`}>
                   <span className="text-muted-foreground">{v.label}</span>
-                  <span className="font-semibold text-foreground font-mono">{v.value}</span>
+                  <span className="font-semibold text-foreground font-mono text-right shrink-0">{v.value}</span>
                 </div>
               ))}
             </div>
           </div>
 
-          <div className="px-5 py-3">
-            <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">Step-by-step Computation</p>
-            <div className="bg-muted/20 border border-border rounded-lg p-3 space-y-1">
-              <p className="font-mono text-[11px] text-muted-foreground">1. Numerator = 2 × {annualDemand.toLocaleString()} × ₱{orderCost.toFixed(2)} = <strong>{numerator.toLocaleString()}</strong></p>
-              <p className="font-mono text-[11px] text-muted-foreground">2. Ratio = {numerator.toLocaleString()} ÷ ₱{holdingCost.toFixed(2)} = <strong>{Math.round(ratio).toLocaleString()}</strong></p>
-              <p className="font-mono text-[11px] text-muted-foreground">3. EOQ = √({Math.round(ratio).toLocaleString()}) ≈ <strong>{eoq.toLocaleString()} units</strong></p>
-              <div className="border-t border-border mt-2 pt-2 text-xs font-semibold text-muted-foreground">
-                Stock: <span className="text-foreground">{product.stock}</span> &nbsp;·&nbsp;
-                Shortage: <span className="text-red-500">{shortage > 0 ? `-${shortage}` : "—"}</span> &nbsp;·&nbsp;
-                Optimal order: <span className="text-foreground">{eoq.toLocaleString()} units</span>
+          {/* Step-by-step */}
+          <div className="px-4 py-3">
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">Step-by-step Computation</p>
+            <div className="bg-muted/20 border border-border rounded-lg p-3 space-y-1.5">
+              <p className="font-mono text-[11px] text-muted-foreground break-words">1. Numerator = 2 × {annualDemand.toLocaleString()} × ₱{orderCost.toFixed(2)} = <strong>{numerator.toLocaleString()}</strong></p>
+              <p className="font-mono text-[11px] text-muted-foreground break-words">2. Ratio = {numerator.toLocaleString()} ÷ ₱{holdingCost.toFixed(2)} = <strong>{Math.round(ratio).toLocaleString()}</strong></p>
+              <p className="font-mono text-[11px] text-muted-foreground break-words">3. EOQ = √({Math.round(ratio).toLocaleString()}) ≈ <strong>{eoq.toLocaleString()} units</strong></p>
+              <div className="border-t border-border mt-2 pt-2 text-xs font-semibold text-muted-foreground flex flex-wrap gap-x-3 gap-y-1">
+                <span>Stock: <span className="text-foreground">{product.stock}</span></span>
+                <span>Shortage: <span className="text-red-500">{shortage > 0 ? `-${shortage}` : "—"}</span></span>
+                <span>Optimal order: <span className="text-foreground">{eoq.toLocaleString()} units</span></span>
               </div>
             </div>
           </div>
 
-          {/* Advisory ROP & Safety Stock Visual Breakdown */}
-          <div className="px-5 py-3">
-            <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5 flex items-center justify-between">
-              <span>Suggested Lead-Time ROP (Advisory)</span>
-              <span className="text-[10px] text-muted-foreground font-normal">Assumption: 7-day lead time · 20% buffer</span>
-            </p>
+          {/* ROP */}
+          <div className="px-4 py-3">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-0.5 mb-2">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Suggested Lead-Time ROP</p>
+              <span className="text-[10px] text-muted-foreground">7-day lead time · 20% buffer</span>
+            </div>
             <div className="bg-muted/20 border border-border rounded-lg p-3 space-y-2 text-[11px]">
-              <div className="bg-background/80 rounded-md p-2 font-mono text-[11px] text-center text-foreground border border-border/50">
+              <div className="bg-background/80 rounded-md p-2 font-mono text-[11px] text-center text-foreground border border-border/50 text-xs">
                 ROP = (Daily Demand × Lead Time) + Safety Stock
               </div>
-              <div className="grid grid-cols-3 gap-2 pt-1 text-center">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1 text-center">
                 <div className="bg-background/60 p-2 rounded border border-border/40">
                   <span className="text-[10px] text-muted-foreground block">Lead Time Demand</span>
                   <span className="font-semibold text-foreground font-mono">{Math.round((annualDemand / 365) * 7)} units</span>
@@ -552,7 +559,7 @@ function EoqBreakdownModal({
           </div>
 
           {/* Smart Decision Support Note */}
-          <div className="px-5 py-3">
+          <div className="px-4 py-3">
             <div className="p-3 bg-teal-50/70 dark:bg-teal-950/20 border border-teal-200/60 dark:border-teal-800/30 rounded-xl text-[11px] space-y-1 text-teal-900 dark:text-teal-200">
               <p className="font-bold flex items-center gap-1.5">
                 <span>💡</span> Smart Decision Guidance:
@@ -565,19 +572,25 @@ function EoqBreakdownModal({
           </div>
         </div>
 
-        <div className="px-5 py-3 border-t border-border bg-muted/10 flex items-center justify-between flex-shrink-0">
+        {/* Footer */}
+        <div className="px-4 py-3 border-t border-border bg-muted/10 flex items-center justify-between gap-3 flex-shrink-0">
           <span className="text-[10px] text-muted-foreground hidden sm:inline">Restocking guide only</span>
-          {onReorder && (
+          {onReorder ? (
             <button
               type="button"
-              onClick={() => {
-                onClose();
-                onReorder(product);
-              }}
+              onClick={() => { onClose(); onReorder(product); }}
               className="flex items-center gap-1.5 px-4 py-1.5 bg-primary text-primary-foreground font-bold rounded-lg text-xs hover:opacity-90 transition-opacity cursor-pointer shadow-xs ml-auto"
             >
               <RefreshCw size={11} />
               Edit product in Inventory
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={onClose}
+              className="ml-auto flex items-center gap-1.5 px-4 py-1.5 bg-muted text-foreground font-semibold rounded-lg text-xs hover:bg-muted/80 transition-opacity cursor-pointer"
+            >
+              Close
             </button>
           )}
         </div>
@@ -602,13 +615,6 @@ export default function AnalyticsPage({
   const [smaInspector, setSmaInspector] = useState<"sma3" | "sma6" | "eoq" | null>(null);
   const [smapeInspector, setSmapeInspector] = useState<"sma3" | "sma6" | null>(null);
 
-  // ── Pagination state ───────────────────────────────────────────────────────
-  const PAGE_SIZE = 8;
-  const [eoqPage, setEoqPage] = useState(1);
-  const [perfPage, setPerfPage] = useState(1);
-
-  // Reset to page 1 when scope filter changes
-  useEffect(() => { setEoqPage(1); setPerfPage(1); }, [scope]);
   const [selectedEoqProduct, setSelectedEoqProduct] = useState<{
     product: Product;
     eoq: number;
@@ -630,7 +636,8 @@ export default function AnalyticsPage({
   const [purchaseOrdersError, setPurchaseOrdersError] = useState(false);
   const [supplierPerformance, setSupplierPerformance] = useState<SupplierPerformance[]>([]);
   const [supplierPerformanceError, setSupplierPerformanceError] = useState(false);
-  const canViewPurchaseData = userRole === "admin" || userRole === "admin/owner" || userRole === "inventory_manager";
+  const canViewPurchaseData = true;
+  const canEdit = userRole === "inventory_manager";
 
   const scopeFilter = useMemo(() => {
     if (scope.startsWith("product:")) return { productId: scope.slice(8) };
@@ -910,8 +917,8 @@ export default function AnalyticsPage({
     const map: Record<string, { name: string; cat: string; units: number; rev: number }> = {};
     transactions.filter(t => t.type === "sale").forEach(t => {
       if (!map[t.product]) {
-        const prod = inventory.find(p => p.id === t.productId);
-        map[t.product] = { name: t.product, cat: prod?.category ?? "—", units: 0, rev: 0 };
+        const prod = inventory.find(p => p.id === t.productId) ?? inventory.find(p => p.name === t.product);
+        map[t.product] = { name: t.product, cat: prod?.category ?? "", units: 0, rev: 0 };
       }
       map[t.product].units += t.qty;
       map[t.product].rev += t.amount;
@@ -990,44 +997,50 @@ export default function AnalyticsPage({
   };
 
   return (
-    <div className="p-4 sm:p-6 space-y-5 max-w-[1400px] mx-auto">
+    <div className="flex flex-col max-w-[1400px] mx-auto" style={{ height: "calc(100dvh - 56px)" }}>
 
-      {/* Page header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-bold text-foreground">Analytics</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">
-            Sales · Forecasts · Restocking
-          </p>
+      {/* ── Fixed header: title + tab nav ── */}
+      <div className="flex-shrink-0 px-4 sm:px-6 pt-4 sm:pt-6 pb-3 bg-background border-b border-border/50 z-20">
+        {/* Page header */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <h1 className="text-xl font-bold text-foreground">Analytics</h1>
+            <p className="text-sm text-muted-foreground mt-0.5">
+              Sales · Forecasts · Restocking
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setConfirmExportCsv(true)}
+              className="flex items-center gap-1.5 px-3 py-2 border border-border bg-card text-foreground rounded-xl text-xs font-bold hover:bg-muted/50 transition-colors shadow-xs cursor-pointer flex-shrink-0 st-btn-ghost"
+              title="Export full analytics dataset as CSV"
+            >
+              <Download size={13} />
+              Export CSV
+            </button>
+          </div>
         </div>
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setConfirmExportCsv(true)}
-            className="flex items-center gap-1.5 px-3 py-2 border border-border bg-card text-foreground rounded-xl text-xs font-bold hover:bg-muted/50 transition-colors shadow-xs cursor-pointer flex-shrink-0 st-btn-ghost"
-            title="Export full analytics dataset as CSV"
-          >
-            <Download size={13} />
-            Export CSV
-          </button>
-        </div>
+
+        {/* Section navigation */}
+        <nav aria-label="Analytics sections" className="flex gap-1 overflow-x-auto rounded-xl border border-border/80 bg-card p-1 shadow-sm mt-3">
+          {(["Overview", "Forecast", "Restocking", "Products"] as const).map(section => (
+            <button
+              key={section}
+              type="button"
+              aria-current={activeSection === section ? "page" : undefined}
+              onClick={() => setActiveSection(section)}
+              className={`shrink-0 rounded-lg px-3.5 py-2 text-xs font-semibold transition-colors cursor-pointer ${activeSection === section ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:bg-muted/70 hover:text-foreground"}`}
+            >
+              {section}
+              {section === "Restocking" && reorderRecs.length > 0 && <span className={`ml-2 rounded-full px-1.5 py-0.5 text-[10px] ${activeSection === section ? "bg-white/20" : "bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-300"}`}>{reorderRecs.length}</span>}
+            </button>
+          ))}
+        </nav>
       </div>
 
-      {/* Section navigation */}
-      <nav aria-label="Analytics sections" className="flex gap-1 overflow-x-auto rounded-xl border border-border/80 bg-card p-1 shadow-sm">
-        {(["Overview", "Forecast", "Restocking", "Products"] as const).map(section => (
-          <button
-            key={section}
-            type="button"
-            aria-current={activeSection === section ? "page" : undefined}
-            onClick={() => setActiveSection(section)}
-            className={`shrink-0 rounded-lg px-3.5 py-2 text-xs font-semibold transition-colors cursor-pointer ${activeSection === section ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:bg-muted/70 hover:text-foreground"}`}
-          >
-            {section}
-            {section === "Restocking" && reorderRecs.length > 0 && <span className={`ml-2 rounded-full px-1.5 py-0.5 text-[10px] ${activeSection === section ? "bg-white/20" : "bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-300"}`}>{reorderRecs.length}</span>}
-          </button>
-        ))}
-      </nav>
+      {/* ── Scrollable content ── */}
+      <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-4 space-y-5">
 
       {/* Section banner — shows what the active tab is for */}
       {(() => {
@@ -1059,10 +1072,10 @@ export default function AnalyticsPage({
                 >
                   <option value="all">All products</option>
                   <optgroup label="Products">
-                    {inventory.map(product => <option key={product.id} value={`product:${product.id}`}>{product.name} ({product.id})</option>)}
+                    {inventory.map(product => <option key={`product-${product.id}`} value={`product:${product.id}`}>{product.name} ({product.id})</option>)}
                   </optgroup>
                   <optgroup label="Categories">
-                    {categories.map(category => <option key={category} value={`category:${category}`}>{category}</option>)}
+                    {categories.map(category => <option key={`category-${category}`} value={`category:${category}`}>{category}</option>)}
                   </optgroup>
                 </select>
               </div>
@@ -1097,7 +1110,7 @@ export default function AnalyticsPage({
             {!canViewPurchaseData ? "—" : purchaseOrdersLoading ? "Loading…" : purchaseOrdersError ? "Unavailable" : `${incomingUnits.toLocaleString()} units`}
           </p>
           <p className="mt-0.5 text-[10px] text-muted-foreground">
-            {!canViewPurchaseData ? "Order details are available to managers and admins" : purchaseOrdersError ? "Could not load purchase order records" : `${openOrderCount} open order${openOrderCount === 1 ? "" : "s"} · unreceived quantity`}
+            {!canViewPurchaseData ? "Order details unavailable" : purchaseOrdersError ? "Could not load purchase order records" : `${openOrderCount} open order${openOrderCount === 1 ? "" : "s"} · unreceived quantity`}
           </p>
         </div>
         <div className="rounded-xl border border-border bg-card px-4 py-3 shadow-sm">
@@ -1428,10 +1441,7 @@ export default function AnalyticsPage({
       </div>
 
       {/* EOQ Reorder Recommendations table */}
-      {reorderRecs.length > 0 && (() => {
-        const eoqTotal = reorderRecs.length;
-        const eoqRows = reorderRecs.slice((eoqPage - 1) * PAGE_SIZE, eoqPage * PAGE_SIZE);
-        return (
+      {reorderRecs.length > 0 && (
         <div className="bg-card border border-border/80 rounded-2xl overflow-hidden shadow-[0_2px_12px_-4px_rgba(13,148,136,0.06),0_1px_3px_rgba(0,0,0,0.02)]">
           <div className="px-5 py-3 border-b border-border flex items-center justify-between flex-wrap gap-2">
             <div>
@@ -1456,7 +1466,7 @@ export default function AnalyticsPage({
           </div>
           <div className="overflow-x-auto">
             <table className="w-full">
-              <thead>
+              <thead className="sticky top-0 z-10 bg-card shadow-sm">
                 <tr className="border-b border-border/60 bg-muted/20">
                   {["Product", "Category", "Current Stock", "Low-Stock Level", "Stock Gap", "Suggested Order Quantity", "Status"].map(h => (
                     <th key={h} className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide py-3 text-left px-4 first:px-5">{h}</th>
@@ -1465,7 +1475,7 @@ export default function AnalyticsPage({
                 </tr>
               </thead>
               <tbody>
-                {eoqRows.map(rec => {
+                {reorderRecs.map(rec => {
                   const { product: p, eoq, shortage, annualDemand, unitCost, orderCost, holdingCost, totalSold } = rec;
                   return (
                     <tr key={p.id} className="border-b border-border/40 hover:bg-muted/20 transition-colors">
@@ -1486,7 +1496,7 @@ export default function AnalyticsPage({
                             <Info size={13} />
                             Details
                           </button>
-                          {onEditProduct && (
+                          {onEditProduct && canEdit && (
                             <button
                               type="button"
                               onClick={() => onEditProduct(p)}
@@ -1504,10 +1514,8 @@ export default function AnalyticsPage({
               </tbody>
             </table>
           </div>
-          <TablePager total={eoqTotal} page={eoqPage} pageSize={PAGE_SIZE} onPage={setEoqPage} />
         </div>
-        );
-      })()}
+      )}
       {reorderRecs.length === 0 && <div className="rounded-xl border border-border bg-card px-5 py-8 text-center text-sm text-muted-foreground">No products are currently below their low-stock level.</div>}
       </>}
 
@@ -1516,7 +1524,6 @@ export default function AnalyticsPage({
       {activeSection === "Products" && <>
       {(() => {
         const perfTotal = perf.length;
-        const perfRows = perf.slice((perfPage - 1) * PAGE_SIZE, perfPage * PAGE_SIZE);
         return (
           <div className="bg-card border border-border/80 rounded-2xl overflow-hidden shadow-[0_2px_12px_-4px_rgba(13,148,136,0.06),0_1px_3px_rgba(0,0,0,0.02)]">
             <div className="px-5 py-4 border-b border-border/70 flex items-center justify-between flex-wrap gap-2">
@@ -1543,7 +1550,7 @@ export default function AnalyticsPage({
             </div>
             <div className="overflow-x-auto">
               <table className="w-full">
-                <thead>
+                <thead className="sticky top-0 z-10 bg-card shadow-sm">
                   <tr className="border-b border-border/60 bg-muted/20">
                     {["Product", "Category", "Units Sold", "Revenue", "Demand Level"].map(h => (
                       <th key={h} className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide py-3 text-left px-4 first:px-5">{h}</th>
@@ -1551,10 +1558,10 @@ export default function AnalyticsPage({
                   </tr>
                 </thead>
                 <tbody>
-                  {perfRows.length > 0 ? perfRows.map(row => (
+                  {perf.length > 0 ? perf.map(row => (
                     <tr key={row.name} className="border-b border-border/40 hover:bg-muted/20 transition-colors">
                       <td className="px-5 py-3 text-xs font-semibold text-foreground">{row.name}</td>
-                      <td className="px-4 py-3 text-xs text-muted-foreground">{row.cat}</td>
+                      <td className="px-4 py-3 text-xs text-muted-foreground">{row.cat || <span className="italic opacity-50">—</span>}</td>
                       <td className="px-4 py-3 text-xs tabular-nums text-foreground">{row.units}</td>
                       <td className="px-4 py-3 text-xs font-semibold tabular-nums text-foreground">{fmt(row.rev)}</td>
                       <td className="px-4 py-3">
@@ -1571,7 +1578,6 @@ export default function AnalyticsPage({
                 </tbody>
               </table>
             </div>
-            <TablePager total={perfTotal} page={perfPage} pageSize={PAGE_SIZE} onPage={setPerfPage} />
           </div>
         );
       })()}
@@ -1581,7 +1587,7 @@ export default function AnalyticsPage({
         <EoqBreakdownModal
           data={selectedEoqProduct}
           onClose={() => setSelectedEoqProduct(null)}
-          onReorder={onEditProduct}
+          onReorder={canEdit ? onEditProduct : undefined}
         />
       )}
 
@@ -1687,6 +1693,7 @@ export default function AnalyticsPage({
           onCancel={() => setConfirmExportCsv(false)}
         />
       )}
+      </div>{/* end scrollable content */}
     </div>
   );
 }

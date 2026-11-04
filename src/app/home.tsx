@@ -4,7 +4,7 @@ import {
   Bell, Search, Shield,
   Moon, Sun, Settings, BellRing, ClipboardList, Landmark,
   X, ArrowRight, RefreshCw, Cloud, Copy, ClipboardCheck, Truck,
-  ChevronDown, ChevronLeft, ChevronRight, Menu, Activity, Trash2, AlertTriangle, Bot, Info,
+  ChevronDown, ChevronLeft, ChevronRight, Menu, Activity, Trash2, AlertTriangle, Bot, Info, Maximize2,
 } from "lucide-react";
 import {
   sortBatchesByExpiry, normalizeProduct, groupCartTransactions,
@@ -54,8 +54,8 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
   const allowedPages: Page[] = isAdmin
     ? ["dashboard", "inventory", "transactions", "analytics", "users", "stock-alerts", "reports", "returns", "financial", "purchases", "activity-log", "recycle-bin"]
     : isInventoryManager
-      ? ["dashboard", "inventory", "stock-alerts", "analytics", "reports", "returns", "purchases"]
-      : ["dashboard", "inventory", "stock-alerts", "transactions", "analytics", "reports"];
+      ? ["dashboard", "inventory", "stock-alerts", "analytics", "reports", "returns", "purchases", "recycle-bin", "activity-log"]
+      : ["dashboard", "inventory", "stock-alerts", "transactions", "analytics", "reports", "activity-log"];
   const pageStorageKey = `st_last_page_${user.id}`;
   const [page, setPage] = useState<Page>(() => {
     try {
@@ -259,15 +259,24 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
   }, []);
 
   useEffect(() => {
+    if (systemAlert && !notifs.some(notification => notification.id === systemAlert.id)) {
+      setSystemAlert(null);
+      return;
+    }
     if (systemAlert) return;
     const nextAlert = notifs.find(notification =>
-      notification.title.startsWith("Out of Stock:") &&
+      notification.type === "alert" &&
+      notification.productId != null &&
+      inventory.some(product =>
+        String(product.id) === String(notification.productId) &&
+        product.status === "out_of_stock"
+      ) &&
       !seenOutOfStockAlerts.current.has(notification.id)
     );
     if (!nextAlert) return;
     seenOutOfStockAlerts.current.add(nextAlert.id);
     setSystemAlert(nextAlert);
-  }, [notifs, systemAlert]);
+  }, [inventory, notifs, systemAlert]);
 
   // Listen for global navigation events (used by dashboard widgets)
   useEffect(() => {
@@ -465,6 +474,8 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
     try {
       await productsApi.delete(p.id);
       setInventory(prev => prev.filter(x => x.id !== p.id));
+      setNotifs(prev => prev.filter(notification => notification.productId !== p.id));
+      setSystemAlert(current => current?.productId === p.id ? null : current);
       setDeletingProduct(null);
       showHubToast("Product moved to recycle bin", "info");
     } catch (e: unknown) {
@@ -686,6 +697,24 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
     }
   };
 
+  const handleToggleFullScreen = async () => {
+    try {
+      if (window.smarttrack?.isElectron) {
+        const isFullScreen = await window.smarttrack.toggleFullScreen();
+        if (isFullScreen === null) throw new Error("Could not change the window display mode.");
+        return;
+      }
+
+      if (document.fullscreenElement) {
+        await document.exitFullscreen();
+      } else {
+        await document.documentElement.requestFullscreen();
+      }
+    } catch (error) {
+      showHubToast(error instanceof Error ? error.message : "Could not change the window display mode.", "error");
+    }
+  };
+
   const handleStockAlertEditProduct = (product: Product, suggestedQty = 0) => {
     setPage("inventory");
     setSelectedProductId(product.id);
@@ -701,7 +730,7 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
     { id: "transactions", icon: ShoppingCart,    label: "Transactions" },
     { id: "analytics",    icon: BarChart2,       label: "Analytics" },
     { id: "reports",      icon: ClipboardList,   label: "Reports" },
-    { id: "returns",      icon: ClipboardCheck,  label: "Returns" },
+    { id: "returns",      icon: ClipboardCheck,  label: "Returns & Broken" },
     { id: "financial",    icon: Landmark,        label: "Financial" },
     { id: "purchases",    icon: Truck,           label: "Supplier Orders" },
     { id: "users",        icon: Users,           label: "Users" },
@@ -712,7 +741,7 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
     { id: "dashboard",    icon: LayoutDashboard, label: "Dashboard" },
     { id: "analytics",    icon: BarChart2,       label: "Analytics" },
     { id: "reports",      icon: ClipboardList,   label: "Reports" },
-    { id: "returns",      icon: ClipboardCheck,  label: "Returns" },
+    { id: "returns",      icon: ClipboardCheck,  label: "Returns & Broken" },
     { id: "purchases",    icon: Truck,           label: "Supplier Orders" },
   ];
   const cashierNav: typeof adminNav = [
@@ -730,7 +759,13 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
   useEffect(() => {
     if (!trackHubOpen && !trackHubAssistantOpen) return;
     const handler = (e: MouseEvent) => {
-      if (trackHubRef.current && !trackHubRef.current.contains(e.target as Node)) {
+      const target = e.target as Node;
+      // Also ignore clicks inside the portaled assistant modal (rendered outside trackHubRef in document.body)
+      const portalModal = document.querySelector("[data-assistant-portal]");
+      if (
+        trackHubRef.current && !trackHubRef.current.contains(target) &&
+        !(portalModal && portalModal.contains(target))
+      ) {
         setTrackHubOpen(false);
         setTrackHubAssistantOpen(false);
       }
@@ -783,8 +818,8 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
   const confirmOpen   = activeConfirm !== null;
   const toastOpen     = !confirmOpen && hubToast !== null && !trackHubOpen && !trackHubAssistantOpen;
   const collapsedPillWidth = smartBotEnabled ? "280px" : "228px";
-  const pillW         = confirmOpen ? "430px" : trackHubAssistantOpen ? "min(570px, calc(100vw - 24px))" : trackHubOpen ? "570px" : toastOpen ? "280px" : collapsedPillWidth;
-  const pillH         = confirmOpen ? "148px" : trackHubAssistantOpen ? "min(520px, calc(100dvh - 80px))" : trackHubOpen ? "206px" : toastOpen ? "56px" : "42px";
+  const pillW         = confirmOpen ? "430px" : trackHubOpen ? "570px" : toastOpen ? "280px" : collapsedPillWidth;
+  const pillH         = confirmOpen ? "148px" : trackHubOpen ? "206px" : toastOpen ? "56px" : "42px";
 
   useEffect(() => {
     if (confirmOpen) setTrackHubOpen(false);
@@ -792,26 +827,23 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
 
   useEffect(() => {
     if (!activeConfirm) return;
-    const handler = (e: MouseEvent) => {
-      if (trackHubRef.current && !trackHubRef.current.contains(e.target as Node)) {
-        activeConfirm.onCancel();
-      }
-    };
+    // Only handle Escape key — do NOT close on outside mousedown,
+    // because the sale modal (portaled outside trackHubRef) would
+    // trigger onCancel on every click, cancelling the confirm before
+    // the user can click "Complete Sale".
     const keyHandler = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         activeConfirm.onCancel();
       }
     };
-    document.addEventListener("mousedown", handler);
     window.addEventListener("keydown", keyHandler);
     return () => {
-      document.removeEventListener("mousedown", handler);
       window.removeEventListener("keydown", keyHandler);
     };
   }, [activeConfirm]);
 
   const trackHubNavigation = (
-    <div ref={trackHubRef} className="relative flex items-center justify-center" style={{ zIndex: 60 }}>
+    <div ref={trackHubRef} className="relative flex items-center justify-center" style={{ zIndex: 60, position: "relative" }}>
       {/* Anchor placeholder — keeps topbar items from shifting */}
       <div className="h-[42px] invisible pointer-events-none" style={{ width: collapsedPillWidth }} aria-hidden="true" />
 
@@ -826,8 +858,6 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
           WebkitBackdropFilter: "blur(20px) saturate(180%)",
           boxShadow: confirmOpen
             ? "0 20px 60px rgba(0,0,0,0.85), 0 0 0 1px rgba(255,255,255,0.12)"
-            : trackHubAssistantOpen
-              ? "0 20px 60px rgba(0,0,0,0.82), 0 0 0 1px rgba(255,255,255,0.10)"
             : trackHubOpen
             ? "0 20px 60px rgba(0,0,0,0.8), 0 0 0 1px rgba(255,255,255,0.10)"
             : toastOpen
@@ -837,8 +867,8 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
           height:       pillH,
           borderRadius: confirmOpen ? "24px" : "21px",
           transition: [
-            `width ${confirmOpen ? 280 : trackHubAssistantOpen ? 300 : trackHubOpen ? 260 : toastOpen ? 280 : 200}ms cubic-bezier(0.16, 1, 0.3, 1)`,
-            `height ${confirmOpen ? 280 : trackHubAssistantOpen ? 300 : trackHubOpen ? 260 : toastOpen ? 280 : 200}ms cubic-bezier(0.16, 1, 0.3, 1)`,
+            `width ${confirmOpen ? 280 : trackHubOpen ? 260 : toastOpen ? 280 : 200}ms cubic-bezier(0.16, 1, 0.3, 1)`,
+            `height ${confirmOpen ? 280 : trackHubOpen ? 260 : toastOpen ? 280 : 200}ms cubic-bezier(0.16, 1, 0.3, 1)`,
             "box-shadow 240ms ease",
             "opacity 160ms ease",
           ].join(", "),
@@ -940,12 +970,12 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
           className="absolute top-0 left-1/2 h-[42px] flex items-center px-3 cursor-pointer hover:bg-white/[0.04]"
           style={{
             width: collapsedPillWidth,
-            opacity:    (confirmOpen || trackHubOpen || trackHubAssistantOpen || toastOpen) ? 0 : 1,
-            transform:  (confirmOpen || trackHubOpen || trackHubAssistantOpen || toastOpen) ? "translateX(-50%) scale(0.94)" : "translateX(-50%) scale(1)",
-            transition: (confirmOpen || trackHubOpen || trackHubAssistantOpen || toastOpen)
+            opacity:    (confirmOpen || trackHubOpen || toastOpen) ? 0 : 1,
+            transform:  (confirmOpen || trackHubOpen || toastOpen) ? "translateX(-50%) scale(0.94)" : "translateX(-50%) scale(1)",
+            transition: (confirmOpen || trackHubOpen || toastOpen)
               ? "opacity 50ms ease, transform 60ms ease"
               : "opacity 140ms 40ms ease, transform 180ms 40ms cubic-bezier(0.16, 1, 0.3, 1)",
-            pointerEvents: (confirmOpen || trackHubOpen || trackHubAssistantOpen || toastOpen) ? "none" : "auto",
+            pointerEvents: (confirmOpen || trackHubOpen || toastOpen) ? "none" : "auto",
           }}
           onClick={() => setTrackHubOpen(true)}
           title="Click to open navigation"
@@ -1005,12 +1035,9 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
           style={{
             width: "min(570px, calc(100vw - 24px))",
             height: "min(520px, calc(100dvh - 80px))",
-            opacity: !confirmOpen && trackHubAssistantOpen ? 1 : 0,
+            opacity: 0,
             transform: "translateX(-50%)",
-            transition: !confirmOpen && trackHubAssistantOpen
-              ? "opacity 130ms 70ms ease"
-              : "opacity 60ms ease",
-            pointerEvents: !confirmOpen && trackHubAssistantOpen ? "auto" : "none",
+            pointerEvents: "none",
           }}
         >
           <CommandAssistant
@@ -1144,6 +1171,57 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
   // Shared settings panel content (used in both TrackHub and sidebar topbars)
   const settingsPanelContent = (
     <div className="space-y-3">
+      <button
+        type="button"
+        onClick={() => { setPage("activity-log"); setShowTrackHubSettings(false); }}
+        className="flex w-full items-center gap-2.5 rounded-lg px-2 py-2 text-left transition-colors hover:bg-muted/60"
+      >
+        <Activity size={14} className="text-primary" />
+        <span className="flex-1 text-xs font-semibold text-foreground">{isAdmin ? "Activity Log" : "My Activity Log"}</span>
+        <ChevronRight size={13} className="text-muted-foreground" />
+      </button>
+
+      <div className="border-b border-border/60 pb-3">
+        <button
+          type="button"
+          onClick={handleToggleFullScreen}
+          className="flex w-full items-center gap-2.5 rounded-lg px-2 py-2 text-left transition-colors hover:bg-muted/60"
+        >
+          <Maximize2 size={14} className="text-primary" />
+          <span className="flex-1 text-xs font-semibold text-foreground">Toggle Full Screen</span>
+          <span className="text-[10px] text-muted-foreground">F11</span>
+        </button>
+        <p className="px-2 text-[10px] text-muted-foreground">Expand SmartTrack to fill your display.</p>
+      </div>
+
+      {/* Cloudflare Share if Electron */}
+      {window.smarttrack?.isElectron && (
+        <div className="border-b border-border/60 pb-3 space-y-2">
+          <div className="flex items-center gap-2 text-foreground">
+            <Cloud size={13} className="text-sky-400" />
+            <span className="text-xs font-semibold">Share SmartTrack</span>
+          </div>
+          {shareStatus.url && (
+            <div className="flex items-center gap-1.5">
+              <span className="min-w-0 flex-1 truncate text-[10px] text-teal-400 font-mono" title={shareStatus.url}>{shareStatus.url}</span>
+              <button type="button" onClick={handleCopyShareLink} title="Copy share link" className="flex-shrink-0 rounded-md p-1 text-muted-foreground hover:text-foreground"><Copy size={12} /></button>
+            </div>
+          )}
+          {shareStatus.state === "running" ? (
+            <button type="button" onClick={handleStopShare} className="w-full rounded-lg bg-red-500/20 px-2 py-1.5 text-[11px] font-semibold text-red-400 hover:bg-red-500/30">Stop sharing</button>
+          ) : (
+            <button type="button" onClick={handleStartShare} disabled={shareStatus.state === "starting" || shareStatus.state === "downloading"}
+              className="w-full rounded-lg bg-primary/20 px-2 py-1.5 text-[11px] font-semibold text-primary hover:bg-primary/30 disabled:cursor-wait disabled:opacity-60">
+              {shareStatus.state === "downloading" ? "Downloading Cloudflare..." : shareStatus.state === "starting" ? "Starting tunnel..." : "Create share link"}
+            </button>
+          )}
+          <p className="text-[9px] leading-relaxed text-amber-800 dark:text-amber-300">Anyone with the link can reach your login page. Share only with trusted people; stop sharing when finished.</p>
+          {(shareMessage || shareStatus.error) && (
+            <p role="status" className={`text-[10px] leading-relaxed ${shareMessage === "Link copied to clipboard." ? "text-emerald-200" : "text-red-300"}`}>{shareMessage || shareStatus.error}</p>
+          )}
+        </div>
+      )}
+
       {/* Navigation Style Toggle */}
       <div>
         <p className="text-xs font-semibold text-foreground mb-1">Navigation Style</p>
@@ -1187,23 +1265,10 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
         </button>
       </div>
 
-      {/* Activity Log + Recycle Bin — full page buttons */}
+      {/* Recycle Bin — admin and inventory manager only */}
+      {(isAdmin || isInventoryManager) && (
       <div className="border-t border-border/60 pt-2 space-y-1.5">
         <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-2">Management</p>
-        <button
-          type="button"
-          onClick={() => { setPage("activity-log"); setShowTrackHubSettings(false); }}
-          className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg hover:bg-muted/60 transition-colors text-left group"
-        >
-          <div className="w-7 h-7 rounded-lg bg-blue-500/10 flex items-center justify-center flex-shrink-0">
-            <Activity size={13} className="text-blue-500" />
-          </div>
-          <div>
-            <p className="text-xs font-semibold text-foreground">Activity Log</p>
-            <p className="text-[10px] text-muted-foreground">User management history</p>
-          </div>
-          <ChevronRight size={12} className="ml-auto text-muted-foreground" />
-        </button>
         <button
           type="button"
           onClick={() => { setPage("recycle-bin"); setShowTrackHubSettings(false); }}
@@ -1214,39 +1279,13 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
           </div>
           <div>
             <p className="text-xs font-semibold text-foreground">Recycle Bin</p>
-            <p className="text-[10px] text-muted-foreground">Restore or purge deleted users</p>
+            <p className="text-[10px] text-muted-foreground">Restore or purge deleted items</p>
           </div>
           <ChevronRight size={12} className="ml-auto text-muted-foreground" />
         </button>
       </div>
-
-      {/* Cloudflare Share if Electron */}
-      {window.smarttrack?.isElectron && (
-        <div className="border-t border-border/60 pt-2 space-y-2">
-          <div className="flex items-center gap-2 text-foreground">
-            <Cloud size={13} className="text-sky-400" />
-            <span className="text-xs font-semibold">Share SmartTrack</span>
-          </div>
-          {shareStatus.url && (
-            <div className="flex items-center gap-1.5">
-              <span className="min-w-0 flex-1 truncate text-[10px] text-teal-400 font-mono" title={shareStatus.url}>{shareStatus.url}</span>
-              <button type="button" onClick={handleCopyShareLink} title="Copy share link" className="flex-shrink-0 rounded-md p-1 text-muted-foreground hover:text-foreground"><Copy size={12} /></button>
-            </div>
-          )}
-          {shareStatus.state === "running" ? (
-            <button type="button" onClick={handleStopShare} className="w-full rounded-lg bg-red-500/20 px-2 py-1.5 text-[11px] font-semibold text-red-400 hover:bg-red-500/30">Stop sharing</button>
-          ) : (
-            <button type="button" onClick={handleStartShare} disabled={shareStatus.state === "starting" || shareStatus.state === "downloading"}
-              className="w-full rounded-lg bg-primary/20 px-2 py-1.5 text-[11px] font-semibold text-primary hover:bg-primary/30 disabled:cursor-wait disabled:opacity-60">
-              {shareStatus.state === "downloading" ? "Downloading Cloudflare..." : shareStatus.state === "starting" ? "Starting tunnel..." : "Create share link"}
-            </button>
-          )}
-          <p className="text-[9px] leading-relaxed text-amber-200/70">Anyone with the link can reach your login page. Share only with trusted people; stop sharing when finished.</p>
-          {(shareMessage || shareStatus.error) && (
-            <p role="status" className={`text-[10px] leading-relaxed ${shareMessage === "Link copied to clipboard." ? "text-emerald-200" : "text-red-300"}`}>{shareMessage || shareStatus.error}</p>
-          )}
-        </div>
       )}
+
     </div>
   );
 
@@ -1354,7 +1393,7 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
 
         <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
           {/* Topbar */}
-          <header className="flex-shrink-0 h-14 border-b border-border/80 flex items-center gap-3 px-4 sm:px-6 bg-card/85 backdrop-blur-md shadow-[0_1px_3px_rgba(0,0,0,0.03)]" style={{ zIndex: 50, position: "relative" }}>
+          <header className="flex-shrink-0 h-14 border-b border-border/80 flex items-center gap-3 px-4 sm:px-6 bg-card shadow-[0_1px_3px_rgba(0,0,0,0.03)]" style={{ zIndex: 10, position: "relative" }}>
 
             {navMode === "island" ? (
               /* ── TrackHub mode topbar layout ── */
@@ -1383,7 +1422,7 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
                 </div>
 
                 {/* Search bar — lengthened & highly visible */}
-                <div ref={searchRef} className="relative w-64 sm:w-80 md:w-96 hidden sm:block flex-shrink-0">
+                <div ref={searchRef} className="relative w-64 sm:w-80 md:w-96 hidden sm:block flex-shrink-0" style={{ zIndex: (trackHubOpen || trackHubAssistantOpen || confirmOpen) ? 0 : 40 }}>
                   <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-blue-600 dark:text-blue-400 pointer-events-none z-10" />
                   <input
                     ref={searchInputRef}
@@ -1528,7 +1567,7 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
                       <Settings size={16} />
                     </button>
                     {showTrackHubSettings && (
-                      <div className="absolute right-0 top-full mt-2 w-80 rounded-2xl bg-card/95 backdrop-blur-xl border border-border shadow-[0_16px_40px_rgba(0,0,0,0.25)] p-3.5 z-50 st-dropdown-in">
+                      <div className="absolute right-0 top-full mt-2 w-80 max-h-[calc(100dvh-5rem)] overflow-y-auto rounded-2xl bg-card/95 backdrop-blur-xl border border-border shadow-[0_16px_40px_rgba(0,0,0,0.25)] p-3.5 z-50 st-dropdown-in">
                         <div className="flex items-center justify-between border-b border-border/60 pb-2 mb-3">
                           <div className="flex items-center gap-2">
                             <Settings size={14} className="text-primary" />
@@ -1705,7 +1744,7 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
                       <Settings size={16} />
                     </button>
                     {showTrackHubSettings && (
-                      <div className="absolute right-0 top-full mt-2 w-80 rounded-2xl bg-card/95 backdrop-blur-xl border border-border shadow-[0_16px_40px_rgba(0,0,0,0.25)] p-3.5 z-50 st-dropdown-in">
+                      <div className="absolute right-0 top-full mt-2 w-80 max-h-[calc(100dvh-5rem)] overflow-y-auto rounded-2xl bg-card/95 backdrop-blur-xl border border-border shadow-[0_16px_40px_rgba(0,0,0,0.25)] p-3.5 z-50 st-dropdown-in">
                         <div className="flex items-center justify-between border-b border-border/60 pb-2 mb-3">
                           <div className="flex items-center gap-2">
                             <Settings size={14} className="text-primary" />
@@ -1736,7 +1775,7 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
           <main className="flex-1 overflow-y-auto">
             <div key={page} className="st-page-in min-h-full">
             {page === "dashboard"    && <DashboardView user={user} inventory={inventory} transactions={transactions} cashierDashboard={cashierDashboard} />}
-            {page === "inventory"    && <InventoryPage inventory={inventory} categories={categories}
+            {page === "inventory"    && <InventoryPage inventory={inventory} transactions={transactions} categories={categories}
               onAddProduct={() => setShowAddProduct(true)} onEditProduct={product => { setSuggestedBatchQty(0); setEditingProduct(product); }}
               onDeleteProduct={setDeletingProduct} onAddCategory={handleAddCategory}
               selectedProductId={selectedProductId} hoveredProductId={hoveredNotifPid} 
@@ -1751,18 +1790,18 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
               <ReturnsPage user={user} inventory={inventory} onDispositionComplete={handleReturnDispositionComplete} />
             )}
             {page === "financial"    && isAdmin && <FinancialPage user={user} />}
-            {page === "purchases" && (isAdmin || isInventoryManager) && <PurchaseOrdersPage inventory={inventory} onInventoryChanged={() => { void loadAll(false); }} />}
+            {page === "purchases" && (isAdmin || isInventoryManager) && <PurchaseOrdersPage inventory={inventory} onInventoryChanged={() => { void loadAll(false); }} userRole={user.role} />}
             {page === "users"        && isAdmin && <UsersPage staff={staff} currentUserId={user.id} currentUserRole={user.role} currentUserName={user.name} roles={roles} onAddUser={() => setShowAddUser(true)} onEditUser={setEditingUser} onDeleteUser={handleDeleteUser} onToggleStatus={handleToggleStatus} onResetPassword={handleAdminResetPassword} onCreatePassword={handleAdminCreatePassword} onRolesChanged={() => { rolesApi.list().then(setRoles).catch(() => {}); }} />}
-            {page === "activity-log" && isAdmin && <ActivityLogPanel />}
-            {page === "recycle-bin"  && isAdmin && <RecycleBinPanel currentUserRole={user.role} currentUserName={user.name} onRestored={() => void loadAll(false)} />}
+            {page === "activity-log" && <ActivityLogPanel isAdmin={isAdmin} />}
+            {page === "recycle-bin"  && (isAdmin || isInventoryManager) && <RecycleBinPanel currentUserRole={user.role} currentUserName={user.name} onRestored={() => void loadAll(false)} />}
             </div>
           </main>
         </div>
 
         {/* Modals */}
-        {showAddProduct && <ProductFormModal categories={categories}
+        {showAddProduct && <ProductFormModal inventory={inventory} categories={categories}
           onClose={() => setShowAddProduct(false)} onSave={handleSaveProduct} onAddCategory={handleAddCategory} />}
-        {editingProduct && <ProductFormModal initial={editingProduct} categories={categories}
+        {editingProduct && <ProductFormModal initial={editingProduct} inventory={inventory} categories={categories}
           suggestedBatchQty={suggestedBatchQty}
           onClose={() => { setEditingProduct(null); setSuggestedBatchQty(0); }} onSave={handleSaveProduct} onAddCategory={handleAddCategory} />}
         {deletingProduct && <DeleteConfirmModal product={deletingProduct}

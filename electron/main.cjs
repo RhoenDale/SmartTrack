@@ -764,6 +764,14 @@ function registerIpcHandlers() {
   ipcMain.handle('reload-window', () => {
     mainWindow?.webContents.reload();
   });
+
+  ipcMain.handle('toggle-full-screen', () => {
+    if (!mainWindow || mainWindow.isDestroyed()) {
+      throw new Error('The SmartTrack window is unavailable.');
+    }
+    mainWindow.setFullScreen(!mainWindow.isFullScreen());
+    return mainWindow.isFullScreen();
+  });
 }
 
 // ─── Application menu ─────────────────────────────────────────────────────────

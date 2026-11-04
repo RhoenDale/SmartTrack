@@ -754,7 +754,7 @@ export default function FinancialPage({ user }: { user: AuthUser }) {
               <>
                 <div className="overflow-x-auto">
                   <table className="w-full text-xs">
-                    <thead>
+                    <thead className="sticky top-0 z-10 bg-card shadow-sm">
                       <tr className="border-b border-border/70 bg-muted/30">
                         {["Transaction ID","Type","Product","Qty","Amount","Staff","Date","Status"].map(h => (
                           <th key={h} className="px-4 py-3 text-left font-semibold text-muted-foreground uppercase tracking-wide text-[10px] whitespace-nowrap">{h}</th>
@@ -876,7 +876,7 @@ export default function FinancialPage({ user }: { user: AuthUser }) {
               <div className="bg-card border border-border rounded-xl shadow-sm overflow-hidden">
                 <div className="overflow-x-auto">
                   <table className="w-full text-xs">
-                    <thead>
+                    <thead className="sticky top-0 z-10 bg-card shadow-sm">
                       <tr className="border-b border-border bg-muted/30">
                         {["#","Category","Revenue","Units Sold","Share"].map(h => (
                           <th key={h} className="px-4 py-3 text-left font-semibold text-muted-foreground uppercase tracking-wide text-[10px]">{h}</th>
@@ -984,7 +984,7 @@ export default function FinancialPage({ user }: { user: AuthUser }) {
               <div className="bg-card border border-border rounded-xl shadow-sm overflow-hidden">
                 <div className="overflow-x-auto">
                   <table className="w-full text-xs">
-                    <thead>
+                    <thead className="sticky top-0 z-10 bg-card shadow-sm">
                       <tr className="border-b border-border bg-muted/30">
                         {["Rank","Staff Member","Transactions","Units Sold","Total Revenue"].map(h => (
                           <th key={h} className="px-4 py-3 text-left font-semibold text-muted-foreground uppercase tracking-wide text-[10px]">{h}</th>
@@ -1097,7 +1097,7 @@ export default function FinancialPage({ user }: { user: AuthUser }) {
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full text-xs">
-                  <thead>
+                  <thead className="sticky top-0 z-10 bg-card shadow-sm">
                     <tr className="border-b border-border bg-muted/30">
                       {["#", "Product", "Category", "Units Sold", "Revenue", "Avg Unit Cost", "Total COGS", "Gross Profit", "Margin"].map(h => (
                         <th key={h} className="px-4 py-3 text-left font-semibold text-muted-foreground uppercase tracking-wide text-[10px] whitespace-nowrap">{h}</th>

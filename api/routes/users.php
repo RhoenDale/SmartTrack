@@ -26,6 +26,12 @@ function soft_delete_enabled(PDO $pdo): bool {
     return $checked = !empty($cols);
 }
 
+function user_role_exists(PDO $pdo, string $role): bool {
+    $stmt = $pdo->prepare('SELECT id FROM roles WHERE id = ? LIMIT 1');
+    $stmt->execute([$role]);
+    return $stmt->fetchColumn() === $role;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Routes with $sub  (must be checked BEFORE the generic $id block)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -100,6 +106,7 @@ if ($id && $id !== 'deleted' && $sub === 'purge' && $method === 'DELETE') {
 // ─────────────────────────────────────────────────────────────────────────────
 if ($method === 'GET' && $id === 'deleted') {
     require_role(['admin/owner', 'admin']);
+    purge_expired_recycle_bin($pdo);
     if (!soft_delete_enabled($pdo)) json_response([]); // migration not run yet
     $stmt = $pdo->query(
         'SELECT u.id, u.name, u.role, u.email, u.position, u.initials, u.status,
@@ -161,6 +168,9 @@ if ($id && $id !== 'deleted') {
             }
             if (!is_string($data['role']) || trim($data['role']) === '' || strlen($data['role']) > 50) {
                 json_response(['error' => 'Select a valid role.'], 422);
+            }
+            if (!user_role_exists($pdo, $data['role'])) {
+                json_response(['error' => 'Select a role that exists in the roles table.'], 422);
             }
             if (!in_array($data['status'], ['active', 'inactive'], true)) {
                 json_response(['error' => 'Status must be active or inactive.'], 422);
@@ -225,6 +235,9 @@ if ($method === 'POST') {
     }
     if (!is_string($data['role']) || trim($data['role']) === '' || strlen($data['role']) > 50) {
         json_response(['error' => 'Select a valid role.'], 422);
+    }
+    if (!user_role_exists($pdo, $data['role'])) {
+        json_response(['error' => 'Select a role that exists in the roles table.'], 422);
     }
     if (!is_string($data['password']) || strlen($data['password']) < 6) {
         json_response(['error' => 'Password must be at least 6 characters.'], 422);

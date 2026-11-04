@@ -89,6 +89,8 @@ contextBridge.exposeInMainWorld('smarttrack', {
    * Ask the main process to reload the current page.
    */
   reloadWindow: () => invoke('reload-window'),
+  /** Toggle native window fullscreen and return the resulting state. */
+  toggleFullScreen: () => invoke('toggle-full-screen'),
 
   // ── Logging helpers ───────────────────────────────────────────────────────
 

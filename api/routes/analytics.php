@@ -64,7 +64,7 @@ switch ($method . ':' . $action) {
                              DATE_FORMAT(r.received_date, '%b %Y') AS month,
                              SUM(r.qty_received) AS supply
                       FROM purchase_order_receipts r
-                      JOIN products p ON p.id = r.product_id
+                      LEFT JOIN products p ON p.id = r.product_id
                       WHERE 1=1";
         $supplyParams = [];
         if ($productId !== '') { $supplySql .= ' AND r.product_id = ?'; $supplyParams[] = $productId; }

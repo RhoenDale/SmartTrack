@@ -24,6 +24,10 @@ function parseTransactionDate(value: string): Date | null {
   return parsed;
 }
 
+function normalizeStaffName(name: string): string {
+  return name.replace(/[.\s]+/g, "").toLocaleLowerCase();
+}
+
 function dateKey(date: Date): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
@@ -108,7 +112,7 @@ function useComputedData(inventory: Product[], transactions: Transaction[], now:
       const batches = sortBatchesByExpiry(p.batches);
       if (batches.length === 0 || !batches[0].expiryDate) return;
       const earliest = batches[0];
-      const msLeft = parseExpiry(earliest.expiryDate).getTime() - now;
+      const msLeft = parseExpiry(earliest.expiryDate!).getTime() - now;
       if (Number.isNaN(msLeft)) return;
       const daysLeft = msLeft / (1000 * 60 * 60 * 24);
       if (daysLeft <= 0) expired.push(p);
@@ -151,7 +155,7 @@ function RecentTransactionsCard({ transactions }: { transactions: Transaction[] 
       </div>
       <div className="overflow-x-auto flex-1">
         <table className="w-full">
-          <thead>
+          <thead className="sticky top-0 z-10 bg-card shadow-sm">
             <tr className="border-b border-border/70 bg-muted/30">
               {["ID", "Product", "Type", "Date", "Amount", "Status"].map(h => (
                 <th key={h} className="text-left text-[10px] font-semibold text-muted-foreground uppercase tracking-wide px-4 py-2.5 first:px-5">{h}</th>
@@ -286,7 +290,7 @@ function DateRangeSelect({ value, onChange }: { value: 7 | 30; onChange: (days: 
   );
 }
 
-function StockVsSalesChart({ data, dateRange }: { data: { name: string; sold: number; stock: number | null }[]; dateRange: string }) {
+function StockVsSalesChart({ data, dateRange }: { data: { name: string; productId?: string; sold: number; stock: number | null }[]; dateRange: string }) {
   if (data.length === 0) {
     return (
       <div className="h-full flex flex-col items-center justify-center text-center">
@@ -593,10 +597,10 @@ function CashierDashboard({ user, computed, summary }: {
   const abbreviatedName = [firstName ? `${firstName[0]}.` : "", ...remainingName]
     .join(" ")
     .toLocaleLowerCase();
+  const cashierNames = new Set([normalizeStaffName(user.name), normalizeStaffName(abbreviatedName)]);
   const myTxns = operationalTransactions.filter(tx =>
-    tx.type === "adjustment" ||
     tx.staffId === user.id ||
-    (!tx.staffId && tx.staff?.trim().toLocaleLowerCase() === abbreviatedName)
+    (!tx.staffId && cashierNames.has(normalizeStaffName(tx.staff)))
   );
 
   return (

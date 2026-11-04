@@ -31,9 +31,11 @@ function statusLabel(status: PurchaseOrder["status"]) {
 export default function PurchaseOrdersPage({
   inventory,
   onInventoryChanged,
+  userRole,
 }: {
   inventory: Product[];
   onInventoryChanged: () => void;
+  userRole: string;
 }) {
   const [orders, setOrders] = useState<PurchaseOrder[]>([]);
   const [performance, setPerformance] = useState<SupplierPerformance[]>([]);
@@ -41,6 +43,8 @@ export default function PurchaseOrdersPage({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+
+  const canModify = userRole === "inventory_manager";
 
   // ── Create-form state ──────────────────────────────────────────────────
   const [supplier, setSupplier] = useState("");
@@ -401,6 +405,7 @@ export default function PurchaseOrdersPage({
           </p>
         </div>
         <div className="flex items-center gap-2">
+          {canModify && (
           <button
             type="button"
             onClick={() => {
@@ -412,6 +417,7 @@ export default function PurchaseOrdersPage({
           >
             <Plus size={13} /> New Order
           </button>
+          )}
           <button
             type="button"
             onClick={() => void load()}
@@ -534,7 +540,7 @@ export default function PurchaseOrdersPage({
                               </p>
                             </div>
                           )}
-                          {order.status === "ordered" && (
+                          {order.status === "ordered" && canModify && (
                             <>
                               <button
                                 type="button"
@@ -552,7 +558,7 @@ export default function PurchaseOrdersPage({
                               </button>
                             </>
                           )}
-                          {order.status !== "received" && !isCancelled && (
+                          {order.status !== "received" && !isCancelled && canModify && (
                             <button
                               type="button"
                               onClick={() => beginReceiving(order)}
@@ -597,7 +603,7 @@ export default function PurchaseOrdersPage({
               <div>
                 <div className="overflow-x-auto">
                   <table className="w-full text-left">
-                    <thead className="bg-muted/40 text-[10px] uppercase tracking-wide text-muted-foreground">
+                    <thead className="sticky top-0 z-10 bg-card shadow-sm text-[10px] uppercase tracking-wide text-muted-foreground">
                       <tr>
                         <th className="px-3 py-2">Supplier</th>
                         <th className="px-3 py-2">Orders</th>

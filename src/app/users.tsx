@@ -6,9 +6,9 @@ import {
   CheckCircle2, UserX, RefreshCw, Search, Filter,
 } from "lucide-react";
 import { type StaffMember, type CustomRole, ROLE_LABELS, PERMISSION_MODULES } from "./data";
-import { rolesApi, usersApi, productsApi, type DeletedUser, type DeletedProduct } from "./api";
+import { activityApi, rolesApi, usersApi, productsApi, type ActivityLogEntry, type DeletedUser, type DeletedProduct } from "./api";
 import { UserInfoModal, InfoTip, TablePager, ConfirmDialog } from "./shared";
-import { appendLog, clearActivityLog, readActivityLog, type ActivityEntry } from "./activity";
+import { appendLog } from "./activity";
 export { appendLog } from "./activity";
 
 // ─── Create / Set New Password Modal ─────────────────────────────────────────
@@ -190,111 +190,41 @@ function UserCard({
 }
 
 // ─── Activity Log panel ───────────────────────────────────────────────────────
-export function ActivityLogPanel() {
-  const [log, setLog] = useState<ActivityEntry[]>(readActivityLog());
-  const [search, setSearch] = useState("");
-  const [filterKind, setFilterKind] = useState<ActivityEntry["kind"] | "all">("all");
-  const [page, setPage] = useState(1);
-  const PAGE_SIZE = 10;
+export function ActivityLogPanel({ isAdmin = true }: { isAdmin?: boolean }) {
+  const [log, setLog] = useState<ActivityLogEntry[]>([]);
+  const [actors, setActors] = useState<{ id: string | null; name: string }[]>([]);
+  const [filterActor, setFilterActor] = useState("");
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [hasMore, setHasMore] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  const loadLogs = useCallback(async (before?: string) => {
+    setLoading(true);
+    setError("");
+    try {
+      const page = await activityApi.list({ before, actorId: isAdmin ? filterActor : undefined });
+      setLog(current => before ? [...current, ...page.entries] : page.entries);
+      setActors(page.actors);
+      setNextCursor(page.nextCursor);
+      setHasMore(page.hasMore);
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : "Could not load activity logs.");
+    } finally {
+      setLoading(false);
+    }
+  }, [filterActor, isAdmin]);
 
   useEffect(() => {
-    let active = true;
-    const syncServerDeletions = async () => {
-      try {
-        const [delProds, delUsers] = await Promise.all([
-          productsApi.listDeleted().catch(() => [] as DeletedProduct[]),
-          usersApi.listDeleted().catch(() => [] as DeletedUser[]),
-        ]);
-        if (!active) return;
+    void loadLogs();
+  }, [loadLogs]);
 
-        setLog(prevLog => {
-          const updated = [...prevLog];
-          let changed = false;
-
-          delProds.forEach(p => {
-            const exists = updated.some(e => e.subject === p.name || (e.detail && e.detail.includes(`ID ${p.id}`)));
-            if (!exists && p.deletedAt) {
-              updated.push({
-                id: `server-del-prod-${p.id}`,
-                ts: new Date(p.deletedAt).getTime() || Date.now(),
-                actor: p.deletedByName || "Admin",
-                action: "deleted product",
-                subject: p.name,
-                detail: `ID ${p.id} · ${p.category || "General"}`,
-                kind: "delete",
-              });
-              changed = true;
-            }
-          });
-
-          delUsers.forEach(u => {
-            const exists = updated.some(e => e.subject === u.name || (e.detail && e.detail.includes(`ID ${u.id}`)));
-            if (!exists && u.deletedAt) {
-              updated.push({
-                id: `server-del-user-${u.id}`,
-                ts: new Date(u.deletedAt).getTime() || Date.now(),
-                actor: u.deletedByName || "Admin",
-                action: "deleted user",
-                subject: u.name,
-                detail: `ID ${u.id} · ${ROLE_LABELS[u.role] ?? u.role}`,
-                kind: "delete",
-              });
-              changed = true;
-            }
-          });
-
-          if (changed) {
-            updated.sort((a, b) => b.ts - a.ts);
-            try { localStorage.setItem("st_user_activity_log", JSON.stringify(updated)); }
-            catch (err) { console.error("Could not save synced activity log.", err); }
-          }
-          return updated;
-        });
-      } catch (err) {
-        console.error("Failed to sync server deletions into activity log", err);
-      }
-    };
-
-    void syncServerDeletions();
-
-    const handleLogged = () => setLog(readActivityLog());
-    window.addEventListener("st_activity_logged", handleLogged);
-    window.addEventListener("storage", handleLogged);
-    return () => {
-      active = false;
-      window.removeEventListener("st_activity_logged", handleLogged);
-      window.removeEventListener("storage", handleLogged);
-    };
-  }, []);
-
-  const filtered = useMemo(() => log.filter(e => {
-    if (filterKind !== "all" && e.kind !== filterKind) return false;
-    if (search && ![e.actor, e.action, e.subject, e.detail ?? ""].join(" ").toLowerCase().includes(search.toLowerCase())) return false;
-    return true;
-  }), [log, search, filterKind]);
-  const pageEntries = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
-
-  useEffect(() => {
-    setPage(current => Math.min(current, Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))));
-  }, [filtered.length]);
-
-  const kindLabel: Record<ActivityEntry["kind"], string> = {
-    create: "Created", update: "Updated", delete: "Deleted",
-    restore: "Restored", password: "Password", role: "Role",
-    sale: "Sale", stock: "Stock", return: "Return", purchase: "Purchase", auth: "Access",
-  };
-  const kindColour: Record<ActivityEntry["kind"], string> = {
-    create:   "bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/20",
-    update:   "bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-500/10 dark:text-blue-400 dark:border-blue-500/20",
-    delete:   "bg-red-100 text-red-700 border-red-200 dark:bg-red-500/10 dark:text-red-400 dark:border-red-500/20",
-    restore:  "bg-teal-100 text-teal-700 border-teal-200 dark:bg-teal-500/10 dark:text-teal-400 dark:border-teal-500/20",
-    password: "bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-500/10 dark:text-amber-400 dark:border-amber-500/20",
-    role:     "bg-purple-100 text-purple-700 border-purple-200 dark:bg-purple-500/10 dark:text-purple-400 dark:border-purple-500/20",
-    sale:     "bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/20",
-    stock:    "bg-cyan-100 text-cyan-700 border-cyan-200 dark:bg-cyan-500/10 dark:text-cyan-400 dark:border-cyan-500/20",
-    return:   "bg-orange-100 text-orange-700 border-orange-200 dark:bg-orange-500/10 dark:text-orange-400 dark:border-orange-500/20",
-    purchase: "bg-indigo-100 text-indigo-700 border-indigo-200 dark:bg-indigo-500/10 dark:text-indigo-400 dark:border-indigo-500/20",
-    auth:     "bg-slate-100 text-slate-700 border-slate-200 dark:bg-slate-500/10 dark:text-slate-300 dark:border-slate-500/20",
+  const methodColour = (method: string) => {
+    if (method === "GET") return "bg-blue-500/10 text-blue-600 dark:text-blue-400";
+    if (method === "POST") return "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400";
+    if (method === "PUT" || method === "PATCH") return "bg-amber-500/10 text-amber-600 dark:text-amber-400";
+    if (method === "DELETE") return "bg-red-500/10 text-red-600 dark:text-red-400";
+    return "bg-muted text-muted-foreground";
   };
 
   return (
@@ -305,53 +235,79 @@ export function ActivityLogPanel() {
           <div className="flex items-center gap-2">
             <h1 className="text-xl font-bold text-foreground">Activity Log</h1>
           </div>
-          <p className="text-sm text-muted-foreground mt-0.5">Successful sales, stock, return, purchase, and account changes recorded in this browser.</p>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            {isAdmin
+              ? "Shared system activity across users and devices, including the request and response status."
+              : "Your activity across devices, including the request and response status."}
+          </p>
         </div>
-        {log.length > 0 && (
-          <button onClick={() => { clearActivityLog(); setLog([]); setPage(1); }}
-            className="text-xs text-muted-foreground hover:text-red-500 border border-border hover:border-red-300 rounded-lg px-3 py-2 transition-all flex-shrink-0">
-            Clear log
-          </button>
-        )}
+        <button type="button" onClick={() => void loadLogs()} disabled={loading}
+          className="inline-flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground border border-border rounded-lg px-3 py-2 transition-all flex-shrink-0 disabled:opacity-50">
+          <RefreshCw size={13} className={loading ? "animate-spin" : ""} /> Refresh
+        </button>
       </div>
 
-      {/* Filters */}
-      <div className="flex flex-wrap gap-2">
-        <div className="relative flex-1 min-w-[200px]">
-          <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-          <input value={search} onChange={e => { setSearch(e.target.value); setPage(1); }} placeholder="Search log…"
-            className="w-full rounded-lg border border-border bg-background pl-8 pr-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-primary/25" />
+      {isAdmin && (
+        <div className="flex flex-wrap items-center gap-2">
+          <label htmlFor="activity-user-filter" className="text-xs font-medium text-muted-foreground">User</label>
+          <select id="activity-user-filter" value={filterActor} onChange={e => {
+            setLog([]);
+            setNextCursor(null);
+            setHasMore(false);
+            setFilterActor(e.target.value);
+          }}
+            className="app-select rounded-lg border border-border bg-background px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-primary/25">
+            <option value="">All users</option>
+            {actors.map((actor, index) => (
+              <option key={actor.id ?? `anonymous-${index}`} value={actor.id ?? "anonymous"}>{actor.name}</option>
+            ))}
+          </select>
         </div>
-        <select value={filterKind} onChange={e => { setFilterKind(e.target.value as any); setPage(1); }}
-          className="app-select rounded-lg border border-border bg-background px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-primary/25">
-          <option value="all">All actions</option>
-          {(Object.keys(kindLabel) as ActivityEntry["kind"][]).map(k => (
-            <option key={k} value={k}>{kindLabel[k]}</option>
-          ))}
-        </select>
-      </div>
+      )}
 
-      {/* Log list */}
-      {filtered.length === 0 ? (
+      {error && (
+        <div role="alert" className="flex items-center justify-between gap-3 rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-xs text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300">
+          <span>{error}</span>
+          <button type="button" onClick={() => void loadLogs()} className="font-semibold underline">Retry</button>
+        </div>
+      )}
+
+      {log.length === 0 && !loading ? (
         <div className="flex flex-col items-center py-16 text-center gap-2">
           <Activity size={32} className="text-muted-foreground/30" />
-          <p className="text-sm text-muted-foreground">{log.length === 0 ? "No activity recorded yet." : "No entries match your filter."}</p>
+          <p className="text-sm text-muted-foreground">No activity records found.</p>
         </div>
       ) : (
-        <div className="rounded-xl border border-border/80 bg-card divide-y divide-border/60 overflow-hidden shadow-sm">
-          {pageEntries.map(e => (
+        <div className="rounded-xl border border-border/80 bg-card divide-y divide-border/60 overflow-hidden shadow-sm overflow-y-auto max-h-[calc(100dvh-220px)]">
+          {log.map(e => (
             <div key={e.id} className="flex items-start gap-3 px-4 py-3 hover:bg-muted/20 transition-colors">
-              <span className={`mt-0.5 flex-shrink-0 text-[9px] font-bold px-1.5 py-0.5 rounded-full border ${kindColour[e.kind]}`}>{kindLabel[e.kind]}</span>
+              <span className={`mt-0.5 flex-shrink-0 min-w-14 text-center text-[9px] font-bold px-1.5 py-1 rounded ${methodColour(e.method)}`}>{e.method}</span>
               <div className="flex-1 min-w-0">
-                <p className="text-xs text-foreground"><span className="font-semibold">{e.actor}</span> {e.action} <span className="font-semibold">{e.subject}</span></p>
-                {e.detail && <p className="text-[11px] text-muted-foreground mt-0.5">{e.detail}</p>}
+                <p className="text-xs text-foreground"><span className="font-semibold">{e.actor}</span></p>
+                <p className="mt-0.5 break-all font-mono text-[11px] text-muted-foreground">{e.path}</p>
               </div>
-              <p className="text-[10px] text-muted-foreground flex-shrink-0 tabular-nums">{new Date(e.ts).toLocaleTimeString()}</p>
+              <div className="flex flex-shrink-0 flex-col items-end gap-1">
+                <span className={`rounded px-1.5 py-0.5 text-[9px] font-semibold ${e.status >= 400 ? "bg-red-500/10 text-red-600 dark:text-red-400" : "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"}`}>
+                  {e.status}
+                </span>
+                <p className="text-[10px] text-muted-foreground tabular-nums whitespace-nowrap">
+                  {new Date(e.ts).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}
+                  {" · "}
+                  {new Date(e.ts).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+                </p>
+              </div>
             </div>
           ))}
         </div>
       )}
-      <TablePager total={filtered.length} page={page} pageSize={PAGE_SIZE} onPage={setPage} />
+      {hasMore && nextCursor && (
+        <div className="flex justify-center">
+          <button type="button" disabled={loading} onClick={() => void loadLogs(nextCursor)}
+            className="rounded-lg border border-border px-4 py-2 text-xs font-semibold text-muted-foreground hover:bg-muted/50 hover:text-foreground disabled:opacity-50">
+            {loading ? "Loading…" : "Load older activity"}
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -581,7 +537,7 @@ export function RecycleBinPanel({
                   >
                     <ArchiveRestore size={12} /> Restore
                   </button>
-                  {(isOwner || isAdmin) && (
+                  {(isUser ? isOwner : (isAdmin || currentUserRole === "inventory_manager")) && (
                     <button
                       onClick={() => setConfirmPurge(isUser ? { kind: "user", item: item as DeletedUser } : { kind: "product", item: item as DeletedProduct })}
                       disabled={busy !== null}
@@ -1007,7 +963,7 @@ export default function UsersPage({
       )}
 
       {/* ══════════════════════ ACTIVITY LOG TAB ══════════════════════════════ */}
-      {activeTab === "activity" && <ActivityLogPanel />}
+      {activeTab === "activity" && <ActivityLogPanel isAdmin={isSuperAdmin || isAdmin} />}
 
       {/* ══════════════════════ RECYCLE BIN TAB ════════════════════════════════ */}
       {activeTab === "recycle" && (

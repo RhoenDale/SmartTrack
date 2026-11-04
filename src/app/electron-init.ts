@@ -30,6 +30,7 @@ declare global {
       stopShare: () => Promise<ShareStatus | null>;
       copyText: (text: string) => Promise<{ ok: boolean } | null>;
       onShareStatus: (callback: (status: ShareStatus) => void) => () => void;
+      toggleFullScreen: () => Promise<boolean | null>;
       log: (message: string, data?: unknown) => void;
       error: (message: string, error?: unknown) => void;
     };

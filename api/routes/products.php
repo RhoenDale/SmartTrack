@@ -114,6 +114,7 @@ if ($id && $sub === 'batches') {
 // GET /products/deleted — recycle bin list
 if ($method === 'GET' && $id === 'deleted') {
     require_role(['admin/owner', 'admin', 'inventory_manager']);
+    purge_expired_recycle_bin($pdo);
     $cols = $pdo->query("SHOW COLUMNS FROM products LIKE 'deleted_at'")->fetchAll();
     if (empty($cols)) json_response([]);
     $stmt = $pdo->query(
@@ -167,10 +168,21 @@ if ($id && $id !== 'deleted' && $sub === 'restore' && $method === 'POST') {
 // DELETE /products/{id}/purge
 if ($id && $id !== 'deleted' && $sub === 'purge' && $method === 'DELETE') {
     require_role(['admin/owner', 'admin', 'inventory_manager']);
+    if (!product_purge_history_ready($pdo)) {
+        json_response(['error' => 'Apply recycle_bin_product_history.sql before permanently deleting products so purchase history is preserved.'], 503);
+    }
     $t = $pdo->prepare('SELECT id FROM products WHERE id = ? AND deleted_at IS NOT NULL');
     $t->execute([$id]);
     if (!$t->fetch()) json_response(['error' => 'Product not found in recycle bin.'], 404);
-    $pdo->prepare('DELETE FROM products WHERE id = ?')->execute([$id]);
+    $pdo->beginTransaction();
+    try {
+        $pdo->prepare('DELETE FROM notifications WHERE product_id = ?')->execute([$id]);
+        $pdo->prepare('DELETE FROM products WHERE id = ?')->execute([$id]);
+        $pdo->commit();
+    } catch (Throwable $error) {
+        if ($pdo->inTransaction()) $pdo->rollBack();
+        throw $error;
+    }
     json_response(['message' => 'Product permanently deleted.']);
 }
 
@@ -272,11 +284,23 @@ if ($id && $id !== 'deleted') {
             $pdo->prepare(
                 "UPDATE products SET deleted_at = NOW(), deleted_by = ?, delete_note = ?, status = 'out_of_stock', updated_at = NOW() WHERE id = ?"
             )->execute([$actor['id'] ?? null, $note, $id]);
+            $pdo->prepare(
+                "DELETE FROM notifications
+                 WHERE product_id = ?
+                   AND type = 'alert'"
+            )
+                ->execute([$id]);
             json_response(['message' => 'Product moved to recycle bin.']);
         } else {
             $stmt = $pdo->prepare('DELETE FROM products WHERE id = ?');
             $stmt->execute([$id]);
             if ($stmt->rowCount() === 0) json_response(['error' => 'Product not found.'], 404);
+            $pdo->prepare(
+                "DELETE FROM notifications
+                 WHERE product_id = ?
+                   AND type = 'alert'"
+            )
+                ->execute([$id]);
             json_response(['message' => 'Product deleted.']);
         }
     }
