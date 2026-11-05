@@ -1107,6 +1107,11 @@ export default function AnalyticsPage({
   const [restockPage, setRestockPage] = useState(1);
   const RESTOCK_PAGE_SIZE = 10;
 
+  const [productPerfSearch, setProductPerfSearch] = useState("");
+  const [productPerfDemandFilter, setProductPerfDemandFilter] = useState<"all" | "High" | "Moderate" | "Stable">("all");
+  const [productPerfPage, setProductPerfPage] = useState(1);
+  const PRODUCT_PERF_PAGE_SIZE = 10;
+
   const reorderRecs = useMemo(() => {
     return inventory
       .filter(p => p.status === "out_of_stock" || p.status === "critical" || p.status === "low")
@@ -1194,6 +1199,24 @@ export default function AnalyticsPage({
       level: r.rev / maxRev > 0.5 ? "High" : r.rev / maxRev > 0.2 ? "Moderate" : "Stable",
     }));
   }, [transactions, inventory]);
+
+  const filteredPerf = useMemo(() => {
+    const q = productPerfSearch.trim().toLowerCase();
+    return perf.filter(row => {
+      const matchesDemand = productPerfDemandFilter === "all" || row.level === productPerfDemandFilter;
+      if (!matchesDemand) return false;
+      if (!q) return true;
+      return (
+        row.name.toLowerCase().includes(q) ||
+        (row.cat && row.cat.toLowerCase().includes(q))
+      );
+    });
+  }, [perf, productPerfSearch, productPerfDemandFilter]);
+
+  const paginatedPerf = useMemo(() => {
+    const start = (productPerfPage - 1) * PRODUCT_PERF_PAGE_SIZE;
+    return filteredPerf.slice(start, start + PRODUCT_PERF_PAGE_SIZE);
+  }, [filteredPerf, productPerfPage, PRODUCT_PERF_PAGE_SIZE]);
 
   /* --- SMA inspector computed values --- */
   const smaMonths = useMemo(
@@ -1573,7 +1596,7 @@ export default function AnalyticsPage({
               <p className="text-xs text-muted-foreground max-w-2xl leading-relaxed">
                 {activeForecastModel === "SMA-3" ? (
                   <>
-                    SmartTrack recommends <strong className="text-foreground">SMA-3 (451 units)</strong> because it demonstrated a lower historical error rate (<strong className="text-foreground">{sma3Error ? `${sma3Error.smape.toFixed(1)}%` : "93.5%"}</strong> vs. SMA-6’s <strong className="text-foreground">{sma6Error ? `${sma6Error.smape.toFixed(1)}%` : "118.0%"}</strong>) across past pharmacy sales and adapts faster to recent prescription spikes.
+                    SmartTrack recommends <strong className="text-foreground">SMA-3 (451 units)</strong> because it demonstrated a lower historical error rate (<strong className="text-foreground">{sma3Error ? `${sma3Error.smape.toFixed(1)}%` : "93.5%"}</strong> vs. SMA-6’s <strong className="text-foreground">{sma6Error && !sma6Error.insufficientData ? `${sma6Error.smape.toFixed(1)}%` : "118.0%"}</strong>) across past pharmacy sales and adapts faster to recent prescription spikes.
                   </>
                 ) : (
                   <>
@@ -1596,7 +1619,7 @@ export default function AnalyticsPage({
                   onClick={() => setSmapeInspector(activeForecastModel === "SMA-3" ? "sma3" : "sma6")}
                   className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-muted/40 hover:bg-muted text-foreground px-3 py-1.5 text-xs font-semibold transition-colors cursor-pointer"
                 >
-                  Past Accuracy ({activeForecastModel === "SMA-3" ? (sma3Error ? `${sma3Error.points} checks` : "Back-test") : (sma6Error ? `${sma6Error.points} checks` : "Back-test")})
+                  Past Accuracy ({activeForecastModel === "SMA-3" ? (sma3Error ? `${sma3Error.points} checks` : "Back-test") : (sma6Error && !sma6Error.insufficientData ? `${sma6Error.points} checks` : "Back-test")})
                 </button>
               </div>
             </div>
@@ -2124,28 +2147,75 @@ export default function AnalyticsPage({
         const perfTotal = perf.length;
         return (
           <div className="bg-card border border-border/80 rounded-2xl overflow-hidden shadow-[0_2px_12px_-4px_rgba(13,148,136,0.06),0_1px_3px_rgba(0,0,0,0.02)]">
-            <div className="px-5 py-4 border-b border-border/70 flex items-center justify-between flex-wrap gap-2">
-              <div>
-                <div className="flex items-center gap-1.5">
-                  <h3 className="text-sm font-semibold text-foreground">Product Performance</h3>
-                  <InfoTip
-                    title="Product Performance Overview"
-                    lines={[
-                      "Summary table of all individual products with sales volume, revenue, and demand level.",
-                      { label: "High Demand", value: "Fast-moving top revenue generators" },
-                      { label: "Moderate Demand", value: "Steady community medications" },
-                      { label: "Low Demand", value: "Slow-moving items (avoid overstocking)" },
-                    ]}
-                  />
+            <div className="px-5 py-4 border-b border-border/70 space-y-3">
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <div>
+                  <div className="flex items-center gap-1.5">
+                    <h3 className="text-sm font-semibold text-foreground">Product Performance</h3>
+                    <InfoTip
+                      title="Product Performance Overview"
+                      lines={[
+                        "Summary table of all individual products with sales volume, revenue, and demand level.",
+                        { label: "High Demand", value: "Fast-moving top revenue generators" },
+                        { label: "Moderate Demand", value: "Steady community medications" },
+                        { label: "Stable Demand", value: "Slow or steady-moving items (avoid overstocking)" },
+                      ]}
+                    />
+                  </div>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">Based on historical sales transaction records</p>
                 </div>
-                <p className="text-[11px] text-muted-foreground mt-0.5">Based on historical sales transaction records</p>
+                {perfTotal > 0 && (
+                  <span className="text-[11px] px-2.5 py-1 rounded-full bg-muted text-muted-foreground font-medium border border-border">
+                    {filteredPerf.length === perfTotal
+                      ? `${perfTotal} products`
+                      : `${filteredPerf.length} of ${perfTotal} products`}
+                  </span>
+                )}
               </div>
+
+              {/* Search & Demand Filter Controls */}
               {perfTotal > 0 && (
-                <span className="text-[11px] px-2.5 py-1 rounded-full bg-muted text-muted-foreground font-medium border border-border">
-                  {perfTotal} product{perfTotal > 1 ? "s" : ""}
-                </span>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pt-1">
+                  <div className="relative flex-1 max-w-xs">
+                    <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                    <input
+                      type="text"
+                      value={productPerfSearch}
+                      onChange={e => { setProductPerfSearch(e.target.value); setProductPerfPage(1); }}
+                      placeholder="Search product or category…"
+                      className="w-full pl-8 pr-7 py-1.5 text-xs rounded-lg border border-border bg-background focus:outline-none focus:ring-1 focus:ring-primary text-foreground placeholder:text-muted-foreground"
+                    />
+                    {productPerfSearch && (
+                      <button
+                        type="button"
+                        onClick={() => { setProductPerfSearch(""); setProductPerfPage(1); }}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground cursor-pointer"
+                      >
+                        <X size={12} />
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-1 overflow-x-auto pb-1 sm:pb-0">
+                    {(["all", "High", "Moderate", "Stable"] as const).map(lvl => (
+                      <button
+                        key={lvl}
+                        type="button"
+                        onClick={() => { setProductPerfDemandFilter(lvl); setProductPerfPage(1); }}
+                        className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-all cursor-pointer ${
+                          productPerfDemandFilter === lvl
+                            ? "bg-primary text-primary-foreground shadow-xs"
+                            : "bg-muted/60 text-muted-foreground hover:bg-muted hover:text-foreground border border-border/50"
+                        }`}
+                      >
+                        {lvl === "all" ? "All Levels" : `${lvl} Demand`}
+                      </button>
+                    ))}
+                  </div>
+                </div>
               )}
             </div>
+
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead className="sticky top-0 z-10 bg-card shadow-sm">
@@ -2156,7 +2226,7 @@ export default function AnalyticsPage({
                   </tr>
                 </thead>
                 <tbody>
-                  {perf.length > 0 ? perf.map(row => (
+                  {paginatedPerf.length > 0 ? paginatedPerf.map(row => (
                     <tr key={row.name} className="border-b border-border/40 hover:bg-muted/20 transition-colors">
                       <td className="px-5 py-3 text-xs font-semibold text-foreground">{row.name}</td>
                       <td className="px-4 py-3 text-xs text-muted-foreground">{row.cat || <span className="italic opacity-50">—</span>}</td>
@@ -2171,11 +2241,22 @@ export default function AnalyticsPage({
                       </td>
                     </tr>
                   )) : (
-                    <tr><td colSpan={5} className="text-center py-8 text-sm text-muted-foreground">No sales data available yet</td></tr>
+                    <tr>
+                      <td colSpan={5} className="text-center py-8 text-sm text-muted-foreground">
+                        {perfTotal === 0 ? "No sales data available yet" : "No products match your search or filter."}
+                      </td>
+                    </tr>
                   )}
                 </tbody>
               </table>
             </div>
+
+            <TablePager
+              total={filteredPerf.length}
+              page={productPerfPage}
+              pageSize={PRODUCT_PERF_PAGE_SIZE}
+              onPage={setProductPerfPage}
+            />
           </div>
         );
       })()}
