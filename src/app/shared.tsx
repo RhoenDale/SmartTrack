@@ -8,7 +8,7 @@ import type { ReceiptSettings } from "./api";
 // ─── Currency helpers ─────────────────────────────────────────────────────────
 export const PESO = "\u20b1";
 export const fmt = (n: number) =>
-  `${PESO}${n.toLocaleString("en-PH", { minimumFractionDigits: 2 })}`;
+  `${PESO}${n.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 // ─── Universal ConfirmDialog ──────────────────────────────────────────────────
 // In TrackHub mode: directly morphs the TrackHub Dynamic Island into the confirm card.
@@ -537,7 +537,7 @@ export function Modal({
 }) {
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center p-4 pt-16 sm:items-center sm:pt-4">
-      <div className="absolute inset-0 bg-slate-950/40 backdrop-blur-xs st-overlay-in" onClick={closeOnOverlay ? onClose : undefined} />
+      <div className="absolute inset-0 bg-black/50 st-overlay-in" onClick={closeOnOverlay ? onClose : undefined} />
       <div className={`relative bg-card border border-border/80 rounded-2xl shadow-[0_20px_50px_-15px_rgba(13,148,136,0.15),0_10px_25px_-5px_rgba(0,0,0,0.06)] w-full ${wide ? compact ? "max-w-4xl" : "max-w-6xl" : "max-w-md"} max-h-[90vh] flex flex-col overflow-hidden st-modal-in`}>
         <div className="flex items-center justify-between px-6 py-4 border-b border-border/60 flex-shrink-0 bg-card/50">
           <h2 className="text-sm font-bold text-foreground">{title}</h2>
@@ -2567,7 +2567,7 @@ export function InvoiceModal({ tx, settings, inventory, onClose }: {
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center p-4 pt-8 sm:items-center sm:pt-4">
-      <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" onClick={onClose} />
+      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
       <div className="relative bg-card border border-border rounded-2xl shadow-2xl w-full max-w-sm max-h-[90vh] flex flex-col">
         <div className="flex items-center justify-between px-6 py-4 border-b border-border flex-shrink-0">
           <h2 className="text-sm font-bold text-foreground">Official Receipt</h2>

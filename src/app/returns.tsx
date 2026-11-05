@@ -224,7 +224,16 @@ export default function ReturnsPage({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [processingReturnId, setProcessingReturnId] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<"returns" | "broken">("returns");
+  const [activeTab, setActiveTab] = useState<"returns" | "broken">(() => {
+    try {
+      const saved = localStorage.getItem("smarttrack_returns_tab");
+      if (saved === "returns" || saved === "broken") return saved;
+    } catch { /* ignore */ }
+    return "returns";
+  });
+  useEffect(() => {
+    try { localStorage.setItem("smarttrack_returns_tab", activeTab); } catch { /* ignore */ }
+  }, [activeTab]);
   const [showBrokenModal, setShowBrokenModal] = useState(false);
 
   const canProcess = user.role === "inventory_manager";
@@ -296,7 +305,7 @@ export default function ReturnsPage({
   const activeReturns = activeTab === "returns" ? customerReturns : brokenRecords;
 
   return (
-    <div className="p-4 sm:p-6 space-y-5">
+    <div className="p-4 sm:p-6 space-y-5 w-full max-w-[1400px] mx-auto">
       {showBrokenModal && (
         <BrokenProductModal
           inventory={inventory}

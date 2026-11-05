@@ -12,7 +12,16 @@ export default function ReportsPage({
   transactions: Transaction[];
   user: AuthUser;
 }) {
-  const [activeTab, setActiveTab] = useState<"sales" | "stock" | "inventory">("sales");
+  const [activeTab, setActiveTab] = useState<"sales" | "stock" | "inventory">(() => {
+    try {
+      const saved = localStorage.getItem("smarttrack_reports_tab");
+      if (saved === "sales" || saved === "stock" || saved === "inventory") return saved;
+    } catch { /* ignore */ }
+    return "sales";
+  });
+  useEffect(() => {
+    try { localStorage.setItem("smarttrack_reports_tab", activeTab); } catch { /* ignore */ }
+  }, [activeTab]);
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [confirmPrint, setConfirmPrint] = useState(false);
@@ -70,7 +79,7 @@ export default function ReportsPage({
   ];
 
   return (
-    <div className="flex flex-col max-w-[1400px] mx-auto printable-report" style={{ height: "calc(100dvh - 56px)" }}>
+    <div className="flex flex-col w-full max-w-[1400px] mx-auto printable-report" style={{ height: "calc(100dvh - 56px)" }}>
       <style>{`@media print {
         body * { visibility: hidden !important; }
         .printable-report, .printable-report * { visibility: visible !important; }

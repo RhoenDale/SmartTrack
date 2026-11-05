@@ -54,13 +54,22 @@ export default function StockAlertsPage({
     good:         { label: "Good",         text: "",                                  bar: "bg-emerald-500", badge: "" },
   };
 
-  const [activeTab, setActiveTab] = useState<"stock" | "expiry">("stock");
+  const [activeTab, setActiveTab] = useState<"stock" | "expiry">(() => {
+    try {
+      const saved = localStorage.getItem("smarttrack_stockalerts_tab");
+      if (saved === "stock" || saved === "expiry") return saved;
+    } catch { /* ignore */ }
+    return "stock";
+  });
+  useEffect(() => {
+    try { localStorage.setItem("smarttrack_stockalerts_tab", activeTab); } catch { /* ignore */ }
+  }, [activeTab]);
 
   const filteredAlertItems = alertItems;
   const filteredExpiryProducts = expiryProducts;
 
   return (
-    <div className="flex flex-col max-w-[1400px]" style={{ height: "calc(100dvh - 56px)" }}>
+    <div className="flex flex-col w-full max-w-[1400px] mx-auto" style={{ height: "calc(100dvh - 56px)" }}>
 
       {/* ── Fixed header ── */}
       <div className="flex-shrink-0 px-4 sm:px-6 pt-4 sm:pt-6 pb-3 bg-background border-b border-border/50 z-20">

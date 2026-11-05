@@ -57,16 +57,43 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
       ? ["dashboard", "inventory", "stock-alerts", "analytics", "reports", "returns", "purchases", "recycle-bin", "activity-log"]
       : ["dashboard", "inventory", "stock-alerts", "transactions", "analytics", "reports", "activity-log"];
   const pageStorageKey = `st_last_page_${user.id}`;
-  const [page, setPage] = useState<Page>(() => {
+  const getInitialPage = (): Page => {
     try {
+      const hash = window.location.hash.replace(/^#\/?/, "").split("?")[0].split("/")[0] as Page;
+      if (hash && allowedPages.includes(hash)) return hash;
       const savedPage = localStorage.getItem(pageStorageKey) as Page | null;
-      return savedPage && allowedPages.includes(savedPage) ? savedPage : defaultPage();
-    } catch { return defaultPage(); }
-  });
+      if (savedPage && allowedPages.includes(savedPage)) return savedPage;
+      const globalSaved = localStorage.getItem("smarttrack_last_page") as Page | null;
+      if (globalSaved && allowedPages.includes(globalSaved)) return globalSaved;
+    } catch { /* ignore */ }
+    return defaultPage();
+  };
+  const [page, setPage] = useState<Page>(getInitialPage);
+
   useEffect(() => {
     if (!allowedPages.includes(page)) return;
-    try { localStorage.setItem(pageStorageKey, page); } catch { /* ignore unavailable storage */ }
-  }, [page, pageStorageKey, isAdmin, isInventoryManager]);
+    try {
+      localStorage.setItem(pageStorageKey, page);
+      localStorage.setItem("smarttrack_last_page", page);
+      const currentHash = window.location.hash.replace(/^#\/?/, "").split("?")[0].split("/")[0];
+      if (currentHash !== page) {
+        window.history.replaceState(null, "", `#${page}`);
+      }
+    } catch { /* ignore unavailable storage */ }
+  }, [page, pageStorageKey, allowedPages]);
+
+  useEffect(() => {
+    const handleHashChange = () => {
+      try {
+        const hash = window.location.hash.replace(/^#\/?/, "").split("?")[0].split("/")[0] as Page;
+        if (hash && allowedPages.includes(hash)) {
+          setPage(hash);
+        }
+      } catch { /* ignore */ }
+    };
+    window.addEventListener("hashchange", handleHashChange);
+    return () => window.removeEventListener("hashchange", handleHashChange);
+  }, [allowedPages]);
   const [darkMode, setDarkMode]       = useState(() => {
     try { return localStorage.getItem("st_dark_mode") === "true"; }
     catch { return false; }
@@ -715,6 +742,23 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
     }
   };
 
+  const isMac = useMemo(() => {
+    if (typeof navigator === "undefined") return false;
+    return /mac|iphone|ipad|ipod/i.test(navigator.userAgent || navigator.platform || "");
+  }, []);
+
+  useEffect(() => {
+    const handleKeyShortcut = (e: KeyboardEvent) => {
+      // Toggle fullscreen on F11 (Windows) or Control+Command+F (Mac)
+      if (e.key === "F11" || (e.ctrlKey && e.metaKey && e.key.toLowerCase() === "f")) {
+        e.preventDefault();
+        handleToggleFullScreen();
+      }
+    };
+    window.addEventListener("keydown", handleKeyShortcut);
+    return () => window.removeEventListener("keydown", handleKeyShortcut);
+  }, []);
+
   const handleStockAlertEditProduct = (product: Product, suggestedQty = 0) => {
     setPage("inventory");
     setSelectedProductId(product.id);
@@ -818,8 +862,24 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
   const confirmOpen   = activeConfirm !== null;
   const toastOpen     = !confirmOpen && hubToast !== null && !trackHubOpen && !trackHubAssistantOpen;
   const collapsedPillWidth = smartBotEnabled ? "280px" : "228px";
-  const pillW         = confirmOpen ? "430px" : trackHubOpen ? "570px" : toastOpen ? "280px" : collapsedPillWidth;
-  const pillH         = confirmOpen ? "148px" : trackHubOpen ? "206px" : toastOpen ? "56px" : "42px";
+  const pillW         = confirmOpen
+    ? "430px"
+    : trackHubAssistantOpen
+    ? "min(570px, calc(100vw - 24px))"
+    : trackHubOpen
+    ? "570px"
+    : toastOpen
+    ? "280px"
+    : collapsedPillWidth;
+  const pillH         = confirmOpen
+    ? "148px"
+    : trackHubAssistantOpen
+    ? "min(520px, calc(100dvh - 80px))"
+    : trackHubOpen
+    ? "206px"
+    : toastOpen
+    ? "56px"
+    : "42px";
 
   useEffect(() => {
     if (confirmOpen) setTrackHubOpen(false);
@@ -853,22 +913,21 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
         data-trackhub-target
         className="absolute top-0 left-1/2 -translate-x-1/2 overflow-hidden select-none cursor-default"
         style={{
-          background: "rgba(10,10,10,0.97)",
-          backdropFilter: "blur(20px) saturate(180%)",
-          WebkitBackdropFilter: "blur(20px) saturate(180%)",
+          background: "#0a0a0a",
+          border: "1px solid rgba(255, 255, 255, 0.12)",
           boxShadow: confirmOpen
-            ? "0 20px 60px rgba(0,0,0,0.85), 0 0 0 1px rgba(255,255,255,0.12)"
-            : trackHubOpen
-            ? "0 20px 60px rgba(0,0,0,0.8), 0 0 0 1px rgba(255,255,255,0.10)"
+            ? "0 20px 60px rgba(0,0,0,0.85)"
+            : (trackHubOpen || trackHubAssistantOpen)
+            ? "0 20px 60px rgba(0,0,0,0.85)"
             : toastOpen
-            ? "0 8px 32px rgba(0,0,0,0.55), 0 0 0 1px rgba(255,255,255,0.08)"
-            : "0 4px 18px rgba(0,0,0,0.40), 0 0 0 1px rgba(255,255,255,0.07)",
+            ? "0 8px 32px rgba(0,0,0,0.55)"
+            : "0 4px 18px rgba(0,0,0,0.40)",
           width:        pillW,
           height:       pillH,
-          borderRadius: confirmOpen ? "24px" : "21px",
+          borderRadius: confirmOpen ? "24px" : (trackHubOpen || trackHubAssistantOpen) ? "24px" : "21px",
           transition: [
-            `width ${confirmOpen ? 280 : trackHubOpen ? 260 : toastOpen ? 280 : 200}ms cubic-bezier(0.16, 1, 0.3, 1)`,
-            `height ${confirmOpen ? 280 : trackHubOpen ? 260 : toastOpen ? 280 : 200}ms cubic-bezier(0.16, 1, 0.3, 1)`,
+            `width ${confirmOpen ? 280 : (trackHubOpen || trackHubAssistantOpen) ? 260 : toastOpen ? 280 : 200}ms cubic-bezier(0.16, 1, 0.3, 1)`,
+            `height ${confirmOpen ? 280 : (trackHubOpen || trackHubAssistantOpen) ? 260 : toastOpen ? 280 : 200}ms cubic-bezier(0.16, 1, 0.3, 1)`,
             "box-shadow 240ms ease",
             "opacity 160ms ease",
           ].join(", "),
@@ -970,12 +1029,12 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
           className="absolute top-0 left-1/2 h-[42px] flex items-center px-3 cursor-pointer hover:bg-white/[0.04]"
           style={{
             width: collapsedPillWidth,
-            opacity:    (confirmOpen || trackHubOpen || toastOpen) ? 0 : 1,
-            transform:  (confirmOpen || trackHubOpen || toastOpen) ? "translateX(-50%) scale(0.94)" : "translateX(-50%) scale(1)",
-            transition: (confirmOpen || trackHubOpen || toastOpen)
+            opacity:    (confirmOpen || trackHubOpen || trackHubAssistantOpen || toastOpen) ? 0 : 1,
+            transform:  (confirmOpen || trackHubOpen || trackHubAssistantOpen || toastOpen) ? "translateX(-50%) scale(0.94)" : "translateX(-50%) scale(1)",
+            transition: (confirmOpen || trackHubOpen || trackHubAssistantOpen || toastOpen)
               ? "opacity 50ms ease, transform 60ms ease"
               : "opacity 140ms 40ms ease, transform 180ms 40ms cubic-bezier(0.16, 1, 0.3, 1)",
-            pointerEvents: (confirmOpen || trackHubOpen || toastOpen) ? "none" : "auto",
+            pointerEvents: (confirmOpen || trackHubOpen || trackHubAssistantOpen || toastOpen) ? "none" : "auto",
           }}
           onClick={() => setTrackHubOpen(true)}
           title="Click to open navigation"
@@ -988,8 +1047,8 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
               setTrackHubAssistantOpen(true);
             }}
             className="mr-2 flex h-7 flex-shrink-0 items-center gap-1.5 rounded-full bg-white/[0.07] px-2 text-white/85 transition-colors hover:bg-white/[0.12]"
-            title="Open Pharmacy Assistant"
-            aria-label="Open Pharmacy Assistant"
+            title="Open SmartTrack Assistant"
+            aria-label="Open SmartTrack Assistant"
           >
             <Bot size={14} className="text-blue-300" />
             <span className="text-[10px] font-semibold leading-none">Assistant</span>
@@ -1029,15 +1088,16 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
           </div>
         </div>
 
-        {/* TrackHub expands into the assistant itself, rather than a detached panel. */}
+        {/* TrackHub expands into the assistant itself, embedded in the island pill. */}
         <div
-          className="absolute top-0 left-1/2 flex flex-col overflow-hidden"
+          className="absolute inset-0 flex flex-col overflow-hidden"
           style={{
-            width: "min(570px, calc(100vw - 24px))",
-            height: "min(520px, calc(100dvh - 80px))",
-            opacity: 0,
-            transform: "translateX(-50%)",
-            pointerEvents: "none",
+            opacity: (!confirmOpen && trackHubAssistantOpen) ? 1 : 0,
+            transform: (!confirmOpen && trackHubAssistantOpen) ? "scale(1)" : "scale(0.97)",
+            transition: (!confirmOpen && trackHubAssistantOpen)
+              ? "opacity 160ms ease, transform 220ms cubic-bezier(0.16, 1, 0.3, 1)"
+              : "opacity 60ms ease, transform 60ms ease",
+            pointerEvents: (!confirmOpen && trackHubAssistantOpen) ? "auto" : "none",
           }}
         >
           <CommandAssistant
@@ -1045,9 +1105,18 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
             inventory={inventory}
             transactions={transactions}
             allowedPages={allowedPages}
-            onNavigate={setPage}
-            onOpenNewSale={() => setShowAddSale(true)}
-            onOpenAddProduct={() => setShowAddProduct(true)}
+            onNavigate={p => {
+              setPage(p);
+              setTrackHubAssistantOpen(false);
+            }}
+            onOpenNewSale={() => {
+              setShowAddSale(true);
+              setTrackHubAssistantOpen(false);
+            }}
+            onOpenAddProduct={() => {
+              setShowAddProduct(true);
+              setTrackHubAssistantOpen(false);
+            }}
             enabled={smartBotEnabled}
             mode="trackhub"
             open={trackHubAssistantOpen}
@@ -1171,16 +1240,6 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
   // Shared settings panel content (used in both TrackHub and sidebar topbars)
   const settingsPanelContent = (
     <div className="space-y-3">
-      <button
-        type="button"
-        onClick={() => { setPage("activity-log"); setShowTrackHubSettings(false); }}
-        className="flex w-full items-center gap-2.5 rounded-lg px-2 py-2 text-left transition-colors hover:bg-muted/60"
-      >
-        <Activity size={14} className="text-primary" />
-        <span className="flex-1 text-xs font-semibold text-foreground">{isAdmin ? "Activity Log" : "My Activity Log"}</span>
-        <ChevronRight size={13} className="text-muted-foreground" />
-      </button>
-
       <div className="border-b border-border/60 pb-3">
         <button
           type="button"
@@ -1189,7 +1248,9 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
         >
           <Maximize2 size={14} className="text-primary" />
           <span className="flex-1 text-xs font-semibold text-foreground">Toggle Full Screen</span>
-          <span className="text-[10px] text-muted-foreground">F11</span>
+          <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-mono font-medium text-muted-foreground border border-border/70">
+            {isMac ? "⌃⌘F" : "F11"}
+          </span>
         </button>
         <p className="px-2 text-[10px] text-muted-foreground">Expand SmartTrack to fill your display.</p>
       </div>
@@ -1250,12 +1311,12 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
         </button>
       </div>
 
-      {/* Pharmacy Assistant navigation trigger visibility */}
+      {/* SmartTrack Assistant navigation trigger visibility */}
       <div className="flex items-center justify-between border-t border-border/60 pt-2">
         <div className="flex items-center gap-2">
           <Bot size={13} className="text-primary" />
           <div>
-            <span className="text-xs font-medium text-foreground block">Pharmacy Assistant</span>
+            <span className="text-xs font-medium text-foreground block">SmartTrack Assistant</span>
             <span className="text-[10px] text-muted-foreground block -mt-0.5">Show assistant in navigation</span>
           </div>
         </div>
@@ -1265,26 +1326,41 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
         </button>
       </div>
 
-      {/* Recycle Bin — admin and inventory manager only */}
-      {(isAdmin || isInventoryManager) && (
+      {/* Management Section (Activity Log & Recycle Bin) */}
       <div className="border-t border-border/60 pt-2 space-y-1.5">
         <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-2">Management</p>
         <button
           type="button"
-          onClick={() => { setPage("recycle-bin"); setShowTrackHubSettings(false); }}
+          onClick={() => { setPage("activity-log"); setShowTrackHubSettings(false); }}
           className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg hover:bg-muted/60 transition-colors text-left group"
         >
-          <div className="w-7 h-7 rounded-lg bg-red-500/10 flex items-center justify-center flex-shrink-0">
-            <Trash2 size={13} className="text-red-500" />
+          <div className="w-7 h-7 rounded-lg bg-blue-500/10 flex items-center justify-center flex-shrink-0">
+            <Activity size={13} className="text-blue-500" />
           </div>
-          <div>
-            <p className="text-xs font-semibold text-foreground">Recycle Bin</p>
-            <p className="text-[10px] text-muted-foreground">Restore or purge deleted items</p>
+          <div className="flex-1 min-w-0">
+            <p className="text-xs font-semibold text-foreground truncate">{isAdmin ? "Activity Log" : "My Activity Log"}</p>
+            <p className="text-[10px] text-muted-foreground truncate">Audit trail of actions and system events</p>
           </div>
-          <ChevronRight size={12} className="ml-auto text-muted-foreground" />
+          <ChevronRight size={12} className="ml-auto text-muted-foreground group-hover:translate-x-0.5 transition-transform" />
         </button>
+
+        {(isAdmin || isInventoryManager) && (
+          <button
+            type="button"
+            onClick={() => { setPage("recycle-bin"); setShowTrackHubSettings(false); }}
+            className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg hover:bg-muted/60 transition-colors text-left group"
+          >
+            <div className="w-7 h-7 rounded-lg bg-red-500/10 flex items-center justify-center flex-shrink-0">
+              <Trash2 size={13} className="text-red-500" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-semibold text-foreground">Recycle Bin</p>
+              <p className="text-[10px] text-muted-foreground">Restore or purge deleted items</p>
+            </div>
+            <ChevronRight size={12} className="ml-auto text-muted-foreground group-hover:translate-x-0.5 transition-transform" />
+          </button>
+        )}
       </div>
-      )}
 
     </div>
   );
@@ -1393,7 +1469,7 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
 
         <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
           {/* Topbar */}
-          <header className="flex-shrink-0 h-14 border-b border-border/80 flex items-center gap-3 px-4 sm:px-6 bg-card shadow-[0_1px_3px_rgba(0,0,0,0.03)]" style={{ zIndex: 10, position: "relative" }}>
+          <header className="flex-shrink-0 h-14 border-b border-border/80 flex items-center gap-3 px-4 sm:px-6 bg-card shadow-[0_1px_3px_rgba(0,0,0,0.03)]" style={{ zIndex: 40, position: "relative" }}>
 
             {navMode === "island" ? (
               /* ── TrackHub mode topbar layout ── */
@@ -1421,8 +1497,8 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
                   </div>
                 </div>
 
-                {/* Search bar — lengthened & highly visible */}
-                <div ref={searchRef} className="relative w-64 sm:w-80 md:w-96 hidden sm:block flex-shrink-0" style={{ zIndex: (trackHubOpen || trackHubAssistantOpen || confirmOpen) ? 0 : 40 }}>
+                {/* Search bar — constrained so it never overlaps centered TrackHub */}
+                <div ref={searchRef} className="relative w-48 sm:w-56 md:w-64 lg:w-72 max-w-[calc(50vw-220px)] hidden sm:block flex-shrink-0" style={{ zIndex: searchOpen ? 20 : 5 }}>
                   <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-blue-600 dark:text-blue-400 pointer-events-none z-10" />
                   <input
                     ref={searchInputRef}
@@ -1514,7 +1590,7 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
 
                 {/* TrackHub — centered between the flexible header regions */}
                 <div className="flex-1" aria-hidden="true" />
-                <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
+                <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-50 pointer-events-auto" style={{ zIndex: 50 }}>
                   {trackHubNavigation}
                 </div>
 
@@ -1772,8 +1848,8 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
           </header>
 
           {/* Pages */}
-          <main className="flex-1 overflow-y-auto">
-            <div key={page} className="st-page-in min-h-full">
+          <main className="flex-1 overflow-y-auto w-full">
+            <div key={page} className="st-page-in min-h-full w-full">
             {page === "dashboard"    && <DashboardView user={user} inventory={inventory} transactions={transactions} cashierDashboard={cashierDashboard} />}
             {page === "inventory"    && <InventoryPage inventory={inventory} transactions={transactions} categories={categories}
               onAddProduct={() => setShowAddProduct(true)} onEditProduct={product => { setSuggestedBatchQty(0); setEditingProduct(product); }}

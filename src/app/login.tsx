@@ -40,7 +40,7 @@ function FieldInput({ label, type = "text", value, onChange, placeholder, requir
 function InactiveAccountDialog({ onClose }: { onClose: () => void }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-md" onClick={onClose} />
+      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
       <div className="relative bg-[#0b1728] border border-blue-400/30 rounded-3xl shadow-2xl w-full max-w-sm p-6 text-center space-y-4 animate-in fade-in zoom-in-95 duration-200 text-white">
         <div className="w-14 h-14 rounded-full bg-amber-500/15 border border-amber-500/30 flex items-center justify-center mx-auto">
           <ShieldOff size={26} className="text-amber-400" />
@@ -161,10 +161,9 @@ function SplitVectorBackdrop() {
   );
 }
 
-function LoginPage({ onLogin, businessSettings, hideBrandMark }: {
+function LoginPage({ onLogin, businessSettings }: {
   onLogin: (user: AuthUser) => void;
   businessSettings: PublicBusinessSettings | null;
-  hideBrandMark: boolean;
 }) {
   const [email, setEmail]           = useState("");
   const [password, setPassword]     = useState("");
@@ -237,11 +236,9 @@ function LoginPage({ onLogin, businessSettings, hideBrandMark }: {
           <div className="relative mb-7 group mx-auto">
             <div className="absolute -inset-3 bg-gradient-to-tr from-teal-400/30 via-sky-400/25 to-blue-500/20 rounded-3xl blur-2xl opacity-80 group-hover:opacity-100 transition-opacity" />
             <img
-              data-login-logo
               src={SMARTTRACK_LOGO_URL}
               alt="SmartTrack mark"
-              className={`relative w-40 h-28 sm:w-48 sm:h-32 object-contain drop-shadow-[0_18px_28px_rgba(0,0,0,0.35)] transition-all duration-300 group-hover:scale-105 group-hover:-translate-y-1 ${hideBrandMark ? "opacity-0" : "opacity-100"}`}
-              style={{ visibility: hideBrandMark ? "hidden" : "visible" }}
+              className="relative w-40 h-28 sm:w-48 sm:h-32 object-contain drop-shadow-[0_18px_28px_rgba(0,0,0,0.35)] transition-all duration-300 group-hover:scale-105 group-hover:-translate-y-1 opacity-100"
             />
           </div>
 
@@ -264,14 +261,18 @@ function LoginPage({ onLogin, businessSettings, hideBrandMark }: {
             ].map(({ title, detail, Icon }, index) => (
               <div
                 key={title}
-                style={{ animationDelay: `${180 + index * 100}ms` }}
-                className="st-login-feature bg-white/[0.08] backdrop-blur-xl border border-white/15 rounded-2xl p-4 shadow-[0_10px_25px_rgba(0,0,0,0.25)] hover:bg-white/[0.14] hover:border-blue-300/40 transition-all text-center flex flex-col items-center group"
+                style={{
+                  animationDelay: `${180 + index * 100}ms`,
+                  backdropFilter: "blur(24px) saturate(180%)",
+                  WebkitBackdropFilter: "blur(24px) saturate(180%)",
+                }}
+                className="st-login-feature bg-gradient-to-b from-white/[0.18] to-white/[0.09] border border-white/25 rounded-2xl p-4 shadow-[0_12px_28px_rgba(0,0,0,0.22),inset_0_1px_1.5px_rgba(255,255,255,0.4),inset_0_-1px_1px_rgba(255,255,255,0.1)] hover:from-white/[0.24] hover:to-white/[0.14] hover:border-white/40 hover:shadow-[0_16px_36px_rgba(0,0,0,0.28),inset_0_1px_2px_rgba(255,255,255,0.55)] transition-all text-center flex flex-col items-center group"
               >
-                <div className="w-8 h-8 rounded-xl bg-blue-500/20 border border-blue-400/30 flex items-center justify-center mb-3 text-blue-200 shadow-inner group-hover:scale-105 transition-transform mx-auto">
+                <div className="w-8 h-8 rounded-xl bg-blue-500/25 border border-blue-300/40 flex items-center justify-center mb-3 text-blue-100 shadow-[inset_0_1px_1px_rgba(255,255,255,0.3)] group-hover:scale-105 transition-transform mx-auto">
                   <Icon size={15} />
                 </div>
-                <p className="text-xs font-bold text-white tracking-wide">{title}</p>
-                <p className="text-[11px] text-blue-100/80 mt-1 leading-normal">{detail}</p>
+                <p className="text-xs font-bold text-white tracking-wide drop-shadow-sm">{title}</p>
+                <p className="text-[11px] text-blue-100/90 mt-1 leading-normal">{detail}</p>
               </div>
             ))}
           </div>
@@ -368,10 +369,10 @@ export default function Login() {
   const [logoReady, setLogoReady] = useState(false);
   const [loginMounted, setLoginMounted] = useState(false);
   const [launchVisible, setLaunchVisible] = useState(true);
-  const [homeReady, setHomeReady] = useState(false);
+  const [splashFading, setSplashFading]   = useState(false);
+  const [homeReady, setHomeReady]         = useState(false);
   const launchLayerRef = useRef<HTMLDivElement>(null);
-  const launchBackgroundRef = useRef<HTMLDivElement>(null);
-  const launchLogoRef = useRef<HTMLImageElement>(null);
+  const launchLogoRef  = useRef<HTMLImageElement>(null);
 
   useEffect(() => {
     let active = true;
@@ -404,76 +405,14 @@ export default function Login() {
     if (!launchVisible || !logoReady) return;
     if (user ? !homeReady : !loginMounted) return;
 
-    let cancelled = false;
-    const animateLaunch = async () => {
-      const target = user
-        ? document.querySelector<HTMLElement>("[data-trackhub-target]") ??
-          document.querySelector<HTMLElement>("[data-home-logo]")
-        : document.querySelector<HTMLElement>("[data-login-logo]");
-      const logo = launchLogoRef.current;
-      const layer = launchLayerRef.current;
-      if (!target || !logo || !layer) {
-        setLaunchVisible(false);
-        return;
-      }
+    // Smoothly fade out the splash screen without morphing/flying the logo (like Facebook and modern native apps)
+    setSplashFading(true);
+    const timer = setTimeout(() => {
+      setLaunchVisible(false);
+    }, 320);
 
-      const entrance = target.closest(".st-login-brand, .st-login-card");
-      const entranceAnimations = entrance?.getAnimations() ?? [];
-      await Promise.all(entranceAnimations.map(animation => animation.finished.catch(() => undefined)));
-      await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
-      if (cancelled) return;
-
-      if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-        setLaunchVisible(false);
-        return;
-      }
-
-      const start = logo.getBoundingClientRect();
-      const end = target.getBoundingClientRect();
-      const aspectRatio = logo.naturalWidth / logo.naturalHeight || start.width / start.height;
-      const targetWidth = Math.min(end.width, end.height * aspectRatio);
-      const targetHeight = targetWidth / aspectRatio;
-      const targetLeft = end.left + (end.width - targetWidth) / 2;
-      const targetTop = end.top + (end.height - targetHeight) / 2;
-      target.style.opacity = "0";
-      logo.style.position = "fixed";
-      logo.style.left = `${start.left}px`;
-      logo.style.top = `${start.top}px`;
-      logo.style.width = `${start.width}px`;
-      logo.style.height = `${start.height}px`;
-      logo.style.transform = "none";
-      logo.style.transformOrigin = "top left";
-      logo.style.willChange = "transform";
-
-      const motion = logo.animate([
-        { transform: "translate3d(0, 0, 0) scale(1)" },
-        {
-          transform: `translate3d(${targetLeft - start.left}px, ${targetTop - start.top}px, 0) scale(${targetWidth / start.width}, ${targetHeight / start.height})`,
-        },
-      ], {
-        duration: 760,
-        easing: "cubic-bezier(0.16, 1, 0.3, 1)",
-        fill: "forwards",
-      });
-      const fade = launchBackgroundRef.current?.animate(
-        [{ opacity: 1 }, { opacity: 0 }],
-        { duration: 620, easing: "ease-out", fill: "forwards" },
-      );
-
-      try {
-        await Promise.all([motion.finished, ...(fade ? [fade.finished] : [])]);
-      } catch {
-        if (!cancelled) console.error("The launch transition was interrupted.");
-      }
-      if (!cancelled) {
-        target.style.opacity = "";
-        setLaunchVisible(false);
-      }
-    };
-
-    void animateLaunch();
-    return () => { cancelled = true; };
-  }, [launchVisible, loginMounted, logoReady, user, homeReady]);
+    return () => clearTimeout(timer);
+  }, [launchVisible, logoReady, user, homeReady, loginMounted]);
 
   const handleLogin = useCallback((nextUser: AuthUser) => setUser(nextUser), []);
   const handleHomeReady = useCallback(() => setHomeReady(true), []);
@@ -496,24 +435,26 @@ export default function Login() {
           onLogout={handleLogout}
           onUserUpdated={setUser}
           onReady={handleHomeReady}
-          hideTrackHub={launchVisible}
         />
       ) : loginMounted ? (
         <LoginPage
           onLogin={handleLogin}
           businessSettings={businessSettings}
-          hideBrandMark={launchVisible}
         />
       ) : null}
 
       {launchVisible && (
-        <div ref={launchLayerRef} className="fixed inset-0 z-[10000] pointer-events-none overflow-hidden">
-          <div ref={launchBackgroundRef} className="absolute inset-0 bg-[#07182c]" />
+        <div
+          ref={launchLayerRef}
+          className={`fixed inset-0 z-[10000] flex items-center justify-center bg-[#07182c] select-none pointer-events-none transition-opacity duration-300 ease-out ${
+            splashFading ? "opacity-0" : "opacity-100"
+          }`}
+        >
           <img
             ref={launchLogoRef}
             src={SMARTTRACK_LOGO_URL}
             alt="SmartTrack"
-            className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[180px] h-[120px] object-contain drop-shadow-[0_12px_28px_rgba(0,0,0,0.35)]"
+            className="w-[180px] h-[120px] object-contain drop-shadow-[0_12px_28px_rgba(0,0,0,0.35)]"
           />
         </div>
       )}

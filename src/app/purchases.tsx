@@ -383,7 +383,7 @@ export default function PurchaseOrdersPage({
 
   // ── ─────────────────────────────────────────────────────────────────────────
   return (
-    <div className="p-4 sm:p-6 space-y-4 max-w-[1400px] mx-auto st-page-in">
+    <div className="p-4 sm:p-6 space-y-4 w-full max-w-[1400px] mx-auto st-page-in">
       {/* Header */}
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
@@ -646,7 +646,7 @@ export default function PurchaseOrdersPage({
       {/* ═══════════════════════════════════════════════════════════════════════ */}
       {showCreateModal && createPortal(
         <div
-          className="fixed inset-0 z-[9998] flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-[2px] st-overlay-in"
+          className="fixed inset-0 z-[9998] flex items-center justify-center bg-black/50 p-4 st-overlay-in"
           role="presentation"
           onMouseDown={(event) => {
             if (event.target === event.currentTarget && !saving && !reviewingOrder) setShowCreateModal(false);

@@ -110,7 +110,7 @@ export default function InventoryPage({
   };
 
   return (
-    <div className="flex flex-col max-w-[1400px]" style={{ height: "calc(100dvh - 56px)" }}>
+    <div className="flex flex-col w-full max-w-[1400px] mx-auto" style={{ height: "calc(100dvh - 56px)" }}>
       {/* ── Sticky header: title + actions + search/filter ── */}
       <div className="flex-shrink-0 px-4 sm:px-6 pt-4 sm:pt-6 pb-4 bg-background border-b border-border/50 z-20">
         <div className="flex items-start sm:items-center justify-between gap-3">

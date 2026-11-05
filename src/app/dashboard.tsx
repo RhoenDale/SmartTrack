@@ -696,7 +696,7 @@ export default function DashboardView({ user, inventory, transactions, cashierDa
   const isCashier = user.role === "cashier";
 
   return (
-    <div className="p-4 sm:p-6 space-y-5 max-w-[1400px] mx-auto">
+    <div className="p-4 sm:p-6 space-y-5 w-full max-w-[1400px] mx-auto">
       {/* Header — same for all roles */}
       <div>
         <div className="flex items-center gap-2">

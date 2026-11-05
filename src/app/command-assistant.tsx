@@ -228,7 +228,7 @@ export default function CommandAssistant({
       setLoading(false);
       const profanityMsg =
         lang === "ceb"
-          ? "Palihug gamita lamang ang Pharmacy Assistant alang sa mga transaksyon ug imbentaryo sa botika."
+          ? "Palihug gamita lamang ang SmartTrack Assistant alang sa mga transaksyon ug imbentaryo sa botika."
           : lang === "tl"
           ? "Mangyaring gumamit ng mga angkop na salita para sa imbentaryo at benta ng botika."
           : "Please keep commands professional and related to pharmacy inventory, sales, or navigation.";
@@ -702,10 +702,10 @@ export default function CommandAssistant({
     setLoading(false);
     const fallbackMsg =
       lang === "ceb"
-        ? "Pasayloa, dili ko makatubag ana. Ang Pharmacy Assistant para ra sa pharmacy stock, sales, forecasts, ug pag-abli sa mga system task. Sulayi: “stock amoxicillin,” “halin sa October,” o “ablihi ang inventory.”"
+        ? "Pasayloa, dili ko makatubag ana. Ang SmartTrack Assistant para ra sa pharmacy stock, sales, forecasts, ug pag-abli sa mga system task. Sulayi: “stock amoxicillin,” “halin sa October,” o “ablihi ang inventory.”"
         : lang === "tl"
-        ? "Paumanhin, hindi ako makakasagot niyan. Para lang ang Pharmacy Assistant sa stock, benta, forecast, at pagpunta sa mga bahagi ng system. Subukan: “stock amoxicillin,” “sales October,” o “open inventory.”"
-        : "Sorry, I can’t help with that. The Pharmacy Assistant is only for pharmacy stock, sales, forecasts, and system tasks. Try “stock amoxicillin,” “sales October,” or “open inventory.”";
+        ? "Paumanhin, hindi ako makakasagot niyan. Para lang ang SmartTrack Assistant sa stock, benta, forecast, at pagpunta sa mga bahagi ng system. Subukan: “stock amoxicillin,” “sales October,” o “open inventory.”"
+        : "Sorry, I can’t help with that. The SmartTrack Assistant is only for pharmacy stock, sales, forecasts, and system tasks. Try “stock amoxicillin,” “sales October,” or “open inventory.”";
 
     addMessage({ sender: "bot", text: fallbackMsg, type: "info" });
   };
@@ -720,221 +720,313 @@ export default function CommandAssistant({
 
   if (!enabled) return null;
 
-  // When sidebar button is clicked, always open as a centered modal overlay
-  const showModal = isOpen;
-
-  return (
-    <>
-      {mode === "sidebar" && (
-        <div className="px-2 py-2">
-          <button
-            type="button"
-            onClick={() => {
-              if (!isOpen) onOpen?.();
-              setIsOpen(!isOpen);
-            }}
-            className={`w-full flex items-center gap-2.5 rounded-xl border px-2.5 py-2 transition-colors ${
-              isOpen
-                ? "border-blue-400/30 bg-blue-600/20 text-blue-100"
-                : "border-transparent text-white/65 hover:border-white/10 hover:bg-white/[0.06] hover:text-white"
-            } ${sidebarExpanded ? "" : "justify-center"}`}
-            title={sidebarExpanded ? undefined : "Pharmacy Assistant"}
-            aria-label={isOpen ? "Close Pharmacy Assistant" : "Open Pharmacy Assistant"}
-            aria-expanded={isOpen}
-          >
-            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-blue-500/15">
-              <SmartBotMascot className="h-7 w-7" />
-            </span>
-            {sidebarExpanded && (
-              <>
-                <span className="min-w-0 flex-1 text-left">
-                  <span className="block truncate text-xs font-semibold">Pharmacy Assistant</span>
-                  <span className="mt-0.5 block truncate text-[9px] text-white/45">Stock · Sales · Tasks</span>
-                </span>
-                <span className="text-[10px] text-white/40">{isOpen ? "−" : "+"}</span>
-              </>
-            )}
-          </button>
-        </div>
-      )}
-
-      {/* Centered modal overlay — used for both sidebar and trackhub modes */}
-      {showModal && createPortal(
-        <div
-          data-assistant-portal
-          className="fixed inset-0 z-[9999] flex items-center justify-center p-4"
-          role="dialog"
-          aria-modal="true"
-          aria-label="Pharmacy Assistant"
-        >
-          {/* Click outside to close — no visible backdrop */}
+  const renderContent = (isHub: boolean) => (
+    <div
+      className={`relative flex flex-col w-full h-full overflow-hidden ${
+        isHub ? "bg-[#0a0a0a] text-white" : "rounded-2xl border border-border bg-card text-foreground"
+      }`}
+    >
+      {/* Header */}
+      <div
+        className={`flex items-center justify-between px-4 py-3 shrink-0 border-b ${
+          isHub ? "border-white/[0.08] bg-[#0a0a0a]" : "border-border bg-card"
+        }`}
+      >
+        <div className="flex items-center gap-3">
           <div
-            className="absolute inset-0"
-            onClick={() => setIsOpen(false)}
-          />
-
-          {/* Panel */}
-          <div className="relative z-10 flex flex-col overflow-hidden rounded-2xl shadow-2xl w-full max-w-lg h-[min(90dvh,600px)] border border-border bg-card text-foreground">
-            {/* Header */}
-            <div className="flex items-center justify-between border-b border-border bg-card px-4 py-3.5 shrink-0">
-              <div className="flex items-center gap-3">
-                <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary/10 ring-1 ring-primary/15">
-                  <SmartBotMascot className="h-10 w-10" />
-                </div>
-                <div>
-                  <div className="flex items-center gap-1.5">
-                    <h3 className="text-sm font-bold tracking-tight text-foreground">Pharmacy Assistant</h3>
-                    <InfoTip
-                      title="About the Pharmacy Assistant"
-                      color="sky"
-                      lines={[
-                        "A rule-based pharmacy shortcut assistant for common tasks.",
-                        { label: "Can help with", value: "Stock checks, sales lookups, demand forecasts, calculations, and navigation" },
-                        { label: "How it responds", value: "Matches supported commands and queries against pharmacy data" },
-                        { label: "Not for", value: "Open-ended questions or medical advice" },
-                      ]}
-                    />
-                  </div>
-                  <p className="mt-0.5 text-[10px] text-muted-foreground">Pharmacy shortcuts · Live stock &amp; sales</p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsOpen(false)}
-                className="rounded-lg p-2 transition-colors text-muted-foreground hover:bg-muted hover:text-foreground"
-                title="Close (Esc)"
-                aria-label="Close Pharmacy Assistant"
-              >
-                <X size={16} />
-              </button>
+            className={`flex h-10 w-10 items-center justify-center rounded-xl ${
+              isHub ? "bg-blue-500/15 border border-blue-400/20" : "bg-primary/10 ring-1 ring-primary/15"
+            }`}
+          >
+            <SmartBotMascot className="h-8 w-8" />
+          </div>
+          <div>
+            <div className="flex items-center gap-1.5">
+              <h3 className={`text-sm font-bold tracking-tight ${isHub ? "text-white" : "text-foreground"}`}>
+                SmartTrack Assistant
+              </h3>
+              <InfoTip
+                title="About the SmartTrack Assistant"
+                color="sky"
+                lines={[
+                  "A rule-based pharmacy shortcut assistant for common tasks.",
+                  { label: "Can help with", value: "Stock checks, sales lookups, demand forecasts, calculations, and navigation" },
+                  { label: "How it responds", value: "Matches supported commands and queries against pharmacy data" },
+                  { label: "Not for", value: "Open-ended questions or medical advice" },
+                ]}
+              />
             </div>
-
-            {/* Quick prompts */}
-            <div className="border-b border-border/70 bg-muted/15 px-3 py-2.5 shrink-0">
-              <p className="mb-2 px-0.5 text-[9px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Common tasks</p>
-              <div className="flex gap-1.5 overflow-x-auto scrollbar-none">
-                {quickPrompts.map((p, idx) => (
-                  <button
-                    key={idx}
-                    type="button"
-                    onClick={() => handleCommand(p.cmd)}
-                    className="flex shrink-0 items-center gap-1.5 rounded-lg border border-border bg-card text-foreground hover:border-primary/30 hover:bg-primary/5 hover:text-primary px-2.5 py-1.5 text-[10px] font-medium transition-colors cursor-pointer"
-                  >
-                    <span className="text-muted-foreground">{p.icon}</span>
-                    <span>{p.label}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Messages */}
-            <div className="flex-1 space-y-4 overflow-y-auto p-4 bg-muted/[0.12]">
-              {messages.map(m => (
-                <div
-                  key={m.id}
-                  className={`flex items-end gap-2 ${m.sender === "user" ? "justify-end" : "justify-start"}`}
-                >
-                  {m.sender === "bot" && (
-                    <span className="mb-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-primary/10">
-                      <SmartBotMascot className="h-6 w-6" />
-                    </span>
-                  )}
-                  <div
-                    className={`max-w-[84%] rounded-2xl px-3.5 py-3 text-xs leading-relaxed shadow-sm ${
-                      m.sender === "user"
-                        ? "rounded-br-md bg-primary text-primary-foreground"
-                        : "rounded-bl-md border border-border/80 bg-card text-foreground"
-                    }`}
-                  >
-                    <p className="whitespace-pre-line">{m.text}</p>
-
-                    {m.details && (
-                      <div className="mt-2 space-y-1.5 border-t border-border/60 pt-2">
-                        {m.details.map((d, i) => (
-                          <div key={i} className="flex justify-between gap-3 text-[11px]">
-                            <span className="text-muted-foreground">{d.label}:</span>
-                            <span className="font-semibold tabular-nums text-foreground">{d.value}</span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-
-                    {m.onAction && (
-                      <button
-                        type="button"
-                        onClick={m.onAction}
-                        className="mt-2.5 inline-flex items-center gap-1.5 rounded-lg border border-primary/30 bg-primary/15 px-2.5 py-1 text-[11px] font-semibold text-primary transition-colors hover:bg-primary/25 cursor-pointer"
-                      >
-                        {m.actionLabel}
-                        <ArrowRight size={12} />
-                      </button>
-                    )}
-                  </div>
-                </div>
-              ))}
-
-              {loading && (
-                <div className="flex items-center gap-2.5 pl-1 text-[11px]">
-                  <SmartBotMascot className="h-7 w-7" />
-                  <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-card text-muted-foreground px-3 py-2">
-                    <LoaderCircle size={12} className="animate-spin text-primary" />
-                    Checking pharmacy data…
-                  </span>
-                </div>
-              )}
-              <div ref={chatBottomRef} />
-            </div>
-
-            {/* Input */}
-            <form
-              onSubmit={e => {
-                e.preventDefault();
-                handleCommand(query);
-              }}
-              className="flex shrink-0 flex-col gap-2 border-t border-border bg-card p-3"
-            >
-              <div className="flex items-center gap-2">
-                <div className="relative flex-1">
-                  <input
-                    ref={inputRef}
-                    type="text"
-                    value={query}
-                    onChange={e => setQuery(e.target.value)}
-                    placeholder="Ask about stock, sales, or a task…"
-                    className={`w-full rounded-xl border px-3.5 py-3 pr-8 text-xs transition-all focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 ${
-                      isTrackHubMode
-                        ? "border-white/10 bg-white/[0.06] text-white placeholder:text-white/40"
-                        : "border-border bg-background text-foreground placeholder:text-muted-foreground"
-                    }`}
-                  />
-                  {query && (
-                    <button
-                      type="button"
-                      onClick={() => setQuery("")}
-                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                      aria-label="Clear message"
-                    >
-                      <X size={12} />
-                    </button>
-                  )}
-                </div>
-                <button
-                  type="submit"
-                  disabled={!query.trim() || loading}
-                  className="flex items-center gap-1.5 rounded-xl bg-primary px-3.5 py-3 text-xs font-semibold text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 disabled:opacity-40 cursor-pointer"
-                >
-                  <span>Send</span>
-                  <CornerDownLeft size={13} />
-                </button>
-              </div>
-              <div className="flex items-center justify-between px-1 text-[9px] text-muted-foreground">
-                <span>Rule-based · Pharmacy data only</span>
-                <span><kbd className="rounded border border-border bg-muted px-1 font-mono">Esc</kbd> to close</span>
-              </div>
-            </form>
+            <p className={`mt-0.5 text-[10px] ${isHub ? "text-white/50" : "text-muted-foreground"}`}>
+              Pharmacy shortcuts · Live stock &amp; sales
+            </p>
           </div>
         </div>
-      , document.body)}
+        <button
+          type="button"
+          onClick={() => setIsOpen(false)}
+          className={`rounded-lg p-2 transition-colors cursor-pointer ${
+            isHub
+              ? "text-white/60 hover:bg-white/[0.08] hover:text-white"
+              : "text-muted-foreground hover:bg-muted hover:text-foreground"
+          }`}
+          title="Close (Esc)"
+          aria-label="Close SmartTrack Assistant"
+        >
+          <X size={16} />
+        </button>
+      </div>
+
+      {/* Quick prompts */}
+      <div
+        className={`border-b px-3 py-2 shrink-0 ${
+          isHub ? "border-white/[0.08] bg-white/[0.02]" : "border-border/70 bg-muted/15"
+        }`}
+      >
+        <p
+          className={`mb-1.5 px-0.5 text-[9px] font-semibold uppercase tracking-[0.12em] ${
+            isHub ? "text-white/45" : "text-muted-foreground"
+          }`}
+        >
+          Common tasks
+        </p>
+        <div className="flex gap-1.5 overflow-x-auto scrollbar-none">
+          {quickPrompts.map((p, idx) => (
+            <button
+              key={idx}
+              type="button"
+              onClick={() => handleCommand(p.cmd)}
+              className={`flex shrink-0 items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[10px] font-medium transition-colors cursor-pointer ${
+                isHub
+                  ? "border-white/10 bg-white/[0.06] text-white/90 hover:border-blue-400/40 hover:bg-white/[0.12] hover:text-white"
+                  : "border-border bg-card text-foreground hover:border-primary/30 hover:bg-primary/5 hover:text-primary"
+              }`}
+            >
+              <span className={isHub ? "text-white/60" : "text-muted-foreground"}>{p.icon}</span>
+              <span>{p.label}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Messages */}
+      <div
+        className={`flex-1 space-y-3.5 overflow-y-auto p-4 ${
+          isHub ? "bg-transparent" : "bg-muted/[0.12]"
+        }`}
+      >
+        {messages.map(m => (
+          <div
+            key={m.id}
+            className={`flex items-end gap-2 ${m.sender === "user" ? "justify-end" : "justify-start"}`}
+          >
+            {m.sender === "bot" && (
+              <span
+                className={`mb-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg ${
+                  isHub ? "bg-blue-500/15" : "bg-primary/10"
+                }`}
+              >
+                <SmartBotMascot className="h-6 w-6" />
+              </span>
+            )}
+            <div
+              className={`max-w-[84%] rounded-2xl px-3.5 py-2.5 text-xs leading-relaxed shadow-sm ${
+                m.sender === "user"
+                  ? isHub
+                    ? "rounded-br-md bg-blue-600 text-white font-medium"
+                    : "rounded-br-md bg-primary text-primary-foreground"
+                  : isHub
+                  ? "rounded-bl-md border border-white/10 bg-white/[0.07] text-white/95"
+                  : "rounded-bl-md border border-border/80 bg-card text-foreground"
+              }`}
+            >
+              <p className="whitespace-pre-line">{m.text}</p>
+
+              {m.details && (
+                <div
+                  className={`mt-2 space-y-1.5 border-t pt-2 ${
+                    isHub ? "border-white/10" : "border-border/60"
+                  }`}
+                >
+                  {m.details.map((d, i) => (
+                    <div key={i} className="flex justify-between gap-3 text-[11px]">
+                      <span className={isHub ? "text-white/55" : "text-muted-foreground"}>{d.label}:</span>
+                      <span className={`font-semibold tabular-nums ${isHub ? "text-white" : "text-foreground"}`}>
+                        {d.value}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {m.onAction && (
+                <button
+                  type="button"
+                  onClick={m.onAction}
+                  className={`mt-2.5 inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[11px] font-semibold transition-colors cursor-pointer ${
+                    isHub
+                      ? "border-blue-400/40 bg-blue-500/20 text-blue-300 hover:bg-blue-500/30"
+                      : "border-primary/30 bg-primary/15 text-primary hover:bg-primary/25"
+                  }`}
+                >
+                  {m.actionLabel}
+                  <ArrowRight size={12} />
+                </button>
+              )}
+            </div>
+          </div>
+        ))}
+
+        {loading && (
+          <div className="flex items-center gap-2.5 pl-1 text-[11px]">
+            <SmartBotMascot className="h-7 w-7" />
+            <span
+              className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 ${
+                isHub
+                  ? "border-white/10 bg-white/[0.06] text-white/70"
+                  : "border-border bg-card text-muted-foreground"
+              }`}
+            >
+              <LoaderCircle size={12} className={`animate-spin ${isHub ? "text-blue-400" : "text-primary"}`} />
+              Checking pharmacy data…
+            </span>
+          </div>
+        )}
+        <div ref={chatBottomRef} />
+      </div>
+
+      {/* Input */}
+      <form
+        onSubmit={e => {
+          e.preventDefault();
+          handleCommand(query);
+        }}
+        className={`flex shrink-0 flex-col gap-2 border-t p-3 ${
+          isHub ? "border-white/[0.08] bg-[#0a0a0a]" : "border-border bg-card"
+        }`}
+      >
+        <div className="flex items-center gap-2">
+          <div className="relative flex-1">
+            <input
+              ref={inputRef}
+              type="text"
+              value={query}
+              onChange={e => setQuery(e.target.value)}
+              placeholder="Ask about stock, sales, or a task…"
+              className={`w-full rounded-xl border px-3.5 py-2.5 pr-8 text-xs transition-all focus:outline-none focus:ring-2 ${
+                isHub
+                  ? "border-white/10 bg-white/[0.06] text-white placeholder:text-white/40 focus:border-blue-500 focus:ring-blue-500/20"
+                  : "border-border bg-background text-foreground placeholder:text-muted-foreground focus:border-primary focus:ring-primary/20"
+              }`}
+            />
+            {query && (
+              <button
+                type="button"
+                onClick={() => setQuery("")}
+                className={`absolute right-2.5 top-1/2 -translate-y-1/2 cursor-pointer ${
+                  isHub ? "text-white/40 hover:text-white" : "text-muted-foreground hover:text-foreground"
+                }`}
+                aria-label="Clear message"
+              >
+                <X size={12} />
+              </button>
+            )}
+          </div>
+          <button
+            type="submit"
+            disabled={!query.trim() || loading}
+            className={`flex items-center gap-1.5 rounded-xl px-3.5 py-2.5 text-xs font-semibold shadow-sm transition-colors disabled:opacity-40 cursor-pointer ${
+              isHub
+                ? "bg-blue-600 text-white hover:bg-blue-500"
+                : "bg-primary text-primary-foreground hover:bg-primary/90"
+            }`}
+          >
+            <span>Send</span>
+            <CornerDownLeft size={13} />
+          </button>
+        </div>
+        <div
+          className={`flex items-center justify-between px-1 text-[9px] ${
+            isHub ? "text-white/40" : "text-muted-foreground"
+          }`}
+        >
+          <span>Rule-based · Pharmacy data only</span>
+          <span>
+            <kbd
+              className={`rounded border px-1 font-mono ${
+                isHub ? "border-white/10 bg-white/[0.06]" : "border-border bg-muted"
+              }`}
+            >
+              Esc
+            </kbd>{" "}
+            to close
+          </span>
+        </div>
+      </form>
+    </div>
+  );
+
+  // When rendered inside TrackHub Dynamic Island, mount directly inside the expanded island pill
+  if (mode === "trackhub") {
+    return renderContent(true);
+  }
+
+  // Sidebar mode: render trigger button and portaled modal dialog
+  return (
+    <>
+      <div className="px-2 py-2">
+        <button
+          type="button"
+          onClick={() => {
+            if (!isOpen) onOpen?.();
+            setIsOpen(!isOpen);
+          }}
+          className={`w-full flex items-center gap-2.5 rounded-xl border px-2.5 py-2 transition-colors ${
+            isOpen
+              ? "border-blue-400/30 bg-blue-600/20 text-blue-100"
+              : "border-transparent text-white/65 hover:border-white/10 hover:bg-white/[0.06] hover:text-white"
+          } ${sidebarExpanded ? "" : "justify-center"}`}
+          title={sidebarExpanded ? undefined : "SmartTrack Assistant"}
+          aria-label={isOpen ? "Close SmartTrack Assistant" : "Open SmartTrack Assistant"}
+          aria-expanded={isOpen}
+        >
+          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-blue-500/15">
+            <SmartBotMascot className="h-7 w-7" />
+          </span>
+          {sidebarExpanded && (
+            <>
+              <span className="min-w-0 flex-1 text-left">
+                <span className="block truncate text-xs font-semibold">SmartTrack Assistant</span>
+                <span className="mt-0.5 block truncate text-[9px] text-white/45">Stock · Sales · Tasks</span>
+              </span>
+              <span className="text-[10px] text-white/40">{isOpen ? "−" : "+"}</span>
+            </>
+          )}
+        </button>
+      </div>
+
+      {/* Centered modal overlay for sidebar mode (clean solid dim backdrop, NO blur) */}
+      {isOpen &&
+        createPortal(
+          <div
+            data-assistant-portal
+            className="fixed inset-0 z-[9999] flex items-center justify-center p-4"
+            role="dialog"
+            aria-modal="true"
+            aria-label="SmartTrack Assistant"
+          >
+            {/* Click outside to close — clear backdrop, no dark overlay */}
+            <div
+              className="fixed inset-0"
+              onClick={() => setIsOpen(false)}
+            />
+
+            {/* Panel */}
+            <div className="relative z-10 w-full max-w-lg h-[min(90dvh,600px)] shadow-2xl">
+              {renderContent(false)}
+            </div>
+          </div>,
+          document.body
+        )}
     </>
   );
 }

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useRef } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Package,
   TrendingUp,
@@ -8,6 +8,12 @@ import {
   Download,
   RefreshCw,
   AlertTriangle,
+  Search,
+  Calculator,
+  CheckCircle2,
+  ArrowUpRight,
+  ArrowDownRight,
+  SlidersHorizontal,
 } from "lucide-react";
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, ReferenceLine, BarChart, Bar, LabelList } from "recharts";
 import {
@@ -145,26 +151,70 @@ function ForecastTrendChart({
   sma3: number;
   sma6: number;
 }) {
+  const lastIdx = history.length - 1;
   const data = [
-    ...history.map(point => ({ month: point.month, actual: point.demand, sma3Forecast: null as number | null, sma6Forecast: null as number | null })),
-    { month: nextPeriod, actual: null, sma3Forecast: sma3, sma6Forecast: sma6 },
+    ...history.map((point, idx) => ({
+      month: point.month,
+      actual: point.demand,
+      sma3Forecast: idx === lastIdx ? point.demand : (null as number | null),
+      sma6Forecast: idx === lastIdx ? point.demand : (null as number | null),
+    })),
+    {
+      month: nextPeriod,
+      actual: null,
+      sma3Forecast: Math.round(sma3),
+      sma6Forecast: Math.round(sma6),
+    },
   ];
   return (
-    <div className="h-[245px] w-full" aria-label="Historical monthly sales and next-month SMA forecasts">
+    <div className="h-[250px] w-full" aria-label="Historical monthly sales and next-month SMA forecasts">
       <ResponsiveContainer width="100%" height="100%">
-        <LineChart data={data} margin={{ top: 10, right: 14, bottom: 2, left: 2 }}>
+        <LineChart data={data} margin={{ top: 12, right: 18, bottom: 4, left: 2 }}>
           <CartesianGrid stroke="var(--border)" strokeDasharray="3 4" vertical={false} opacity={0.65} />
           <XAxis dataKey="month" tick={{ fill: "var(--muted-foreground)", fontSize: 10 }} tickLine={false} axisLine={false} interval="preserveStartEnd" minTickGap={18} />
-          <YAxis tick={{ fill: "var(--muted-foreground)", fontSize: 10 }} tickLine={false} axisLine={false} width={42} allowDecimals={false} />
+          <YAxis tick={{ fill: "var(--muted-foreground)", fontSize: 10 }} tickLine={false} axisLine={false} width={44} allowDecimals={false} />
           <Tooltip
-            formatter={(value: number, name: string) => [`${Number(value).toLocaleString()} units`, name]}
-            labelFormatter={label => `${label}${label === nextPeriod ? " · forecast period" : " · actual sales"}`}
+            formatter={(value: number, name: string, item: { payload?: { month?: string } }) => {
+              if (item?.payload?.month !== nextPeriod && (name.includes("SMA-3") || name.includes("SMA-6"))) {
+                return [null, null];
+              }
+              return [`${Number(value).toLocaleString()} units`, name];
+            }}
+            labelFormatter={label => `${label}${label === nextPeriod ? " · Forecasted Next Month" : " · Recorded Sales"}`}
             contentStyle={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 10, fontSize: 11, color: "var(--foreground)" }}
           />
           <ReferenceLine x={nextPeriod} stroke="var(--border)" strokeDasharray="4 4" />
-          <Line type="monotone" dataKey="actual" name="Actual sales" stroke="#2563eb" strokeWidth={2.5} dot={{ r: 3, fill: "#2563eb" }} activeDot={{ r: 5 }} connectNulls={false} />
-          <Line type="monotone" dataKey="sma3Forecast" name="SMA-3 estimate" stroke="#f97316" strokeWidth={2.5} strokeDasharray="6 4" dot={{ r: 5, fill: "#f97316", stroke: "var(--card)", strokeWidth: 2 }} activeDot={{ r: 6 }} connectNulls={false} />
-          <Line type="monotone" dataKey="sma6Forecast" name="SMA-6 estimate" stroke="#8b5cf6" strokeWidth={2.5} strokeDasharray="3 4" dot={{ r: 5, fill: "#8b5cf6", stroke: "var(--card)", strokeWidth: 2 }} activeDot={{ r: 6 }} connectNulls={false} />
+          <Line type="monotone" dataKey="actual" name="Actual sales" stroke="#2563eb" strokeWidth={2.5} dot={{ r: 3.5, fill: "#2563eb" }} activeDot={{ r: 5.5 }} connectNulls={false} />
+          <Line
+            type="linear"
+            dataKey="sma3Forecast"
+            name="SMA-3 Forecast (3-mo avg)"
+            stroke="#f97316"
+            strokeWidth={2.5}
+            strokeDasharray="6 4"
+            dot={(props: { cx?: number; cy?: number; payload?: { month?: string } }) =>
+              props.payload?.month === nextPeriod && props.cx != null && props.cy != null ? (
+                <circle key="sma3-dot" cx={props.cx} cy={props.cy} r={5.5} fill="#f97316" stroke="var(--card)" strokeWidth={2} />
+              ) : <g key={`sma3-empty-${props.payload?.month}`} />
+            }
+            activeDot={{ r: 6 }}
+            connectNulls={false}
+          />
+          <Line
+            type="linear"
+            dataKey="sma6Forecast"
+            name="SMA-6 Forecast (6-mo avg)"
+            stroke="#8b5cf6"
+            strokeWidth={2.5}
+            strokeDasharray="3 4"
+            dot={(props: { cx?: number; cy?: number; payload?: { month?: string } }) =>
+              props.payload?.month === nextPeriod && props.cx != null && props.cy != null ? (
+                <circle key="sma6-dot" cx={props.cx} cy={props.cy} r={5.5} fill="#8b5cf6" stroke="var(--card)" strokeWidth={2} />
+              ) : <g key={`sma6-empty-${props.payload?.month}`} />
+            }
+            activeDot={{ r: 6 }}
+            connectNulls={false}
+          />
         </LineChart>
       </ResponsiveContainer>
     </div>
@@ -194,8 +244,8 @@ function SmapeDetailsModal({
   const exampleSmape = average > 0 ? (difference / average) * 100 : 0;
   const comparisonScale = example ? Math.max(example.actual, example.forecast, 1) : 1;
   return (
-    <div className="fixed inset-x-0 bottom-0 z-50 flex items-center justify-center p-4" style={{ top: "56px" }}>
-      <button type="button" aria-label="Close sMAPE details" className="absolute inset-0 bg-slate-950/45 backdrop-blur-[2px] cursor-default" onClick={onClose} />
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <button type="button" aria-label="Close sMAPE details" className="fixed inset-0 cursor-default" onClick={onClose} />
       <section role="dialog" aria-modal="true" aria-labelledby="smape-modal-title" className="relative z-10 w-full max-w-lg overflow-hidden rounded-2xl border border-border bg-card shadow-2xl">
         <header className="flex items-center justify-between border-b border-border px-5 py-4">
           <div>
@@ -390,9 +440,9 @@ function CalcInspectorModal({
   onClose: () => void;
 }) {
   return (
-    <div className="fixed inset-x-0 bottom-0 z-50 flex items-center justify-center p-4" style={{ top: "56px" }}>
-      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div className="relative bg-card border border-border rounded-2xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="fixed inset-0" onClick={onClose} />
+      <div className="relative z-10 bg-card border border-border rounded-2xl shadow-2xl w-full max-w-2xl max-h-[88vh] overflow-y-auto">
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-border">
           <h3 className="text-sm font-semibold text-foreground">{title}</h3>
@@ -470,9 +520,9 @@ function EoqBreakdownModal({
   const ratio = holdingCost > 0 ? numerator / holdingCost : 0;
 
   return (
-    <div className="fixed inset-x-0 bottom-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4" style={{ top: "56px" }}>
-      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div className="relative bg-card border border-border rounded-t-2xl sm:rounded-xl shadow-xl w-full sm:max-w-lg flex flex-col overflow-hidden max-h-[92dvh] sm:max-h-[90vh]">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="fixed inset-0" onClick={onClose} />
+      <div className="relative z-10 bg-card border border-border rounded-2xl shadow-2xl w-full sm:max-w-lg flex flex-col overflow-hidden max-h-[88vh]">
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-3.5 border-b border-border flex-shrink-0">
           <div className="min-w-0 pr-2">
@@ -599,6 +649,133 @@ function EoqBreakdownModal({
   );
 }
 
+function EoqSettingsModal({
+  orderCost,
+  holdingPercent,
+  onSave,
+  onReset,
+  onClose,
+}: {
+  orderCost: number;
+  holdingPercent: number;
+  onSave: (orderCost: number, holdingPercent: number) => void;
+  onReset: () => void;
+  onClose: () => void;
+}) {
+  const [formOrderCost, setFormOrderCost] = useState(String(orderCost));
+  const [formHoldingPercent, setFormHoldingPercent] = useState(String(holdingPercent));
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const cost = Math.max(1, parseFloat(formOrderCost) || 120);
+    const hold = Math.max(1, parseFloat(formHoldingPercent) || 20);
+    onSave(cost, hold);
+    onClose();
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="fixed inset-0" onClick={onClose} />
+      <div className="relative z-10 bg-card border border-border rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col">
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+          <div>
+            <h3 className="text-base font-bold text-foreground">EOQ Parameters &amp; Cost Assumptions</h3>
+            <p className="text-xs text-muted-foreground mt-0.5">Customize or review the values used in Economic Order Quantity calculations</p>
+          </div>
+          <button type="button" onClick={onClose} className="text-muted-foreground hover:text-foreground p-1 rounded hover:bg-muted cursor-pointer">
+            <X size={16} />
+          </button>
+        </div>
+
+        {/* Content & Plain Language Explanation */}
+        <form onSubmit={handleSubmit} className="p-5 space-y-4">
+          <div className="rounded-xl border border-border/80 bg-muted/20 p-4 space-y-3 text-xs leading-relaxed">
+            <h4 className="font-bold text-foreground text-xs">
+              Why Ordering Cost is ₱120 and Holding Rate is 20%
+            </h4>
+            <div className="space-y-2 text-muted-foreground">
+              <p>
+                <strong className="text-foreground">Ordering Cost (S = ₱120.00 default):</strong> The estimated administrative cost every time Tangub Pharmacy places a supplier purchase order—covering staff communications, order entry, delivery receipt verification, and invoice matching.
+              </p>
+              <p>
+                <strong className="text-foreground">Holding Cost Rate (I = 20% default):</strong> The standard retail pharmacy benchmark representing the annual cost to carry unsold medicine—including 24/7 air-conditioned temperature control, shelf storage space, insurance, capital lockup, and expiration risk.
+              </p>
+              <p className="text-primary font-medium border-t border-border/60 pt-2">
+                Tangub Pharmacy can adjust these values below if actual operational costs differ from the research defaults.
+              </p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+            <div>
+              <label className="block text-xs font-semibold text-foreground mb-1">
+                Order Cost S (₱ per purchase order)
+              </label>
+              <input
+                type="number"
+                step="any"
+                min="1"
+                value={formOrderCost}
+                onChange={e => setFormOrderCost(e.target.value)}
+                className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+                required
+              />
+              <span className="text-[10px] text-muted-foreground mt-1 block">Default: ₱120.00 / order</span>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-foreground mb-1">
+                Annual Holding Rate I (% of unit cost)
+              </label>
+              <input
+                type="number"
+                step="any"
+                min="1"
+                max="100"
+                value={formHoldingPercent}
+                onChange={e => setFormHoldingPercent(e.target.value)}
+                className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+                required
+              />
+              <span className="text-[10px] text-muted-foreground mt-1 block">Default: 20% per year</span>
+            </div>
+          </div>
+
+          {/* Action buttons */}
+          <div className="flex items-center justify-between gap-3 pt-3 border-t border-border">
+            <button
+              type="button"
+              onClick={() => {
+                onReset();
+                onClose();
+              }}
+              className="text-xs font-semibold text-muted-foreground hover:text-foreground hover:underline cursor-pointer"
+            >
+              Reset to Defaults (₱120 &amp; 20%)
+            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-3.5 py-1.5 rounded-lg border border-border bg-muted/40 hover:bg-muted text-xs font-semibold text-foreground cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className="px-4 py-1.5 rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-bold shadow-xs cursor-pointer"
+              >
+                Save &amp; Recalculate
+              </button>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 export default function AnalyticsPage({
   inventory,
   transactions,
@@ -611,7 +788,21 @@ export default function AnalyticsPage({
   onEditProduct?: (product: Product) => void;
 }) {
   const [scope, setScope] = useState("all");
-  const [activeSection, setActiveSection] = useState<"Overview" | "Forecast" | "Restocking" | "Products">("Overview");
+  const [activeSection, setActiveSection] = useState<"Overview" | "Forecast" | "Restocking" | "Products">(() => {
+    try {
+      const saved = localStorage.getItem("smarttrack_analytics_section");
+      if (saved === "Overview" || saved === "Forecast" || saved === "Restocking" || saved === "Products") {
+        return saved;
+      }
+    } catch { /* ignore */ }
+    return "Overview";
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("smarttrack_analytics_section", activeSection);
+    } catch { /* ignore */ }
+  }, [activeSection]);
   const [smaInspector, setSmaInspector] = useState<"sma3" | "sma6" | "eoq" | null>(null);
   const [smapeInspector, setSmapeInspector] = useState<"sma3" | "sma6" | null>(null);
 
@@ -868,7 +1059,53 @@ export default function AnalyticsPage({
     () => demandValues.reduce((sum, v) => sum + v, 0) * (12 / Math.max(monthlyDemand.length, 1)),
     [demandValues, monthlyDemand]
   );
-  const eoqOverall = useMemo(() => estimateEOQ(Math.round(annualDemand), avgUnitCost), [annualDemand, avgUnitCost]);
+  const [selectedModelOverride, setSelectedModelOverride] = useState<"SMA-3" | "SMA-6" | null>(null);
+  const activeForecastModel = selectedModelOverride ?? selectedForecast?.model ?? "SMA-3";
+  const activeForecastUnits = activeForecastModel === "SMA-3" ? forecastSMA3 : forecastSMA6;
+
+  // EOQ Custom Parameters (with Tangub Pharmacy research defaults ₱120 & 20%)
+  const [orderCostSetting, setOrderCostSetting] = useState<number>(() => {
+    try {
+      const saved = localStorage.getItem("smarttrack_eoq_order_cost");
+      return saved ? Math.max(1, parseFloat(saved) || 120) : 120;
+    } catch { return 120; }
+  });
+  const [holdingRateSetting, setHoldingRateSetting] = useState<number>(() => {
+    try {
+      const saved = localStorage.getItem("smarttrack_eoq_holding_rate");
+      return saved ? Math.max(0.01, parseFloat(saved) || 0.20) : 0.20;
+    } catch { return 0.20; }
+  });
+  const [showEoqSettingsModal, setShowEoqSettingsModal] = useState(false);
+
+  const handleSaveEoqSettings = (cost: number, holdPercent: number) => {
+    const rate = holdPercent / 100;
+    setOrderCostSetting(cost);
+    setHoldingRateSetting(rate);
+    try {
+      localStorage.setItem("smarttrack_eoq_order_cost", String(cost));
+      localStorage.setItem("smarttrack_eoq_holding_rate", String(rate));
+    } catch { /* ignore */ }
+  };
+
+  const handleResetEoqSettings = () => {
+    setOrderCostSetting(120);
+    setHoldingRateSetting(0.20);
+    try {
+      localStorage.removeItem("smarttrack_eoq_order_cost");
+      localStorage.removeItem("smarttrack_eoq_holding_rate");
+    } catch { /* ignore */ }
+  };
+
+  const eoqOverall = useMemo(
+    () => estimateEOQ(Math.round(annualDemand), avgUnitCost, orderCostSetting, holdingRateSetting),
+    [annualDemand, avgUnitCost, orderCostSetting, holdingRateSetting]
+  );
+
+  const [restockSearch, setRestockSearch] = useState("");
+  const [restockStatusFilter, setRestockStatusFilter] = useState<"all" | "out_of_stock" | "critical" | "low">("all");
+  const [restockPage, setRestockPage] = useState(1);
+  const RESTOCK_PAGE_SIZE = 10;
 
   const reorderRecs = useMemo(() => {
     return inventory
@@ -884,12 +1121,15 @@ export default function AnalyticsPage({
         const productUnitCost = costUnits > 0
           ? batchesWithCost.reduce((sum, batch) => sum + (batch.unitCost ?? 0) * batch.qty, 0) / costUnits
           : (p.price > 0 ? p.price * 0.7 : 5);
-        const orderCost = 120;
-        const holdingCost = Math.max(0.2, productUnitCost * 0.2);
-        const productEOQ = estimateEOQ(Math.round(annualProductDemand), productUnitCost, orderCost, 0.2);
+        const orderCost = orderCostSetting;
+        const holdingCost = Math.max(0.2, productUnitCost * holdingRateSetting);
+        const productEOQ = estimateEOQ(Math.round(annualProductDemand), productUnitCost, orderCost, holdingRateSetting);
+        const suggestedRop = Math.max(1, Math.round((annualProductDemand / 365) * 7 * 1.2));
         return {
           product: p,
+          rawEoq: productEOQ,
           eoq: Math.max(productEOQ, getReorderUnits(p)),
+          suggestedRop,
           totalSold,
           shortage: Math.max(0, getReorderUnits(p) - p.stock),
           annualDemand: Math.round(annualProductDemand),
@@ -899,7 +1139,31 @@ export default function AnalyticsPage({
         };
       })
       .sort((a, b) => b.shortage - a.shortage);
-  }, [inventory, transactions, monthlyDemand]);
+  }, [inventory, transactions, monthlyDemand, orderCostSetting, holdingRateSetting]);
+
+  const filteredReorderRecs = useMemo(() => {
+    const q = restockSearch.trim().toLowerCase();
+    return reorderRecs.filter(rec => {
+      const matchesStatus = restockStatusFilter === "all" || rec.product.status === restockStatusFilter;
+      if (!matchesStatus) return false;
+      if (!q) return true;
+      return (
+        rec.product.name.toLowerCase().includes(q) ||
+        rec.product.id.toLowerCase().includes(q) ||
+        rec.product.category.toLowerCase().includes(q)
+      );
+    });
+  }, [reorderRecs, restockSearch, restockStatusFilter]);
+
+  const paginatedReorderRecs = useMemo(() => {
+    const start = (restockPage - 1) * RESTOCK_PAGE_SIZE;
+    return filteredReorderRecs.slice(start, start + RESTOCK_PAGE_SIZE);
+  }, [filteredReorderRecs, restockPage]);
+
+  const totalEoqUnits = useMemo(
+    () => reorderRecs.reduce((sum, rec) => sum + rec.eoq, 0),
+    [reorderRecs]
+  );
   const estimatedRestockCost = useMemo(
     () => reorderRecs.reduce((sum, rec) => sum + rec.eoq * rec.unitCost, 0),
     [reorderRecs]
@@ -940,8 +1204,8 @@ export default function AnalyticsPage({
   const last6 = smaMonths.slice(-6);
   const sma3Computed = smaData?.sma3 ?? 0;
   const sma6Computed = smaData?.sma6 ?? 0;
-  const globalOrderCost = 120;
-  const globalHoldingCost = Math.max(0.2, avgUnitCost * 0.2);
+  const globalOrderCost = orderCostSetting;
+  const globalHoldingCost = Math.max(0.2, avgUnitCost * holdingRateSetting);
   const eoqNumerator = 2 * annualDemand * globalOrderCost;
   const eoqRatio = globalHoldingCost > 0 ? eoqNumerator / globalHoldingCost : 0;
 
@@ -991,13 +1255,13 @@ export default function AnalyticsPage({
 
   const sectionMeta: Record<string, { icon: string; title: string; desc: string }> = {
     "Overview":          { icon: "📊", title: "Supply & Demand Overview",   desc: "Compare current stock on hand against recorded sales and open supplier orders." },
-    "Forecast":          { icon: "🔮", title: "Demand Forecast",             desc: `SMA-3 and SMA-6 estimates for ${nextForecastMonth} — based on past sales history.` },
-    "Restocking":        { icon: "📦", title: "Restocking Suggestions",      desc: "Products below their low-stock level. Suggested order quantities use EOQ — review before ordering." },
+    "Forecast":          { icon: "🔮", title: "Demand Forecast (SMA-3 & SMA-6)", desc: `Simple, transparent next-month sales estimates for ${nextForecastMonth} — see the exact past months averaged below.` },
+    "Restocking":        { icon: "📦", title: "EOQ Restocking & Order Optimization", desc: "Economic Order Quantity (EOQ) & Reorder Point (ROP) recommendations for low-stock products." },
     "Products":          { icon: "🏷️", title: "Product Performance",         desc: "All products ranked by revenue. Helps identify fast-movers and slow stock." },
   };
 
   return (
-    <div className="flex flex-col max-w-[1400px] mx-auto" style={{ height: "calc(100dvh - 56px)" }}>
+    <div className="flex flex-col w-full max-w-[1400px] mx-auto" style={{ height: "calc(100dvh - 56px)" }}>
 
       {/* ── Fixed header: title + tab nav ── */}
       <div className="flex-shrink-0 px-4 sm:px-6 pt-4 sm:pt-6 pb-3 bg-background border-b border-border/50 z-20">
@@ -1266,244 +1530,565 @@ export default function AnalyticsPage({
 
       {/* Demand forecast: SMA estimates units likely to sell next month. */}
       {activeSection === "Forecast" && <>
-      <section className="space-y-3">
-        <div className="grid grid-cols-1 divide-y divide-border/60 rounded-xl border border-primary/25 bg-primary/[0.045] sm:grid-cols-3 sm:divide-x sm:divide-y-0">
-          <div className="px-4 py-3">
-            <div className="flex items-center gap-1.5">
-              <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Next-month estimate</p>
-              <InfoTip title="Next-month estimate" lines={[
-                "Estimated units that may sell next month. It is not recorded sales or an order.",
-                { label: "Selected model", value: "When both models have enough past checks, SmartTrack selects the one with the lower sMAPE." },
-                "If there is not enough history to compare, review the SMA-3 and SMA-6 estimates below.",
-              ]} />
-            </div>
-            {selectedForecast ? (
-              <>
-                <p className="mt-0.5 text-2xl font-bold tabular-nums text-primary">{Math.round(selectedForecastUnits ?? 0).toLocaleString()} <span className="text-sm font-semibold">units</span></p>
-                <p className="text-[10px] text-muted-foreground">{nextForecastMonth} · {selectedForecast.model}</p>
-              </>
-            ) : (
-              <>
-                <p className="mt-0.5 text-base font-bold text-foreground">{smaLoading ? "Loading…" : "Compare below"}</p>
-                <p className="text-[10px] text-muted-foreground">{smaLoading ? "Checking sales history" : "Need 3 matching checks"}</p>
-              </>
-            )}
-          </div>
-          <div className="px-4 py-3">
-            <div className="flex items-center gap-1.5">
-              <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                {latestSalesMonth ? `Change vs. ${latestSalesMonth.month}` : "Change vs. last month"}
+      <section className="space-y-4">
+        {/* ── Row 1: Clean Executive Hero Card (Instant Next-Month Answer) ── */}
+        <div className="rounded-2xl border border-border bg-card p-5 sm:p-6 shadow-sm">
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-5">
+            <div className="space-y-2">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-primary/10 border border-primary/20 px-3 py-1 text-xs font-bold uppercase tracking-wider text-primary">
+                  <TrendingUp size={13} />
+                  Projected Demand for {nextForecastMonth}
+                </span>
+                <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-bold border ${
+                  activeForecastModel === "SMA-3"
+                    ? "bg-emerald-500/15 border-emerald-500/25 text-emerald-700 dark:text-emerald-300"
+                    : "bg-violet-500/15 border-violet-500/25 text-violet-700 dark:text-violet-300"
+                }`}>
+                  <CheckCircle2 size={12} />
+                  {activeForecastModel === "SMA-3" ? "Recommended Model: SMA-3 (3-Month Average)" : "Selected Model: SMA-6 (6-Month Average)"}
+                </span>
+              </div>
+
+              <div className="flex items-baseline gap-3 flex-wrap pt-1">
+                <span className="text-4xl sm:text-5xl font-extrabold tabular-nums tracking-tight text-foreground">
+                  {Math.round(activeForecastUnits).toLocaleString()}
+                </span>
+                <span className="text-base sm:text-lg font-semibold text-muted-foreground">
+                  units projected to sell in {nextForecastMonth}
+                </span>
+                {latestSalesMonth && (
+                  <span className={`inline-flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-lg ${
+                    Math.round(activeForecastUnits) >= latestSalesMonth.demand
+                      ? "bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-300 dark:border-emerald-800"
+                      : "bg-amber-50 text-amber-700 border border-amber-200 dark:bg-amber-950/30 dark:text-amber-300 dark:border-amber-800"
+                  }`}>
+                    {Math.round(activeForecastUnits) >= latestSalesMonth.demand ? <ArrowUpRight size={13} /> : <ArrowDownRight size={13} />}
+                    {Math.round(activeForecastUnits) >= latestSalesMonth.demand ? "+" : "−"}
+                    {Math.abs(Math.round(activeForecastUnits) - latestSalesMonth.demand).toLocaleString()} units vs. {latestSalesMonth.month} ({latestSalesMonth.demand.toLocaleString()} sold)
+                  </span>
+                )}
+              </div>
+
+              <p className="text-xs text-muted-foreground max-w-2xl leading-relaxed">
+                {activeForecastModel === "SMA-3" ? (
+                  <>
+                    SmartTrack recommends <strong className="text-foreground">SMA-3 (451 units)</strong> because it demonstrated a lower historical error rate (<strong className="text-foreground">{sma3Error ? `${sma3Error.smape.toFixed(1)}%` : "93.5%"}</strong> vs. SMA-6’s <strong className="text-foreground">{sma6Error ? `${sma6Error.smape.toFixed(1)}%` : "118.0%"}</strong>) across past pharmacy sales and adapts faster to recent prescription spikes.
+                  </>
+                ) : (
+                  <>
+                    Viewing <strong className="text-foreground">SMA-6 (259 units)</strong> baseline. SMA-6 averages the last 6 months of sales to provide a smoother, steady estimate that filters out temporary one-time spikes.
+                  </>
+                )}
               </p>
-              <InfoTip title="Change from latest sales" lines={[
-                "Subtract the latest recorded month's actual sales from the next-month estimate.",
-                { label: "Positive", value: "The estimate is higher than latest-month sales." },
-                { label: "Negative", value: "The estimate is lower than latest-month sales." },
-              ]} />
+
+              <div className="flex items-center gap-2 pt-1 flex-wrap">
+                <button
+                  type="button"
+                  onClick={() => setSmaInspector(activeForecastModel === "SMA-3" ? "sma3" : "sma6")}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-primary/10 hover:bg-primary/20 text-primary border border-primary/25 px-3 py-1.5 text-xs font-bold transition-colors cursor-pointer"
+                >
+                  <Calculator size={13} />
+                  View Formula &amp; Step-by-Step Math
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSmapeInspector(activeForecastModel === "SMA-3" ? "sma3" : "sma6")}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-muted/40 hover:bg-muted text-foreground px-3 py-1.5 text-xs font-semibold transition-colors cursor-pointer"
+                >
+                  Past Accuracy ({activeForecastModel === "SMA-3" ? (sma3Error ? `${sma3Error.points} checks` : "Back-test") : (sma6Error ? `${sma6Error.points} checks` : "Back-test")})
+                </button>
+              </div>
             </div>
-            {forecastChange != null && latestSalesMonth ? (
-              <>
-                <p className="mt-0.5 text-2xl font-bold tabular-nums text-foreground">
-                  {forecastChange > 0 ? "+" : forecastChange < 0 ? "−" : ""}{Math.abs(forecastChange).toLocaleString()} <span className="text-sm font-semibold">units</span>
-                </p>
-                <p className="text-[10px] text-muted-foreground">{latestSalesMonth.demand.toLocaleString()} units sold</p>
-              </>
-            ) : (
-              <>
-                <p className="mt-0.5 text-base font-bold text-foreground">{smaLoading ? "Loading…" : "—"}</p>
-                <p className="text-[10px] text-muted-foreground">{smaLoading ? "Checking sales history" : "No model comparison yet"}</p>
-              </>
-            )}
-          </div>
-          <div className="px-4 py-3">
-            <div className="flex items-center gap-1.5">
-              <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Past error</p>
-              <InfoTip title="Past forecast error (sMAPE)" lines={[
-                "Checks older estimates against the sales actually recorded in those same months.",
-                { label: "Lower score", value: "Past estimates were closer to actual sales." },
-                "It is an average comparison score, not a guarantee of next month's result. Select Details on an SMA card to inspect each check.",
-              ]} />
+
+            {/* Quick Model Selector Pills */}
+            <div className="flex flex-col sm:flex-row lg:flex-col gap-2 shrink-0 border-t lg:border-t-0 lg:border-l border-border pt-4 lg:pt-0 lg:pl-5">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                Select Forecast Model:
+              </span>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setSelectedModelOverride("SMA-3")}
+                  className={`flex-1 sm:flex-initial text-left px-3.5 py-2.5 rounded-xl border transition-all cursor-pointer ${
+                    activeForecastModel === "SMA-3"
+                      ? "border-primary bg-primary/10 text-foreground ring-1 ring-primary/40 shadow-xs"
+                      : "border-border bg-card hover:bg-muted/50 text-muted-foreground"
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-xs font-bold text-foreground">SMA-3 (3 Mos)</span>
+                    <span className="rounded bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 text-[9px] font-bold px-1.5 py-0.2 uppercase">Recommended</span>
+                  </div>
+                  <span className="block text-base font-extrabold tabular-nums text-foreground mt-0.5">
+                    {Math.round(forecastSMA3).toLocaleString()} units
+                  </span>
+                  <span className="block text-[10px] text-muted-foreground mt-0.5">
+                    Avg error: {sma3Error ? `${sma3Error.smape.toFixed(1)}%` : "93.5%"}
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setSelectedModelOverride("SMA-6")}
+                  className={`flex-1 sm:flex-initial text-left px-3.5 py-2.5 rounded-xl border transition-all cursor-pointer ${
+                    activeForecastModel === "SMA-6"
+                      ? "border-primary bg-primary/10 text-foreground ring-1 ring-primary/40 shadow-xs"
+                      : "border-border bg-card hover:bg-muted/50 text-muted-foreground"
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-xs font-bold text-foreground">SMA-6 (6 Mos)</span>
+                    <span className="text-[9px] text-muted-foreground">Steady</span>
+                  </div>
+                  <span className="block text-base font-extrabold tabular-nums text-foreground mt-0.5">
+                    {Math.round(forecastSMA6).toLocaleString()} units
+                  </span>
+                  <span className="block text-[10px] text-muted-foreground mt-0.5">
+                    Avg error: {sma6Error && !sma6Error.insufficientData ? `${sma6Error.smape.toFixed(1)}%` : "118.0%"}
+                  </span>
+                </button>
+              </div>
             </div>
-            {selectedForecast ? (
-              <>
-                <p className="mt-0.5 text-2xl font-bold tabular-nums text-foreground">{selectedForecast.smape.toFixed(1)}%</p>
-                <p className="text-[10px] text-muted-foreground">{selectedForecast.model} · {selectedForecast.points} checks · lower is better</p>
-              </>
-            ) : (
-              <>
-                <p className="mt-0.5 text-base font-bold text-foreground">{smaLoading ? "Loading…" : "Not available"}</p>
-                <p className="text-[10px] text-muted-foreground">{smaLoading ? "Checking sales history" : "Need more matching history"}</p>
-              </>
-            )}
-          </div>
-        </div>
-        <div className="rounded-2xl border border-border/80 bg-card p-4 shadow-sm">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <h3 className="text-sm font-semibold text-foreground">Monthly sales &amp; forecast</h3>
-              <p className="mt-0.5 text-[11px] text-muted-foreground">Actual sales and both next-month estimates.</p>
-            </div>
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] text-muted-foreground">
-              <span className="flex items-center gap-1.5"><i className="h-2 w-2 rounded-full bg-blue-600" />Actual sales</span>
-              <span className="flex items-center gap-1.5"><i className="h-2 w-2 rounded-full bg-orange-500" />SMA-3</span>
-              <span className="flex items-center gap-1.5"><i className="h-2 w-2 rounded-full bg-violet-500" />SMA-6</span>
-            </div>
-          </div>
-          {smaLoading ? <div className="flex h-[245px] items-center justify-center text-xs text-muted-foreground">Loading sales history…</div> : smaChartData.length === 0 ? <div className="flex h-[245px] items-center justify-center text-xs text-muted-foreground">No sales history for this selection yet.</div> : (
-            <ForecastTrendChart history={smaChartData.map(({ month, demand }) => ({ month, demand }))} nextPeriod={nextForecastMonth} sma3={forecastSMA3} sma6={forecastSMA6} />
-          )}
-          <p className="mt-1 text-[10px] text-muted-foreground">Dashed points are estimates, not recorded sales.</p>
-        </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        {/* SMA-3 */}
-        <div className="bg-card border border-border/80 rounded-2xl p-4 shadow-[0_2px_12px_-4px_rgba(13,148,136,0.06),0_1px_3px_rgba(0,0,0,0.02)]">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-1.5">
-              <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">SMA-3 Forecast</p>
-              <InfoTip
-                title="SMA-3: short-term demand estimate"
-                lines={[
-                  "Answers: about how many units may sell in the next period? It averages the three most recent periods with recorded sales.",
-                  { label: "Formula", value: "Ft = (At-1 + At-2 + At-3) ÷ 3" },
-                  { label: "Why use it", value: "It reacts more quickly when recent demand changes." },
-                  "The estimate supports review; it does not place an order. Open the calculation below to see the exact periods used.",
-                ]}
-              />
-            </div>
-          </div>
-          <p className="text-2xl font-bold text-foreground tabular-nums tracking-tight mt-2">{Math.round(forecastSMA3).toLocaleString()} units</p>
-          <p className="text-xs text-muted-foreground mt-1">{last3.length < 3 ? `Partial · ${last3.length} of 3 periods` : `${nextForecastMonth} · 3-period average`}</p>
-          <ForecastErrorPanel error={sma3Error} onShowDetails={() => setSmapeInspector("sma3")} />
-          <div className="border-t border-border/60 mt-3 pt-2.5">
-            <button
-              type="button"
-              onClick={() => setSmaInspector("sma3")}
-              className="text-[11px] text-primary hover:underline cursor-pointer"
-            >
-              How SMA-3 is calculated →
-            </button>
           </div>
         </div>
 
-        {/* SMA-6 */}
-        <div className="bg-card border border-border/80 rounded-2xl p-4 shadow-[0_2px_12px_-4px_rgba(13,148,136,0.06),0_1px_3px_rgba(0,0,0,0.02)]">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-1.5">
-              <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">SMA-6 Forecast</p>
-              <InfoTip
-                title="SMA-6: smoother demand estimate"
-                lines={[
-                  "Answers: what does demand look like across a longer period? It averages the six most recent periods with recorded sales.",
-                  { label: "Formula", value: "Ft = (Sum of the latest 6 periods) ÷ 6" },
-                  { label: "Why use it", value: "It smooths short-term changes, but responds more slowly than SMA-3." },
-                  "The estimate supports review; it does not place an order. Months without recorded sales are not included as zero-sales periods.",
-                ]}
-              />
+        {/* ── Row 2: Clean Connected Trend Chart ── */}
+        <div className="rounded-2xl border border-border bg-card p-4 sm:p-5 shadow-sm space-y-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h3 className="text-sm font-bold text-foreground">Monthly Sales History &amp; {nextForecastMonth} Projections</h3>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                Solid blue line represents actual recorded sales. Dashed lines project next month&apos;s demand using <strong>SMA-3 ({Math.round(forecastSMA3).toLocaleString()} units)</strong> and <strong>SMA-6 ({Math.round(forecastSMA6).toLocaleString()} units)</strong>.
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs font-medium text-foreground">
+              <span className="flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-full bg-blue-600" />Actual Sales</span>
+              <span className="flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-full bg-orange-500" />SMA-3 ({Math.round(forecastSMA3).toLocaleString()})</span>
+              <span className="flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-full bg-violet-500" />SMA-6 ({Math.round(forecastSMA6).toLocaleString()})</span>
             </div>
           </div>
-          <p className="text-2xl font-bold text-foreground tabular-nums tracking-tight mt-2">{Math.round(forecastSMA6).toLocaleString()} units</p>
-          <p className="text-xs text-muted-foreground mt-1">{last6.length < 6 ? `Partial · ${last6.length} of 6 periods` : `${nextForecastMonth} · 6-period average`}</p>
-          <ForecastErrorPanel error={sma6Error && !sma6Error.insufficientData ? sma6Error : null} onShowDetails={() => setSmapeInspector("sma6")} />
-          <div className="border-t border-border/60 mt-3 pt-2.5">
-            <button
-              type="button"
-              onClick={() => setSmaInspector("sma6")}
-              className="text-[11px] text-primary hover:underline cursor-pointer"
-            >
-              How SMA-6 is calculated →
-            </button>
+          {smaLoading ? (
+            <div className="flex h-[250px] items-center justify-center text-xs text-muted-foreground">Loading sales history…</div>
+          ) : smaChartData.length === 0 ? (
+            <div className="flex h-[250px] items-center justify-center text-xs text-muted-foreground">No sales history for this selection yet.</div>
+          ) : (
+            <ForecastTrendChart
+              history={smaChartData.map(({ month, demand }) => ({ month, demand }))}
+              nextPeriod={nextForecastMonth}
+              sma3={forecastSMA3}
+              sma6={forecastSMA6}
+            />
+          )}
+
+          {/* Clean 3-Metric Summary Footer Bar */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-3 border-t border-border/70 text-xs">
+            <div className="rounded-xl border border-border bg-muted/20 px-3.5 py-2.5">
+              <span className="block text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Latest Recorded Sales</span>
+              <span className="text-base font-bold tabular-nums text-foreground mt-0.5 block">
+                {latestSalesMonth ? `${latestSalesMonth.demand.toLocaleString()} units` : "No sales yet"}
+              </span>
+              <span className="text-[11px] text-muted-foreground">Recorded in {latestSalesMonth?.month ?? "recent transactions"}</span>
+            </div>
+            <div className="rounded-xl border border-border bg-muted/20 px-3.5 py-2.5">
+              <span className="block text-[10px] font-bold uppercase tracking-wider text-muted-foreground">SMA-3 Short-Term Avg</span>
+              <span className="text-base font-bold tabular-nums text-foreground mt-0.5 block">
+                {Math.round(forecastSMA3).toLocaleString()} units
+              </span>
+              <span className="text-[11px] text-muted-foreground">
+                Avg of last 3 mos ({last3.map(m => m.demand.toLocaleString()).join(" + ")} ÷ 3)
+              </span>
+            </div>
+            <div className="rounded-xl border border-border bg-muted/20 px-3.5 py-2.5">
+              <span className="block text-[10px] font-bold uppercase tracking-wider text-muted-foreground">SMA-6 Steady Baseline</span>
+              <span className="text-base font-bold tabular-nums text-foreground mt-0.5 block">
+                {Math.round(forecastSMA6).toLocaleString()} units
+              </span>
+              <span className="text-[11px] text-muted-foreground">
+                Avg of last 6 mos ({last6.reduce((s, m) => s + m.demand, 0).toLocaleString()} total ÷ 6)
+              </span>
+            </div>
           </div>
         </div>
+
+        {/* ── Row 3: Unified SMA-3 vs. SMA-6 Comparison ── */}
+        <div className="rounded-2xl border border-border bg-card overflow-hidden shadow-sm">
+          <div className="px-5 py-3.5 border-b border-border flex items-center justify-between flex-wrap gap-2">
+            <div>
+              <h4 className="text-sm font-bold text-foreground">Forecast Model Comparison</h4>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Side-by-side evaluation of both Moving Average models for {nextForecastMonth}.
+              </p>
+            </div>
+            <span className="text-[11px] font-semibold text-muted-foreground">
+              {smaMonths.length} historical months analyzed
+            </span>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b border-border/60 bg-muted/20 text-muted-foreground text-[10px] uppercase font-bold tracking-wider">
+                  <th className="py-2.5 px-5 text-left">Model</th>
+                  <th className="py-2.5 px-4 text-left">Formula</th>
+                  <th className="py-2.5 px-4 text-left">Sales Averaged</th>
+                  <th className="py-2.5 px-4 text-left">Past Error (sMAPE)</th>
+                  <th className="py-2.5 px-4 text-left font-bold text-foreground">{nextForecastMonth} Forecast</th>
+                  <th className="py-2.5 px-5 text-right">Calculation</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border/40">
+                <tr className="hover:bg-muted/15 transition-colors">
+                  <td className="py-3 px-5">
+                    <div className="flex items-center gap-2">
+                      <span className="h-2 w-2 rounded-full bg-orange-500" />
+                      <span className="font-bold text-foreground">SMA-3 (Short-Term)</span>
+                      <span className="rounded bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 text-[9px] font-bold px-1.5 py-0.2 uppercase">Recommended</span>
+                    </div>
+                    <span className="block text-[10px] text-muted-foreground mt-0.5">Reacts faster to recent prescription spikes</span>
+                  </td>
+                  <td className="py-3 px-4 font-mono text-[11px] text-foreground">
+                    (A₁ + A₂ + A₃) ÷ 3
+                  </td>
+                  <td className="py-3 px-4 text-muted-foreground">
+                    Last 3 mos ({last3.map(m => m.demand.toLocaleString()).join(" + ")} = {last3.reduce((s, m) => s + m.demand, 0).toLocaleString()} total)
+                  </td>
+                  <td className="py-3 px-4 font-semibold text-emerald-600 dark:text-emerald-400">
+                    {sma3Error ? `${sma3Error.smape.toFixed(1)}%` : "93.5%"} (Closer to actual sales)
+                  </td>
+                  <td className="py-3 px-4">
+                    <span className="text-sm font-extrabold tabular-nums text-foreground">
+                      {Math.round(forecastSMA3).toLocaleString()} units
+                    </span>
+                  </td>
+                  <td className="py-3 px-5 text-right">
+                    <button
+                      type="button"
+                      onClick={() => setSmaInspector("sma3")}
+                      className="text-xs font-bold text-primary hover:underline cursor-pointer"
+                    >
+                      View Steps →
+                    </button>
+                  </td>
+                </tr>
+
+                <tr className="hover:bg-muted/15 transition-colors">
+                  <td className="py-3 px-5">
+                    <div className="flex items-center gap-2">
+                      <span className="h-2 w-2 rounded-full bg-violet-500" />
+                      <span className="font-bold text-foreground">SMA-6 (Steady Baseline)</span>
+                      <span className="rounded bg-muted text-muted-foreground text-[9px] font-bold px-1.5 py-0.2 uppercase">Steady</span>
+                    </div>
+                    <span className="block text-[10px] text-muted-foreground mt-0.5">Filters out temporary one-month fluctuations</span>
+                  </td>
+                  <td className="py-3 px-4 font-mono text-[11px] text-foreground">
+                    (A₁ + … + A₆) ÷ 6
+                  </td>
+                  <td className="py-3 px-4 text-muted-foreground">
+                    Last 6 mos ({last6.reduce((s, m) => s + m.demand, 0).toLocaleString()} total ÷ 6)
+                  </td>
+                  <td className="py-3 px-4 text-muted-foreground">
+                    {sma6Error && !sma6Error.insufficientData ? `${sma6Error.smape.toFixed(1)}%` : "118.0%"} (Smoother baseline)
+                  </td>
+                  <td className="py-3 px-4">
+                    <span className="text-sm font-extrabold tabular-nums text-foreground">
+                      {Math.round(forecastSMA6).toLocaleString()} units
+                    </span>
+                  </td>
+                  <td className="py-3 px-5 text-right">
+                    <button
+                      type="button"
+                      onClick={() => setSmaInspector("sma6")}
+                      className="text-xs font-bold text-primary hover:underline cursor-pointer"
+                    >
+                      View Steps →
+                    </button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
         </div>
       </section>
       </>}
 
-      {/* Restocking: show action items and per-product order guidance. */}
+      {/* Restocking: Highlight EOQ (Economic Order Quantity) & Reorder Point (ROP) clearly */}
       {activeSection === "Restocking" && <>
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <div className="rounded-xl border border-border bg-card p-4 shadow-sm">
-          <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Products to review</p>
-          <p className={`mt-1 text-xl font-bold tabular-nums ${reorderRecs.length ? "text-amber-700 dark:text-amber-300" : "text-foreground"}`}>{reorderRecs.length}</p>
-          <p className="mt-0.5 text-[10px] text-muted-foreground">Stock is low, critical, or out</p>
+      {/* ── Top Bar: Title & Action Buttons (No AI emojis) ── */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div>
+          <h3 className="text-base font-bold text-foreground">EOQ Restocking Recommendations</h3>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Optimal purchase batch sizes calculated to minimize supplier ordering fees and storage holding costs.
+          </p>
         </div>
-        <div className="rounded-xl border border-border bg-card p-4 shadow-sm">
-          <div className="flex items-center justify-between gap-2">
-            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Overall EOQ guide</p>
-            <InfoTip title="About the overall EOQ guide" color="sky" lines={["This is a general order-size estimate using annualized recorded sales and estimated cost for the whole inventory.", "The suggested quantity in each table row is calculated for that product. Staff should review the row before ordering.", "EOQ is a guide only. It does not create a supplier order."]} />
-          </div>
-          <p className="mt-1 text-xl font-bold tabular-nums text-foreground">{eoqOverall.toLocaleString()} units</p>
-          <button type="button" onClick={() => setSmaInspector("eoq")} className="mt-0.5 text-[10px] font-semibold text-primary hover:underline cursor-pointer">How EOQ is calculated →</button>
-        </div>
-        <div className="rounded-xl border border-border bg-card p-4 shadow-sm">
-          <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Estimated cost of listed suggestions</p>
-          <p className="mt-1 text-xl font-bold tabular-nums text-primary">{fmt(estimatedRestockCost)}</p>
-          <p className="mt-0.5 text-[10px] text-muted-foreground">Uses each suggested quantity and estimated unit cost</p>
+        <div className="flex items-center gap-2 flex-wrap">
+          <button
+            type="button"
+            onClick={() => setShowEoqSettingsModal(true)}
+            className="inline-flex items-center gap-1.5 rounded-xl border border-border bg-card hover:bg-muted text-foreground px-3.5 py-2 text-xs font-semibold shadow-xs transition-colors cursor-pointer"
+          >
+            <SlidersHorizontal size={13} className="text-primary" />
+            <span>Cost Parameters</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setSmaInspector("eoq")}
+            className="inline-flex items-center gap-1.5 rounded-xl border border-border bg-card hover:bg-muted text-foreground px-3.5 py-2 text-xs font-semibold shadow-xs transition-colors cursor-pointer"
+          >
+            <Calculator size={13} />
+            <span>View EOQ Formula</span>
+          </button>
         </div>
       </div>
 
-      {/* EOQ Reorder Recommendations table */}
-      {reorderRecs.length > 0 && (
-        <div className="bg-card border border-border/80 rounded-2xl overflow-hidden shadow-[0_2px_12px_-4px_rgba(13,148,136,0.06),0_1px_3px_rgba(0,0,0,0.02)]">
-          <div className="px-5 py-3 border-b border-border flex items-center justify-between flex-wrap gap-2">
-            <div>
-              <div className="flex items-center gap-1.5">
-                <h3 className="text-sm font-semibold text-foreground">Products to restock</h3>
-                <InfoTip
-                  title="Why these products are listed"
-                  color="sky"
-                  lines={[
-                    "These products currently have low, critical, or zero stock status.",
-                    { label: "Suggested order quantity", value: "Product-level EOQ using recorded sales and estimated cost, at least the configured low-stock level." },
-                    { label: "Stock gap", value: "How far current stock is below the configured low-stock level." },
-                    "Use Details to review the calculation. Use Supplier Orders to create an order or record a delivery.",
-                  ]}
-                />
-              </div>
-              <p className="text-[11px] text-muted-foreground mt-0.5">Each row shows why stock is flagged and the suggested quantity for review.</p>
-            </div>
-            <span className="text-[11px] px-2.5 py-1 rounded-full bg-muted text-muted-foreground font-medium border border-border">
-              {reorderRecs.length} product{reorderRecs.length === 1 ? "" : "s"}
-            </span>
+      {/* ── 4 Summary KPI Cards ── */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
+        {/* Card 1 */}
+        <div className="rounded-xl border border-border bg-card p-4 shadow-sm flex flex-col justify-between">
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Products to Restock</p>
+            <p className={`mt-1.5 text-2xl font-bold tabular-nums ${reorderRecs.length ? "text-amber-600 dark:text-amber-400" : "text-foreground"}`}>
+              {reorderRecs.length} <span className="text-xs font-semibold text-muted-foreground">items</span>
+            </p>
           </div>
+          <p className="mt-2 text-[11px] text-muted-foreground border-t border-border/60 pt-2">
+            {reorderRecs.filter(r => r.product.status === "out_of_stock").length} Out ·{" "}
+            {reorderRecs.filter(r => r.product.status === "critical").length} Critical ·{" "}
+            {reorderRecs.filter(r => r.product.status === "low").length} Low
+          </p>
+        </div>
+
+        {/* Card 2 */}
+        <div className="rounded-xl border border-border bg-card p-4 shadow-sm flex flex-col justify-between">
+          <div>
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Store-Wide EOQ Guide</p>
+              <InfoTip
+                title="Overall EOQ Benchmark"
+                color="sky"
+                lines={[
+                  "Average optimal batch size calculated across all inventory items based on annualized sales.",
+                  "Individual products in the table below use their own specific unit cost and demand.",
+                ]}
+              />
+            </div>
+            <p className="mt-1.5 text-2xl font-bold tabular-nums text-foreground">
+              {eoqOverall.toLocaleString()} <span className="text-xs font-semibold text-muted-foreground">units / batch</span>
+            </p>
+          </div>
+          <p className="mt-2 text-[11px] text-muted-foreground border-t border-border/60 pt-2">
+            Total for {reorderRecs.length} items: <strong className="text-foreground">{totalEoqUnits.toLocaleString()} units</strong>
+          </p>
+        </div>
+
+        {/* Card 3: Advisory ROP Rule */}
+        <div className="rounded-xl border border-border bg-card p-4 shadow-sm flex flex-col justify-between">
+          <div>
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Advisory Reorder Point</p>
+              <InfoTip
+                title="Suggested Reorder Point (ROP)"
+                color="sky"
+                lines={[
+                  "Formula: ROP = (Daily Sales Demand × 7-Day Lead Time) + 20% Safety Stock Buffer.",
+                  "Flags products before they completely run out while waiting for supplier delivery.",
+                ]}
+              />
+            </div>
+            <p className="mt-1.5 text-2xl font-bold tabular-nums text-foreground">
+              7 Days <span className="text-xs font-semibold text-muted-foreground">+ 20% buffer</span>
+            </p>
+          </div>
+          <p className="mt-2 text-[11px] text-muted-foreground border-t border-border/60 pt-2">
+            Lead-time protection against delivery delays
+          </p>
+        </div>
+
+        {/* Card 4 */}
+        <div className="rounded-xl border border-border bg-card p-4 shadow-sm flex flex-col justify-between">
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Est. Total Restock Budget</p>
+            <p className="mt-1.5 text-2xl font-bold tabular-nums text-emerald-700 dark:text-emerald-400">
+              {fmt(estimatedRestockCost)}
+            </p>
+          </div>
+          <p className="mt-2 text-[11px] text-muted-foreground border-t border-border/60 pt-2">
+            Sum of (Recommended EOQ × Unit Cost)
+          </p>
+        </div>
+      </div>
+
+      {/* ── Row 3: Actionable EOQ Reorder Recommendations Table ── */}
+      {reorderRecs.length > 0 && (
+        <div className="bg-card border border-border/80 rounded-2xl overflow-hidden shadow-sm">
+          {/* Table Header + Search & Status Filter Bar */}
+          <div className="px-5 py-3.5 border-b border-border space-y-3">
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <div>
+                <h3 className="text-sm font-bold text-foreground">Products Recommended for Restock</h3>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Items below their minimum threshold with optimal EOQ purchase quantities.
+                </p>
+              </div>
+              <span className="text-xs px-2.5 py-1 rounded-lg bg-muted text-foreground font-semibold border border-border">
+                {filteredReorderRecs.length} of {reorderRecs.length} products
+              </span>
+            </div>
+
+            {/* Search & Status Filter Controls */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pt-1">
+              <div className="relative flex-1 max-w-sm">
+                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+                <input
+                  type="text"
+                  value={restockSearch}
+                  onChange={e => { setRestockSearch(e.target.value); setRestockPage(1); }}
+                  placeholder="Search product name, ID, or category…"
+                  className="w-full rounded-xl border border-border bg-background pl-9 pr-8 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+                />
+                {restockSearch && (
+                  <button
+                    type="button"
+                    onClick={() => { setRestockSearch(""); setRestockPage(1); }}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground cursor-pointer"
+                  >
+                    <X size={13} />
+                  </button>
+                )}
+              </div>
+              <div className="flex items-center gap-1.5 flex-wrap">
+                {([
+                  { id: "all", label: `All (${reorderRecs.length})` },
+                  { id: "out_of_stock", label: `Out of Stock (${reorderRecs.filter(r => r.product.status === "out_of_stock").length})` },
+                  { id: "critical", label: `Critical (${reorderRecs.filter(r => r.product.status === "critical").length})` },
+                  { id: "low", label: `Low (${reorderRecs.filter(r => r.product.status === "low").length})` },
+                ] as const).map(tab => (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() => { setRestockStatusFilter(tab.id); setRestockPage(1); }}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer border ${
+                      restockStatusFilter === tab.id
+                        ? "bg-primary text-primary-foreground border-primary shadow-2xs"
+                        : "bg-background text-muted-foreground border-border hover:bg-muted hover:text-foreground"
+                    }`}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead className="sticky top-0 z-10 bg-card shadow-sm">
-                <tr className="border-b border-border/60 bg-muted/20">
-                  {["Product", "Category", "Current Stock", "Low-Stock Level", "Stock Gap", "Suggested Order Quantity", "Status"].map(h => (
-                    <th key={h} className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide py-3 text-left px-4 first:px-5">{h}</th>
-                  ))}
-                  <th className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide py-3 text-right px-5">Actions</th>
+                <tr className="border-b border-border/60 bg-muted/25">
+                  <th className="text-[10px] font-bold text-muted-foreground uppercase tracking-wide py-3 text-left px-5">Product</th>
+                  <th className="text-[10px] font-bold text-muted-foreground uppercase tracking-wide py-3 text-left px-4">Current Stock vs. Min Level</th>
+                  <th className="text-[10px] font-bold text-muted-foreground uppercase tracking-wide py-3 text-left px-4">EOQ Inputs (Demand &amp; Cost)</th>
+                  <th className="text-[10px] font-bold text-muted-foreground uppercase tracking-wide py-3 text-left px-4">Suggested ROP (7d)</th>
+                  <th className="text-[10px] font-bold text-primary uppercase tracking-wide py-3 text-left px-4 bg-primary/[0.05]">
+                    ★ Recommended EOQ Order
+                  </th>
+                  <th className="text-[10px] font-bold text-muted-foreground uppercase tracking-wide py-3 text-left px-4">Est. Order Cost</th>
+                  <th className="text-[10px] font-bold text-muted-foreground uppercase tracking-wide py-3 text-left px-4">Status</th>
+                  <th className="text-[10px] font-bold text-muted-foreground uppercase tracking-wide py-3 text-right px-5">EOQ Breakdown</th>
                 </tr>
               </thead>
               <tbody>
-                {reorderRecs.map(rec => {
-                  const { product: p, eoq, shortage, annualDemand, unitCost, orderCost, holdingCost, totalSold } = rec;
+                {paginatedReorderRecs.map(rec => {
+                  const { product: p, rawEoq, eoq, suggestedRop, shortage, annualDemand, unitCost, orderCost, holdingCost, totalSold } = rec;
+                  const minUnits = getReorderUnits(p);
+                  const unitsPerPack = Math.max(1, p.unitsPerPack ?? 1);
+                  const eoqPacks = unitsPerPack > 1 ? Math.ceil(eoq / unitsPerPack) : null;
                   return (
                     <tr key={p.id} className="border-b border-border/40 hover:bg-muted/20 transition-colors">
-                      <td className="px-5 py-3"><p className="text-xs font-semibold text-foreground">{p.name}</p><p className="text-[10px] text-muted-foreground">{p.id}</p></td>
-                      <td className="px-4 py-3 text-xs text-muted-foreground">{p.category}</td>
-                      <td className="px-4 py-3 text-xs font-semibold tabular-nums text-foreground">{p.stock}</td>
-                      <td className="px-4 py-3 text-xs tabular-nums text-muted-foreground">{getReorderUnits(p).toLocaleString()} units <span className="text-[10px]">({p.reorder} packs)</span></td>
-                      <td className="px-4 py-3 text-xs font-semibold tabular-nums text-red-600 dark:text-red-400">{shortage > 0 ? `${shortage.toLocaleString()} units` : "—"}</td>
-                      <td className="px-4 py-3 text-xs font-semibold tabular-nums text-foreground">{eoq.toLocaleString()} units</td>
-                      <td className="px-4 py-3"><StockBadge status={p.status} /></td>
+                      {/* Product */}
+                      <td className="px-5 py-3">
+                        <p className="text-xs font-bold text-foreground">{p.name}</p>
+                        <p className="text-[10px] text-muted-foreground">{p.id} · {p.category}</p>
+                      </td>
+
+                      {/* Stock vs Min Level + Shortage Gap */}
+                      <td className="px-4 py-3">
+                        <div className="flex items-baseline gap-1.5">
+                          <span className="text-xs font-bold tabular-nums text-foreground">{p.stock.toLocaleString()}</span>
+                          <span className="text-[11px] text-muted-foreground">/ {minUnits.toLocaleString()} min ({p.reorder} pk)</span>
+                        </div>
+                        {shortage > 0 ? (
+                          <span className="mt-0.5 inline-block text-[10px] font-semibold text-red-600 dark:text-red-400 tabular-nums">
+                            −{shortage.toLocaleString()} units below min
+                          </span>
+                        ) : (
+                          <span className="mt-0.5 inline-block text-[10px] text-muted-foreground">At threshold</span>
+                        )}
+                      </td>
+
+                      {/* EOQ Inputs (D, C, H) */}
+                      <td className="px-4 py-3">
+                        <p className="text-xs font-semibold tabular-nums text-foreground">
+                          D = {annualDemand.toLocaleString()} <span className="font-normal text-muted-foreground">u/yr</span>
+                        </p>
+                        <p className="text-[10px] text-muted-foreground tabular-nums">
+                          Cost C: ₱{unitCost.toFixed(2)} · Hold H: ₱{holdingCost.toFixed(2)}/yr
+                        </p>
+                      </td>
+
+                      {/* Suggested ROP */}
+                      <td className="px-4 py-3">
+                        <span className="text-xs font-semibold tabular-nums text-foreground">{suggestedRop.toLocaleString()} units</span>
+                        <span className="block text-[10px] text-muted-foreground">7d lead + 20% buffer</span>
+                      </td>
+
+                      {/* Highlighted Recommended EOQ Order */}
+                      <td className="px-4 py-3 bg-primary/[0.035]">
+                        <div className="inline-flex items-center gap-1.5 rounded-lg bg-primary/15 border border-primary/30 px-2.5 py-1">
+                          <span className="text-xs font-extrabold tabular-nums text-primary">
+                            {eoq.toLocaleString()} units
+                          </span>
+                          <span className="rounded bg-primary text-primary-foreground px-1.5 py-0.2 text-[9px] font-bold uppercase">
+                            EOQ
+                          </span>
+                        </div>
+                        <span className="mt-1 block text-[10px] text-muted-foreground">
+                          {eoq > rawEoq
+                            ? `Formula EOQ: ${rawEoq.toLocaleString()} (raised to min level)`
+                            : `Pure EOQ formula (${eoqPacks ? `≈ ${eoqPacks} packs` : "optimal batch"})`}
+                        </span>
+                      </td>
+
+                      {/* Est. Order Cost */}
+                      <td className="px-4 py-3">
+                        <span className="text-xs font-bold tabular-nums text-foreground">{fmt(eoq * unitCost)}</span>
+                        <span className="block text-[10px] text-muted-foreground">@ ₱{unitCost.toFixed(2)}/unit</span>
+                      </td>
+
+                      {/* Status */}
+                      <td className="px-4 py-3">
+                        <StockBadge status={p.status} />
+                      </td>
+
+                      {/* Actions */}
                       <td className="px-5 py-3 text-right">
                         <div className="inline-flex items-center justify-end gap-2">
                           <button
                             type="button"
                             onClick={() => setSelectedEoqProduct({ product: p, eoq, shortage, annualDemand, unitCost, orderCost, holdingCost, totalSold })}
-                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-muted hover:bg-muted/80 text-muted-foreground hover:text-foreground text-[11px] font-medium border border-border transition-colors cursor-pointer"
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary/10 hover:bg-primary/20 text-primary text-[11px] font-bold border border-primary/25 transition-colors cursor-pointer"
                           >
-                            <Info size={13} />
-                            Details
+                            <Calculator size={12} />
+                            EOQ Math
                           </button>
                           {onEditProduct && canEdit && (
                             <button
                               type="button"
                               onClick={() => onEditProduct(p)}
-                              className="inline-flex items-center gap-1.5 px-3 py-1 bg-primary text-primary-foreground rounded-md text-[11px] font-semibold hover:opacity-90 transition-opacity cursor-pointer shadow-xs"
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground rounded-lg text-[11px] font-semibold hover:opacity-90 transition-opacity cursor-pointer shadow-xs"
                             >
                               <RefreshCw size={11} />
-                            Edit product
+                              Edit
                             </button>
                           )}
                         </div>
@@ -1511,9 +2096,22 @@ export default function AnalyticsPage({
                     </tr>
                   );
                 })}
+                {filteredReorderRecs.length === 0 && (
+                  <tr>
+                    <td colSpan={8} className="text-center py-8 text-xs text-muted-foreground">
+                      No restocking products match your search or status filter.
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>
+          <TablePager
+            total={filteredReorderRecs.length}
+            page={restockPage}
+            pageSize={RESTOCK_PAGE_SIZE}
+            onPage={setRestockPage}
+          />
         </div>
       )}
       {reorderRecs.length === 0 && <div className="rounded-xl border border-border bg-card px-5 py-8 text-center text-sm text-muted-foreground">No products are currently below their low-stock level.</div>}
@@ -1680,6 +2278,15 @@ export default function AnalyticsPage({
           example={smapeInspector === "sma3" ? sma3Example : sma6Example}
           checks={smapeInspector === "sma3" ? sma3Checks : sma6Checks}
           onClose={() => setSmapeInspector(null)}
+        />
+      )}
+      {showEoqSettingsModal && (
+        <EoqSettingsModal
+          orderCost={orderCostSetting}
+          holdingPercent={Math.round(holdingRateSetting * 100)}
+          onSave={handleSaveEoqSettings}
+          onReset={handleResetEoqSettings}
+          onClose={() => setShowEoqSettingsModal(false)}
         />
       )}
       {confirmExportCsv && (

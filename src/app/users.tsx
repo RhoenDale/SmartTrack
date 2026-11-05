@@ -42,7 +42,7 @@ function CreatePasswordModal({ user, onClose, onSave }: {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/45 backdrop-blur-sm st-overlay-in" onClick={onClose} />
+      <div className="absolute inset-0 bg-black/50 st-overlay-in" onClick={onClose} />
       <div className="relative bg-card border border-border rounded-2xl shadow-2xl w-full max-w-sm p-6 space-y-4 st-modal-in">
         <div className="flex items-center gap-3 pb-3 border-b border-border">
           <div className="w-10 h-10 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center text-sm font-bold text-primary">{user.initials}</div>
@@ -228,7 +228,7 @@ export function ActivityLogPanel({ isAdmin = true }: { isAdmin?: boolean }) {
   };
 
   return (
-    <div className="p-4 sm:p-6 space-y-4 max-w-[1400px] mx-auto st-page-in">
+    <div className="p-4 sm:p-6 space-y-4 w-full max-w-[1400px] mx-auto st-page-in">
       {/* Page header */}
       <div className="flex items-start justify-between gap-3">
         <div>
@@ -421,7 +421,7 @@ export function RecycleBinPanel({
   }, [currentItems.length]);
 
   return (
-    <div className="p-4 sm:p-6 space-y-4 max-w-[1400px] mx-auto st-page-in">
+    <div className="p-4 sm:p-6 space-y-4 w-full max-w-[1400px] mx-auto st-page-in">
       {/* Header */}
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div>
@@ -718,7 +718,7 @@ export default function UsersPage({
   const inactiveCount = staff.filter(s => s.status !== "active").length;
 
   return (
-    <div className="p-4 sm:p-6 space-y-4 max-w-[1400px] mx-auto st-page-in">
+    <div className="p-4 sm:p-6 space-y-4 w-full max-w-[1400px] mx-auto st-page-in">
 
       {/* ── Header ── */}
       <div className="flex items-start sm:items-center justify-between gap-3">
@@ -889,7 +889,7 @@ export default function UsersPage({
           {/* Role Form Modal */}
           {showRoleForm && (
             <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-              <div className="absolute inset-0 bg-black/45 backdrop-blur-sm st-overlay-in" onClick={() => setShowRoleForm(false)} />
+              <div className="absolute inset-0 bg-black/50 st-overlay-in" onClick={() => setShowRoleForm(false)} />
               <div className="relative bg-card border border-border rounded-xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto st-modal-in">
                 <div className="p-5 border-b border-border flex items-center justify-between">
                   <div>

@@ -281,7 +281,7 @@ export default function FinancialPage({ user }: { user: AuthUser }) {
   }
 
   return (
-    <div className="p-4 sm:p-6 space-y-5 max-w-[1400px] mx-auto mx-auto printable-financial">
+    <div className="p-4 sm:p-6 space-y-5 w-full max-w-[1400px] mx-auto printable-financial">
       <style>{`@media print {
         body * { visibility: hidden !important; }
         .printable-financial, .printable-financial * { visibility: visible !important; }
