@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Package, AlertTriangle, Check, X, Pencil, RefreshCw, Calendar } from "lucide-react";
 import { getReorderUnits, sortBatchesByExpiry, type Product } from "./data";
 import { fmt, StockBadge } from "./shared";
