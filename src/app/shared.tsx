@@ -1185,8 +1185,8 @@ export function ProductFormModal({
 }
 
 // ─── New Sale Modal ───────────────────────────────────────────────────────────
-// Expiry helpers used in sale flow
-const EXPIRY_BLOCK_DAYS = 60;
+// Expiry helpers used in sale flow (30-day Tangub Pharmacy sale-blocking rule)
+const EXPIRY_BLOCK_DAYS = 30;
 
 /** Returns days left until expiry — negative means already expired. */
 function daysUntilExpiry(expiryStr: string): number {
