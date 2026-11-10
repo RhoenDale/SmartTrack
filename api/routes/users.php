@@ -168,6 +168,61 @@ if ($method === 'GET' && $id === 'deleted') {
     }, $rows));
 }
 
+// DELETE /users/{id}/roles — remove one role from the signed-in user's account
+if ($id && $sub === 'roles' && $method === 'DELETE') {
+    if (!$authUser || $authUser['id'] !== $id) {
+        json_response(['error' => 'You can only remove roles from your own account.'], 403);
+    }
+    if (!user_roles_enabled($pdo)) {
+        json_response(['error' => 'Multiple-role migration is required. Apply api/migrations/add_multiple_roles_per_user.sql.'], 503);
+    }
+
+    $data = body();
+    if (!isset($data['role']) || !is_string($data['role']) || trim($data['role']) === '') {
+        json_response(['error' => 'Specify a role to remove.'], 422);
+    }
+    $roleToRemove = trim($data['role']);
+
+    $pdo->beginTransaction();
+    try {
+        $userStmt = $pdo->prepare('SELECT id, role FROM users WHERE id = ? FOR UPDATE');
+        $userStmt->execute([$id]);
+        $current = $userStmt->fetch(PDO::FETCH_ASSOC);
+        if (!$current) {
+            $pdo->rollBack();
+            json_response(['error' => 'User not found.'], 404);
+        }
+
+        $rolesStmt = $pdo->prepare('SELECT role_id FROM user_roles WHERE user_id = ? ORDER BY (role_id = ?) DESC, role_id ASC FOR UPDATE');
+        $rolesStmt->execute([$id, $current['role']]);
+        $assignedRoles = array_column($rolesStmt->fetchAll(PDO::FETCH_ASSOC), 'role_id');
+        if (!in_array($roleToRemove, $assignedRoles, true)) {
+            $pdo->rollBack();
+            json_response(['error' => 'That role is not assigned to your account.'], 404);
+        }
+        if (count($assignedRoles) <= 1) {
+            $pdo->rollBack();
+            json_response(['error' => 'Your account must keep at least one role.'], 422);
+        }
+
+        $remainingRoles = array_values(array_diff($assignedRoles, [$roleToRemove]));
+        $pdo->prepare('DELETE FROM user_roles WHERE user_id = ? AND role_id = ?')
+            ->execute([$id, $roleToRemove]);
+        $pdo->prepare('UPDATE users SET role = ?, updated_at = NOW() WHERE id = ?')
+            ->execute([$remainingRoles[0], $id]);
+        $pdo->commit();
+    } catch (Throwable $e) {
+        if ($pdo->inTransaction()) $pdo->rollBack();
+        throw $e;
+    }
+
+    $stmt = $pdo->prepare('SELECT id, name, role, email, position, initials, status, last_login FROM users WHERE id = ?');
+    $stmt->execute([$id]);
+    $updated = $stmt->fetch(PDO::FETCH_ASSOC);
+    if (!$updated) json_response(['error' => 'User not found.'], 404);
+    json_response(format_user($updated));
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Generic /users/{id} block
 // ─────────────────────────────────────────────────────────────────────────────

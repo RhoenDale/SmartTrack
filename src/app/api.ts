@@ -193,6 +193,8 @@ const post = <T>(path: string, body: unknown) =>
 const put  = <T>(path: string, body: unknown) =>
   request<T>(path, { method: 'PUT', body: JSON.stringify(body) });
 const del  = <T>(path: string) => request<T>(path, { method: 'DELETE' });
+const delWithBody = <T>(path: string, body: unknown) =>
+  request<T>(path, { method: 'DELETE', body: JSON.stringify(body) });
 
 // ─── Auth ─────────────────────────────────────────────────────────────────────
 export const authApi = {
@@ -382,6 +384,8 @@ export const usersApi = {
   listDeleted:    () => get<DeletedUser[]>('/users/deleted'),
   restore:        (id: string) => post<{ message: string }>(`/users/${id}/restore`, {}),
   purge:          (id: string) => del<{ message: string }>(`/users/${id}/purge`),
+  removeOwnRole:  (id: string, role: string) =>
+    delWithBody<import('./data').StaffMember>(`/users/${id}/roles`, { role }),
 };
 
 export const activityApi = {

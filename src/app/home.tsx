@@ -20,7 +20,7 @@ import {
 } from "./shared";
 import {
   productsApi, categoriesApi, transactionsApi, returnRequestsApi, dashboardApi,
-  usersApi, notificationsApi, receiptSettingsApi, rolesApi,
+  usersApi, notificationsApi, receiptSettingsApi, rolesApi, activeRoleStore,
   type CashierDashboardSummary,
   type ReceiptSettings,
 } from "./api";
@@ -203,6 +203,8 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
   const [hoveredNotifPid,   setHoveredNotifPid]   = useState<string | null>(null);
   const [showUserProfile,   setShowUserProfile]   = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const [roleToRemove, setRoleToRemove] = useState<string | null>(null);
+  const [roleActionBusy, setRoleActionBusy] = useState(false);
 
   // ── Universal search ────────────────────────────────────────────────────────
   const [searchQuery,      setSearchQuery]      = useState("");
@@ -664,6 +666,30 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
       email: updated.email,
       initials: updated.initials,
     });
+  };
+
+  const activateRole = (role: string) => {
+    activeRoleStore.set(role);
+    onUserUpdated?.({ ...user, role: role as AuthUser["role"] });
+    setPage(role === "admin" || role === "admin/owner" ? "dashboard" : role === "inventory_manager" ? "inventory" : "transactions");
+  };
+
+  const handleRemoveOwnRole = async (role: string) => {
+    setRoleActionBusy(true);
+    try {
+      const updated = await usersApi.removeOwnRole(user.id, role);
+      const remainingRoles = updated.roles ?? [updated.role];
+      const activeRole = remainingRoles.includes(user.role) ? user.role : updated.role;
+      activeRoleStore.set(activeRole);
+      onUserUpdated?.({ ...user, role: activeRole as AuthUser["role"], roles: remainingRoles });
+      setRoleToRemove(null);
+      setPage(activeRole === "admin" || activeRole === "admin/owner" ? "dashboard" : activeRole === "inventory_manager" ? "inventory" : "transactions");
+      showHubToast(`${ROLE_LABELS[role] ?? role} role removed from your account.`, "success");
+    } catch (e: unknown) {
+      showHubToast(e instanceof Error ? e.message : "Could not remove role.", "error");
+    } finally {
+      setRoleActionBusy(false);
+    }
   };
 
   const markAllRead = async () => {
@@ -1241,6 +1267,40 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
   // Shared settings panel content (used in both TrackHub and sidebar topbars)
   const settingsPanelContent = (
     <div className="space-y-3">
+      <section className="border-b border-border/60 pb-3">
+        <div className="mb-2 flex items-center justify-between">
+          <div>
+            <p className="text-xs font-semibold text-foreground">My roles</p>
+            <p className="text-[10px] text-muted-foreground">Switch roles without signing out. You can remove roles, but cannot add them here.</p>
+          </div>
+        </div>
+        <div className="space-y-1.5">
+          {(user.roles?.length ? user.roles : [user.role]).map(role => (
+            <div key={role} className="flex items-center gap-2 rounded-lg border border-border/60 px-2.5 py-2">
+              <button
+                type="button"
+                disabled={roleActionBusy}
+                onClick={() => activateRole(role)}
+                className={`min-w-0 flex-1 truncate text-left text-xs font-semibold transition-colors disabled:cursor-wait ${
+                  user.role === role ? "text-primary" : "text-foreground hover:text-primary"
+                }`}
+                aria-pressed={user.role === role}
+              >
+                {ROLE_LABELS[role] ?? role}{user.role === role ? " · Active" : ""}
+              </button>
+              <button
+                type="button"
+                disabled={roleActionBusy || (user.roles?.length ?? 1) <= 1}
+                onClick={() => setRoleToRemove(role)}
+                className="shrink-0 rounded-md px-2 py-1 text-[10px] font-semibold text-red-500 hover:bg-red-500/10 disabled:cursor-not-allowed disabled:opacity-40"
+                title={(user.roles?.length ?? 1) <= 1 ? "Your account must keep at least one role" : `Remove ${ROLE_LABELS[role] ?? role}`}
+              >
+                Remove
+              </button>
+            </div>
+          ))}
+        </div>
+      </section>
       <div className="border-b border-border/60 pb-3">
         <button
           type="button"
@@ -1976,6 +2036,17 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
             variant="warning"
             onConfirm={onLogout}
             onCancel={() => setShowLogoutConfirm(false)}
+          />
+        )}
+        {roleToRemove && (
+          <ConfirmDialog
+            title="Remove this role?"
+            message={`Remove ${ROLE_LABELS[roleToRemove] ?? roleToRemove} from your account? You can’t add roles back from Preferences.`}
+            confirmLabel="Remove Role"
+            cancelLabel="Keep Role"
+            variant="warning"
+            onConfirm={() => { void handleRemoveOwnRole(roleToRemove); }}
+            onCancel={() => setRoleToRemove(null)}
           />
         )}
 
