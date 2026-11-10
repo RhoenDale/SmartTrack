@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { Ban, CalendarDays, PackageCheck, Pencil, Plus, RefreshCw, Truck, X } from "lucide-react";
 import { productsApi, purchaseOrdersApi, type PurchaseOrder, type SupplierPerformance } from "./api";
-import type { Product } from "./data";
+import { hasUserRole, type Product } from "./data";
 import { InfoTip, TablePager, ConfirmDialog } from "./shared";
 
 type DraftLine = { productId: string; productName: string; qtyOrdered: number };
@@ -31,11 +31,11 @@ function statusLabel(status: PurchaseOrder["status"]) {
 export default function PurchaseOrdersPage({
   inventory,
   onInventoryChanged,
-  userRole,
+  userRoles,
 }: {
   inventory: Product[];
   onInventoryChanged: () => void;
-  userRole: string;
+  userRoles: string[];
 }) {
   const [orders, setOrders] = useState<PurchaseOrder[]>([]);
   const [performance, setPerformance] = useState<SupplierPerformance[]>([]);
@@ -44,7 +44,7 @@ export default function PurchaseOrdersPage({
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
 
-  const canModify = userRole === "inventory_manager";
+  const canModify = hasUserRole({ roles: userRoles }, "inventory_manager");
 
   // ── Create-form state ──────────────────────────────────────────────────
   const [supplier, setSupplier] = useState("");

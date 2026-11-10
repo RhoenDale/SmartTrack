@@ -17,7 +17,7 @@ if ($method !== 'GET') json_response(['error' => 'Method not allowed.'], 405);
 
 if ($id === 'cashier') {
     $cashier = require_auth();
-    if ($cashier['role'] !== 'cashier') {
+    if (!user_has_role($cashier, 'cashier')) {
         json_response(['error' => 'Forbidden. Insufficient permissions.'], 403);
     }
 

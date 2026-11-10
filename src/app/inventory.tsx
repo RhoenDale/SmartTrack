@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { Search, Plus, Pencil, Trash2, Download } from "lucide-react";
-import { getReorderUnits, sortBatchesByExpiry, type Product, type Transaction } from "./data";
+import { getReorderUnits, hasUserRole, sortBatchesByExpiry, type Product, type Transaction } from "./data";
 import { fmt, StockBadge } from "./shared";
 
 export default function InventoryPage({
@@ -13,7 +13,7 @@ export default function InventoryPage({
   onAddCategory,
   selectedProductId,
   hoveredProductId,
-  userRole,
+  userRoles,
 }: {
   inventory: Product[];
   transactions: Transaction[];
@@ -24,17 +24,16 @@ export default function InventoryPage({
   onAddCategory: (cat: string) => void;
   selectedProductId?: string | null;
   hoveredProductId?: string | null;
-  userRole: string;
+  userRoles: string[];
 }) {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const rowRefs = useRef<Record<string, HTMLTableRowElement | null>>({});
 
   // Check if user is admin (read-only access to inventory)
-  const isAdmin   = userRole === "admin" || userRole === "admin/owner";
-  const isCashier = userRole === "cashier";
-  // Only inventory_manager can add, edit, or delete products
-  const canModify = !isAdmin && !isCashier;
+  const isAdmin   = hasUserRole({ roles: userRoles }, "admin") || hasUserRole({ roles: userRoles }, "admin/owner");
+  const isCashier = hasUserRole({ roles: userRoles }, "cashier");
+  const canModify = hasUserRole({ roles: userRoles }, "inventory_manager");
 
   // Units sold per product from sale transactions
   const soldByProductId = useMemo(() => {
@@ -118,8 +117,8 @@ export default function InventoryPage({
             <h1 className="text-xl font-bold text-foreground">Products</h1>
             <p className="text-sm text-muted-foreground mt-0.5">
               {inventory.length} products · {inventory.filter(i => i.status !== "good").length} need attention
-              {isAdmin   && <span className="ml-2 text-amber-600 dark:text-amber-400 font-semibold">· Read-only access</span>}
-              {isCashier && <span className="ml-2 text-violet-600 dark:text-violet-400 font-semibold">· View-only access</span>}
+              {isAdmin && !canModify && <span className="ml-2 text-amber-600 dark:text-amber-400 font-semibold">· Read-only access</span>}
+              {isCashier && !canModify && <span className="ml-2 text-violet-600 dark:text-violet-400 font-semibold">· View-only access</span>}
             </p>
           </div>
           <div className="flex items-center gap-2 flex-wrap justify-end">

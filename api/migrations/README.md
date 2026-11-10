@@ -19,6 +19,16 @@ applied. Before adding the user-role foreign key, run the orphan check in
 the missing role rather than deleting user records. Then run the migration once.
 The API also validates role assignments when users are created or updated.
 
+To allow a user to hold more than one role, back up the database and apply
+`add_multiple_roles_per_user.sql` after this migration. It creates the
+`user_roles` link table and backfills each user's current `users.role` value;
+the existing column remains the primary/legacy role. The Owner / Superadmin
+can assign Admin, Inventory Manager, and Cashier roles. Admins can assign only
+Inventory Manager and Cashier roles. The API enforces these limits independently
+of the interface. Users with multiple roles choose the role to use after
+signing in; API requests validate that selection against their assigned roles
+and apply only the selected role for that session.
+
 ## Supplier Purchase Orders and Delivery Tracking
 
 Back up the `smarttrack` database, then run

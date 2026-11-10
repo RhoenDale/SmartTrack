@@ -2,7 +2,7 @@
 import React from "react";
 import { createPortal } from "react-dom";
 import { X, ArrowUpRight, ArrowDownRight, Package, Trash2, Eye, EyeOff, AlertTriangle, ShieldAlert, CircleCheck, Info } from "lucide-react";
-import { getReorderUnits, type Product, type StockStatus, type Transaction, type TxStatus, type TxType } from "./data";
+import { getReorderUnits, hasUserRole, type Product, type StockStatus, type Transaction, type TxStatus, type TxType } from "./data";
 import type { ReceiptSettings } from "./api";
 
 // ─── Currency helpers ─────────────────────────────────────────────────────────
@@ -729,7 +729,7 @@ export function ViewReasonModal({ tx, onClose }: { tx: Transaction; onClose: () 
 // ─── Notification Panel ───────────────────────────────────────────────────────
 import { useRef, useEffect, useState, useMemo } from "react";
 import { AlertTriangle as _AlertTriangle, FileText as _FileText, Check as _Check, CheckCheck, RefreshCw, X as _X, ShoppingCart } from "lucide-react";
-import { sortBatchesFIFO, sortBatchesByExpiry, deductFIFO, getTotalStock, getEarliestExpiry, parseExpiry, formatExpiryString, ROLES, ROLE_LABELS, computeTax, VAT_RATE_LABEL, type Notification, type ProductBatch } from "./data";
+import { sortBatchesFIFO, sortBatchesByExpiry, deductFIFO, getTotalStock, getEarliestExpiry, parseExpiry, formatExpiryString, ROLE_LABELS, computeTax, VAT_RATE_LABEL, type Notification, type ProductBatch } from "./data";
 
 export function NotificationPanel({
   notifs, onMarkAll, onMarkOne, onNotificationClick, onNotificationHover, productMap, onClose,
@@ -1297,7 +1297,7 @@ export function NewSaleModal({
   currentUser: import("./data").AuthUser;
   onGoToInventory: () => void;
 }) {
-  const canManage = currentUser.role === "inventory_manager";
+  const canManage = hasUserRole(currentUser, "inventory_manager");
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [qty, setQty] = useState("");
   const [saleUnit, setSaleUnit] = useState<"unit" | "pack">("unit");
@@ -1898,24 +1898,28 @@ export function InventoryAdjustmentModal({
 
 // ─── User Form Modal ──────────────────────────────────────────────────────────
 export function UserFormModal({
-  initial, onClose, onSave, currentUserRole, roles = [],
+  initial, onClose, onSave, currentUserRoles = [], roles = [],
 }: {
   initial?: import("./data").StaffMember;
   onClose: () => void;
   onSave: (original: import("./data").StaffMember | null, updated: import("./data").StaffMember, password?: string) => void;
-  currentUserRole?: string;
+  currentUserRoles?: string[];
   roles?: import("./data").CustomRole[];
 }) {
   const isEdit = !!initial;
   const [form, setForm] = React.useState({
     name:     initial?.name     ?? "",
-    role:     initial?.role     ?? "",
+    roles:    initial?.roles    ?? (initial?.role ? [initial.role] : []),
     email:    initial?.email    ?? "",
     status:   initial?.status   ?? "" as string,
     password: "",
   });
   const [showPassword, setShowPassword] = React.useState(false);
-  const set = (k: keyof typeof form) => (v: string) => setForm(f => ({ ...f, [k]: v }));
+  const set = (k: "name" | "email" | "status" | "password") => (v: string) => setForm(f => ({ ...f, [k]: v }));
+  const toggleRole = (role: string) => setForm(f => ({
+    ...f,
+    roles: f.roles.includes(role) ? f.roles.filter(r => r !== role) : [...f.roles, role],
+  }));
 
   // Dynamically map all role labels (system + custom roles from database)
   const roleLabelsMap = React.useMemo(() => {
@@ -1928,30 +1932,38 @@ export function UserFormModal({
     return map;
   }, [roles]);
 
-  // Filter available roles based on current user's role and database roles
   const availableRoleIds = React.useMemo(() => {
-    if (roles && roles.length > 0) {
-      let list = roles.filter(r => r.id !== "admin/owner"); // Never allow creating admin/owner
-      if (currentUserRole === "admin") {
-        // Admin can create cashier, inventory_manager, and custom roles (not admin)
-        list = list.filter(r => r.id !== "admin");
-      }
-      return list.map(r => r.id);
-    }
+    const assignable = currentUserRoles.includes("admin/owner")
+      ? ["admin", "inventory_manager", "cashier"]
+      : ["inventory_manager", "cashier"];
+    const existing = (initial?.roles ?? (initial?.role ? [initial.role] : []))
+      .filter(role => role !== "admin/owner" && !assignable.includes(role));
+    return [...assignable, ...existing];
+  }, [currentUserRoles, initial]);
 
-    const allRoles = [...ROLES].filter(r => r !== "admin/owner");
-    if (currentUserRole === "admin") {
-      return allRoles.filter(r => r === "cashier" || r === "inventory_manager");
-    }
-    return allRoles;
-  }, [roles, currentUserRole]);
-
-  const selectedRoleObj = React.useMemo(() => {
-    return roles.find(r => r.id === form.role);
-  }, [roles, form.role]);
+  const roleOptions = (
+    <div className="space-y-2 rounded-lg border border-border p-3">
+      {availableRoleIds.map(role => (
+        <label key={role} className="flex items-center gap-2 text-sm text-foreground">
+          <input
+            type="checkbox"
+            checked={form.roles.includes(role)}
+            onChange={() => toggleRole(role)}
+            className="h-4 w-4 rounded border-border accent-primary"
+          />
+          <span>{roleLabelsMap[role] ?? role}</span>
+          {role === "admin" && <span className="text-[10px] text-muted-foreground">Owner only</span>}
+        </label>
+      ))}
+    </div>
+  );
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (form.roles.length === 0) {
+      alert("Select at least one role.");
+      return;
+    }
     if (!isEdit && form.password.trim().length < 6) {
       alert("Password must be at least 6 characters.");
       return;
@@ -1959,7 +1971,8 @@ export function UserFormModal({
     const updated: import("./data").StaffMember = {
       id:        initial?.id ?? `U${String(Date.now()).slice(-3)}`,
       name:      form.name.trim(),
-      role:      form.role,
+      role:      form.roles[0],
+      roles:     form.roles,
       email:     form.email.trim(),
       status:    form.status as import("./data").StaffMember["status"],
       lastLogin: initial?.lastLogin ?? "Never",
@@ -1969,7 +1982,7 @@ export function UserFormModal({
     onClose();
   };
 
-  // ── Edit mode: only status is editable ──
+  // ── Edit mode: role assignments and status are editable ──
   if (isEdit && initial) {
     return (
       <Modal title="Edit User" onClose={onClose} hideCloseButton>
@@ -1977,7 +1990,6 @@ export function UserFormModal({
           {/* Read-only info */}
           {[
             { label: "Full Name",     value: initial.name },
-            { label: "Role",          value: roleLabelsMap[initial.role] ?? initial.role },
             { label: "Email Address", value: initial.email },
           ].map(({ label, value }) => (
             <div key={label}>
@@ -1988,7 +2000,11 @@ export function UserFormModal({
             </div>
           ))}
 
-          {/* Only editable field */}
+          <div>
+            <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">Roles</label>
+            {roleOptions}
+          </div>
+
           <FieldSelect
             label="Status"
             value={form.status}
@@ -2020,44 +2036,9 @@ export function UserFormModal({
         <FieldInput label="Full Name" value={form.name} onChange={set("name")} placeholder="e.g. Juan Dela Cruz" required />
         
         <div>
-          <FieldSelect 
-            label="Role" 
-            value={form.role} 
-            onChange={set("role")} 
-            options={availableRoleIds} 
-            required 
-            roleLabels={roleLabelsMap} 
-            placeholder="Select role" 
-          />
-          {selectedRoleObj && (
-            <div className="mt-2 p-2.5 rounded-xl bg-muted/50 border border-border text-xs space-y-1.5 animate-in fade-in duration-200">
-              <div className="flex items-center justify-between">
-                <span className="font-bold text-foreground flex items-center gap-1.5 text-[11px]">
-                  <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
-                  {selectedRoleObj.name}
-                </span>
-                <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full border ${
-                  selectedRoleObj.isSystem 
-                    ? "bg-blue-500/10 text-blue-500 border-blue-500/20" 
-                    : "bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-500/20"
-                }`}>
-                  {selectedRoleObj.isSystem ? "Built-in System Role" : "Custom Role"}
-                </span>
-              </div>
-              {selectedRoleObj.description && (
-                <p className="text-[11px] text-muted-foreground leading-relaxed">{selectedRoleObj.description}</p>
-              )}
-              {selectedRoleObj.permissions && selectedRoleObj.permissions.length > 0 && (
-                <div className="pt-0.5 flex flex-wrap gap-1">
-                  {selectedRoleObj.permissions.map(p => (
-                    <span key={p} className="text-[9px] px-1.5 py-0.5 rounded bg-background border border-border/80 font-medium text-foreground/80">
-                      {p}
-                    </span>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
+          <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">Roles</label>
+          {roleOptions}
+          <p className="mt-1 text-[11px] text-muted-foreground">The user receives access from all selected roles.</p>
         </div>
 
         <FieldInput label="Email Address" type="email" value={form.email} onChange={set("email")} placeholder="user@tangub.ph" required />
@@ -2215,7 +2196,7 @@ export function UserInfoModal({
         {!isEditingProfile ? (
           <div className="space-y-0.5">
             {[
-              { label: "Role",  value: ROLE_LABELS[user.role] ?? user.role },
+              { label: "Active role",  value: ROLE_LABELS[user.role] ?? user.role },
               { label: "Name",  value: user.name },
               { label: "Email", value: user.email },
             ].map(({ label, value }) => (

@@ -17,7 +17,7 @@ import {
 } from "lucide-react";
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, ReferenceLine, BarChart, Bar, LabelList } from "recharts";
 import {
-  PIE_COLORS, getReorderUnits,
+  PIE_COLORS, getReorderUnits, hasUserRole,
   getMonthlyDemand, computeSMA, estimateEOQ,
   type Product, type Transaction,
 } from "./data";
@@ -779,12 +779,12 @@ function EoqSettingsModal({
 export default function AnalyticsPage({
   inventory,
   transactions,
-  userRole,
+  userRoles,
   onEditProduct,
 }: {
   inventory: Product[];
   transactions: Transaction[];
-  userRole: string;
+  userRoles: string[];
   onEditProduct?: (product: Product) => void;
 }) {
   const [scope, setScope] = useState("all");
@@ -828,7 +828,7 @@ export default function AnalyticsPage({
   const [supplierPerformance, setSupplierPerformance] = useState<SupplierPerformance[]>([]);
   const [supplierPerformanceError, setSupplierPerformanceError] = useState(false);
   const canViewPurchaseData = true;
-  const canEdit = userRole === "inventory_manager";
+  const canEdit = hasUserRole({ roles: userRoles }, "inventory_manager");
 
   const scopeFilter = useMemo(() => {
     if (scope.startsWith("product:")) return { productId: scope.slice(8) };

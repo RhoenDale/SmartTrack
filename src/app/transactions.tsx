@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useRef } from "react";
 import { ShoppingCart, FileText, Printer } from "lucide-react";
-import { groupCartTransactions, type AuthUser, type Product, type Transaction } from "./data";
+import { groupCartTransactions, hasUserRole, type AuthUser, type Product, type Transaction } from "./data";
 import { fmt, TxTypeBadge, TxBadge, ViewReasonModal } from "./shared";
 
 export default function TransactionsPage({
@@ -77,9 +77,9 @@ export default function TransactionsPage({
   const salesTodayAmt  = salesToday.reduce((s, t) => s + t.amount, 0);
   const allSalesAmt    = allSales.reduce((s, t) => s + t.amount, 0);
   const allReturnsAmt  = allReturns.reduce((s, t) => s + t.amount, 0);
-  const isAdmin = user.role === "admin" || user.role === "admin/owner";
-  const canModify = !isAdmin; // Admins cannot add sales or returns
-  const isCashier = user.role === "cashier";
+  const isAdmin = hasUserRole(user, "admin") || hasUserRole(user, "admin/owner");
+  const isCashier = hasUserRole(user, "cashier");
+  const canModify = isCashier;
   const handleExport = () => {
     const columns = ["Transaction ID", "Product", "Qty", "Amount", "Staff", "Date", "Type", "Status"];
     const rows = filtered.map(tx => [
@@ -109,7 +109,7 @@ export default function TransactionsPage({
             <h1 className="text-xl font-bold text-foreground">Transactions</h1>
             <p className="text-sm text-muted-foreground mt-0.5">
               Sales &amp; returns
-              {isAdmin && <span className="ml-2 text-amber-600 dark:text-amber-400 font-semibold">· Read-only access</span>}
+              {isAdmin && !isCashier && <span className="ml-2 text-amber-600 dark:text-amber-400 font-semibold">· Read-only access</span>}
             </p>
           </div>
           {canModify && (

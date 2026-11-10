@@ -6,7 +6,7 @@
  */
 
 $authUser = require_auth();
-$isAdmin = in_array($authUser['role'], ['admin/owner', 'admin'], true);
+$isAdmin = user_has_role($authUser, ['admin/owner', 'admin']);
 $pdo = db();
 
 if ($method !== 'GET') {

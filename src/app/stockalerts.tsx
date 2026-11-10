@@ -1,20 +1,20 @@
 import { useEffect, useState } from "react";
 import { Package, AlertTriangle, Check, X, Pencil, RefreshCw, Calendar } from "lucide-react";
-import { getReorderUnits, sortBatchesByExpiry, type Product } from "./data";
+import { getReorderUnits, hasUserRole, sortBatchesByExpiry, type Product } from "./data";
 import { fmt, StockBadge } from "./shared";
 
 export default function StockAlertsPage({
   inventory,
   onGoToInventory,
   onEditProduct,
-  userRole,
+  userRoles,
 }: {
   inventory: Product[];
   onGoToInventory: () => void;
   onEditProduct: (product: Product) => void;
-  userRole: string;
+  userRoles: string[];
 }) {
-  const canManageStock = userRole === "inventory_manager";
+  const canManageStock = hasUserRole({ roles: userRoles }, "inventory_manager");
 
   const outOfStock = inventory.filter(i => i.status === "out_of_stock");
   const critical   = inventory.filter(i => i.status === "critical");

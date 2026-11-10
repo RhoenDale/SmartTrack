@@ -10,6 +10,7 @@ export interface AuthUser {
   id:        string;
   name:      string;
   role:      UserRole;
+  roles?:    string[];
   initials:  string;
   position:  string;
   email:     string;
@@ -122,11 +123,16 @@ export interface StaffMember {
   id:        string;
   name:      string;
   role:      string;
+  roles?:    string[];
   email:     string;
   position?: string;
   status:    "active" | "inactive";
   lastLogin: string;
   initials:  string;
+}
+
+export function hasUserRole(user: { role?: string; roles?: readonly string[] }, role: string): boolean {
+  return user.role ? user.role === role : Boolean(user.roles?.includes(role));
 }
 
 export interface Notification {

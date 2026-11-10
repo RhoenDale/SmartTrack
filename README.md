@@ -26,6 +26,12 @@
   If Apache uses a different port, set `VITE_API_PROXY_TARGET` in `.env`, for
   example `VITE_API_PROXY_TARGET=http://127.0.0.1:8080`, then restart Vite.
 
+  For an existing database, back it up and apply
+  `api/migrations/add_multiple_roles_per_user.sql` after
+  `api/migrations/create_roles_table.sql` before deploying role-management
+  changes. It creates the user-role link table and preserves each user's
+  existing role assignment.
+
   Electron package builds are written to `~/SmartTrack-release` (the current
   user's home directory) to avoid Windows file-lock issues in XAMPP's `htdocs`.
   

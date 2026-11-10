@@ -36,6 +36,7 @@ switch ($method . ':' . ($id ?? '')) {
             ->execute([$user['id']]);
 
         unset($user['password']);
+        $user = attach_user_roles($user);
 
         // Store in session (browser fallback)
         $_SESSION['smarttrack_user'] = $user;

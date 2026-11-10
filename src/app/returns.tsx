@@ -4,7 +4,7 @@ import {
   RotateCcw, ShieldAlert, Plus,
 } from "lucide-react";
 import { returnRequestsApi, type ReturnRequest } from "./api";
-import type { AuthUser, Product } from "./data";
+import { hasUserRole, type AuthUser, type Product } from "./data";
 import { fmt, ProductSearchWidget } from "./shared";
 
 // ─── Broken Product Modal ─────────────────────────────────────────────────────
@@ -236,10 +236,10 @@ export default function ReturnsPage({
   }, [activeTab]);
   const [showBrokenModal, setShowBrokenModal] = useState(false);
 
-  const canProcess = user.role === "inventory_manager";
+  const canProcess = hasUserRole(user, "inventory_manager");
   const canReportBroken =
-    user.role === "inventory_manager" ||
-    user.role === "cashier";
+    hasUserRole(user, "inventory_manager") ||
+    hasUserRole(user, "cashier");
 
   const loadReturns = useCallback(async () => {
     setLoading(true);

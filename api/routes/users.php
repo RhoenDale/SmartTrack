@@ -32,6 +32,46 @@ function user_role_exists(PDO $pdo, string $role): bool {
     return $stmt->fetchColumn() === $role;
 }
 
+function user_roles_from_request(array $data, array $allowedRoles): array {
+    if (array_key_exists('roles', $data)) {
+        if (!is_array($data['roles'])) {
+            json_response(['error' => 'Roles must be provided as a list.'], 422);
+        }
+        $roles = $data['roles'];
+    } elseif (isset($data['role']) && is_string($data['role'])) {
+        $roles = [$data['role']];
+    } else {
+        json_response(['error' => 'Select at least one role.'], 422);
+    }
+
+    $roles = array_values(array_unique(array_filter($roles, 'is_string')));
+    if (!$roles || count($roles) !== count($data['roles'] ?? [$data['role'] ?? null])) {
+        json_response(['error' => 'Select at least one valid role.'], 422);
+    }
+    foreach ($roles as $role) {
+        if (!in_array($role, $allowedRoles, true)) {
+            json_response(['error' => 'You are not allowed to assign one or more selected roles.'], 403);
+        }
+    }
+    return $roles;
+}
+
+function replace_user_roles(PDO $pdo, string $userId, array $roles): void {
+    $pdo->prepare('DELETE FROM user_roles WHERE user_id = ?')->execute([$userId]);
+    $insert = $pdo->prepare('INSERT INTO user_roles (user_id, role_id) VALUES (?, ?)');
+    foreach ($roles as $role) {
+        $insert->execute([$userId, $role]);
+    }
+}
+
+function admin_can_manage_user(array $authUser, string $userId, string $fallbackRole): bool {
+    if (!user_has_role($authUser, 'admin') || user_has_role($authUser, 'admin/owner')) {
+        return true;
+    }
+    $roles = user_role_ids($userId, $fallbackRole);
+    return count(array_diff($roles, ['cashier', 'inventory_manager'])) === 0;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Routes with $sub  (must be checked BEFORE the generic $id block)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -40,14 +80,12 @@ function user_role_exists(PDO $pdo, string $role): bool {
 if ($id && $id !== 'deleted' && $sub === 'password' && $method === 'PUT') {
     $isSelf  = $authUser && $authUser['id'] === $id;
     if (!$isSelf) require_role(['admin/owner', 'admin']);
-    $targetStmt = $pdo->prepare('SELECT role FROM users WHERE id = ?');
+    $targetStmt = $pdo->prepare('SELECT id, role FROM users WHERE id = ?');
     $targetStmt->execute([$id]);
     $target = $targetStmt->fetch();
     if (!$target) json_response(['error' => 'User not found.'], 404);
-    if (!$isSelf && $authUser['role'] === 'admin') {
-        if (!in_array($target['role'], ['cashier', 'inventory_manager'])) {
-            json_response(['error' => 'Admins can only change passwords for cashiers and inventory managers.'], 403);
-        }
+    if (!$isSelf && !admin_can_manage_user($authUser, $id, $target['role'])) {
+        json_response(['error' => 'Admins can only change passwords for cashiers and inventory managers.'], 403);
     }
     $data = body();
     require_fields($data, ['password']);
@@ -67,7 +105,7 @@ if ($id && $id !== 'deleted' && $sub === 'reset-password' && $method === 'POST')
     $t->execute([$id]);
     $tu = $t->fetch();
     if (!$tu) json_response(['error' => 'User not found.'], 404);
-    if ($authUser['role'] === 'admin' && !in_array($tu['role'], ['cashier', 'inventory_manager'])) {
+    if (!admin_can_manage_user($authUser, $id, $tu['role'])) {
         json_response(['error' => 'Admins can only reset passwords for cashiers and inventory managers.'], 403);
     }
     $pdo->prepare('UPDATE users SET password = "", updated_at = NOW() WHERE id = ?')->execute([$id]);
@@ -82,7 +120,7 @@ if ($id && $id !== 'deleted' && $sub === 'restore' && $method === 'POST') {
     $t->execute([$id]);
     $target = $t->fetch();
     if (!$target) json_response(['error' => 'User not found in recycle bin.'], 404);
-    if ($authUser['role'] === 'admin' && !in_array($target['role'], ['cashier', 'inventory_manager'])) {
+    if (!admin_can_manage_user($authUser, $id, $target['role'])) {
         json_response(['error' => 'Admins can only restore cashiers and inventory managers.'], 403);
     }
     $pdo->prepare('UPDATE users SET deleted_at = NULL, deleted_by = NULL, delete_note = NULL, status = \'inactive\', updated_at = NOW() WHERE id = ?')
@@ -145,11 +183,19 @@ if ($id && $id !== 'deleted') {
 
     if ($method === 'PUT') {
         $isSelf  = $authUser && $authUser['id'] === $id;
-        $isAdmin = in_array($authUser['role'] ?? '', ['admin/owner', 'admin']);
+        $isAdmin = user_has_role($authUser ?? [], ['admin/owner', 'admin']);
         if (!$isSelf && !$isAdmin) json_response(['error' => 'Forbidden: insufficient permissions.'], 403);
 
+        $currentStmt = $pdo->prepare('SELECT id, role FROM users WHERE id = ?');
+        $currentStmt->execute([$id]);
+        $current = $currentStmt->fetch();
+        if (!$current) json_response(['error' => 'User not found.'], 404);
+        if ($isAdmin && !$isSelf && !admin_can_manage_user($authUser, $id, $current['role'])) {
+            json_response(['error' => 'Admins can only manage cashiers and inventory managers.'], 403);
+        }
+
         $data = body();
-        if ($isSelf && !$isAdmin) {
+        if ($isSelf) {
             require_fields($data, ['name', 'email']);
             if (!is_string($data['name']) || strlen($data['name']) > 120) {
                 json_response(['error' => 'Name must be 120 characters or less.'], 422);
@@ -161,23 +207,51 @@ if ($id && $id !== 'deleted') {
             $pdo->prepare('UPDATE users SET name=?, email=?, initials=?, updated_at=NOW() WHERE id = ?')
                 ->execute([$data['name'], strtolower(trim($data['email'])), $initials, $id]);
         } else {
-            require_fields($data, ['name', 'role', 'email', 'status']);
+            require_fields($data, ['name', 'email', 'status']);
             if (!is_string($data['name']) || strlen($data['name']) > 120) json_response(['error' => 'Name must be 120 characters or less.'], 422);
             if (!is_string($data['email']) || !filter_var(trim($data['email']), FILTER_VALIDATE_EMAIL)) {
                 json_response(['error' => 'Enter a valid email address.'], 422);
             }
-            if (!is_string($data['role']) || trim($data['role']) === '' || strlen($data['role']) > 50) {
-                json_response(['error' => 'Select a valid role.'], 422);
-            }
-            if (!user_role_exists($pdo, $data['role'])) {
-                json_response(['error' => 'Select a role that exists in the roles table.'], 422);
-            }
             if (!in_array($data['status'], ['active', 'inactive'], true)) {
                 json_response(['error' => 'Status must be active or inactive.'], 422);
             }
+            if (array_key_exists('roles', $data) || array_key_exists('role', $data)) {
+                if (!user_roles_enabled($pdo)) {
+                    json_response(['error' => 'Multiple-role migration is required. Apply api/migrations/add_multiple_roles_per_user.sql.'], 503);
+                }
+                $allowedRoles = user_has_role($authUser, 'admin/owner')
+                    ? array_merge(['admin', 'inventory_manager', 'cashier'], array_diff(user_role_ids($id, $current['role']), ['admin/owner']))
+                    : ['inventory_manager', 'cashier'];
+                $assignedRoles = user_roles_from_request($data, $allowedRoles);
+                foreach ($assignedRoles as $role) {
+                    if (!user_role_exists($pdo, $role)) {
+                        json_response(['error' => 'A selected role does not exist in the roles table. Apply api/migrations/create_roles_table.sql.'], 503);
+                    }
+                }
+                if (!user_has_role($authUser, 'admin/owner') && count(array_diff($assignedRoles, ['cashier', 'inventory_manager'])) > 0) {
+                    json_response(['error' => 'Admins can assign only inventory manager and cashier roles.'], 403);
+                }
+            } else {
+                $assignedRoles = null;
+            }
             $initials = make_initials($data['name']);
-            $pdo->prepare('UPDATE users SET name=?, role=?, email=?, status=?, initials=?, position=?, updated_at=NOW() WHERE id = ?')
-                ->execute([$data['name'], $data['role'], strtolower(trim($data['email'])), $data['status'], $initials, $data['position'] ?? '', $id]);
+            $pdo->beginTransaction();
+            try {
+                if ($assignedRoles !== null) {
+                    $data['role'] = $assignedRoles[0];
+                } else {
+                    $data['role'] = $current['role'];
+                }
+                $pdo->prepare('UPDATE users SET name=?, role=?, email=?, status=?, initials=?, position=?, updated_at=NOW() WHERE id = ?')
+                    ->execute([$data['name'], $data['role'], strtolower(trim($data['email'])), $data['status'], $initials, $data['position'] ?? '', $id]);
+                if ($assignedRoles !== null) {
+                    replace_user_roles($pdo, $id, $assignedRoles);
+                }
+                $pdo->commit();
+            } catch (Throwable $e) {
+                if ($pdo->inTransaction()) $pdo->rollBack();
+                throw $e;
+            }
         }
         $stmt = $pdo->prepare('SELECT id, name, role, email, position, initials, status, last_login FROM users WHERE id = ?');
         $stmt->execute([$id]);
@@ -193,7 +267,7 @@ if ($id && $id !== 'deleted') {
         $t->execute([$id]);
         $target = $t->fetch();
         if (!$target) json_response(['error' => 'User not found.'], 404);
-        if ($authUser['role'] === 'admin' && !in_array($target['role'], ['cashier', 'inventory_manager'])) {
+        if (!admin_can_manage_user($authUser, $id, $target['role'])) {
             json_response(['error' => 'Admins can only delete cashiers and inventory managers.'], 403);
         }
         if (soft_delete_enabled($pdo)) {
@@ -225,19 +299,25 @@ if ($method === 'GET') {
 // ─────────────────────────────────────────────────────────────────────────────
 if ($method === 'POST') {
     require_role(['admin/owner', 'admin']);
+    if (!user_roles_enabled($pdo)) {
+        json_response(['error' => 'Multiple-role migration is required. Apply api/migrations/add_multiple_roles_per_user.sql.'], 503);
+    }
     $data = body();
-    require_fields($data, ['name', 'role', 'email', 'password']);
+    require_fields($data, ['name', 'email', 'password']);
     if (!is_string($data['name']) || strlen($data['name']) > 120) {
         json_response(['error' => 'Name must be 120 characters or less.'], 422);
     }
     if (!is_string($data['email']) || !filter_var(trim($data['email']), FILTER_VALIDATE_EMAIL)) {
         json_response(['error' => 'Enter a valid email address.'], 422);
     }
-    if (!is_string($data['role']) || trim($data['role']) === '' || strlen($data['role']) > 50) {
-        json_response(['error' => 'Select a valid role.'], 422);
-    }
-    if (!user_role_exists($pdo, $data['role'])) {
-        json_response(['error' => 'Select a role that exists in the roles table.'], 422);
+    $allowedRoles = user_has_role($authUser, 'admin/owner')
+        ? ['admin', 'inventory_manager', 'cashier']
+        : ['inventory_manager', 'cashier'];
+    $assignedRoles = user_roles_from_request($data, $allowedRoles);
+    foreach ($assignedRoles as $role) {
+        if (!user_role_exists($pdo, $role)) {
+            json_response(['error' => 'A selected role does not exist in the roles table. Apply api/migrations/create_roles_table.sql.'], 503);
+        }
     }
     if (!is_string($data['password']) || strlen($data['password']) < 6) {
         json_response(['error' => 'Password must be at least 6 characters.'], 422);
@@ -250,10 +330,18 @@ if ($method === 'POST') {
     $maxId = $pdo->query("SELECT MAX(CAST(SUBSTRING(id,2) AS UNSIGNED)) FROM users")->fetchColumn();
     $newId = 'U' . str_pad((int)$maxId + 1, 3, '0', STR_PAD_LEFT);
 
-    $pdo->prepare('INSERT INTO users (id, name, role, email, password, position, initials, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
-        ->execute([$newId, $data['name'], $data['role'], strtolower(trim($data['email'])),
-                   password_hash($data['password'], PASSWORD_BCRYPT),
-                   $data['position'] ?? '', make_initials($data['name']), $data['status'] ?? 'active']);
+    $pdo->beginTransaction();
+    try {
+        $pdo->prepare('INSERT INTO users (id, name, role, email, password, position, initials, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+            ->execute([$newId, $data['name'], $assignedRoles[0], strtolower(trim($data['email'])),
+                       password_hash($data['password'], PASSWORD_BCRYPT),
+                       $data['position'] ?? '', make_initials($data['name']), $data['status'] ?? 'active']);
+        replace_user_roles($pdo, $newId, $assignedRoles);
+        $pdo->commit();
+    } catch (Throwable $e) {
+        if ($pdo->inTransaction()) $pdo->rollBack();
+        throw $e;
+    }
 
     $stmt = $pdo->prepare('SELECT id, name, role, email, position, initials, status, last_login FROM users WHERE id = ?');
     $stmt->execute([$newId]);
@@ -263,10 +351,12 @@ if ($method === 'POST') {
 json_response(['error' => 'Method not allowed.'], 405);
 
 function format_user(array $u): array {
+    $roles = user_role_ids((string)$u['id'], $u['role'] ?? null);
     return [
         'id'        => $u['id'],
         'name'      => $u['name'],
         'role'      => $u['role'],
+        'roles'     => $roles,
         'email'     => $u['email'],
         'position'  => $u['position'] ?? '',
         'initials'  => $u['initials'],

@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import {
   sortBatchesByExpiry, normalizeProduct, groupCartTransactions,
+  hasUserRole, ROLE_LABELS,
   type AuthUser, type Notification, type Page,
   type Product, type StaffMember, type Transaction, type CustomRole,
 } from "./data";
@@ -44,18 +45,18 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
   onReady?: () => void;
   hideTrackHub?: boolean;
 }) {
-  const isAdmin            = user.role === "admin" || user.role === "admin/owner";
-  const isInventoryManager = user.role === "inventory_manager";
-  const isCashier          = user.role === "cashier";
+  const isAdmin            = hasUserRole(user, "admin") || hasUserRole(user, "admin/owner");
+  const isInventoryManager = hasUserRole(user, "inventory_manager");
+  const isCashier          = hasUserRole(user, "cashier");
 
   const defaultPage = (): Page =>
     isAdmin ? "dashboard" : isInventoryManager ? "inventory" : "transactions";
 
-  const allowedPages: Page[] = isAdmin
-    ? ["dashboard", "inventory", "transactions", "analytics", "users", "stock-alerts", "reports", "returns", "financial", "purchases", "activity-log", "recycle-bin"]
-    : isInventoryManager
-      ? ["dashboard", "inventory", "stock-alerts", "analytics", "reports", "returns", "purchases", "recycle-bin", "activity-log"]
-      : ["dashboard", "inventory", "stock-alerts", "transactions", "analytics", "reports", "activity-log"];
+  const allowedPages = [...new Set<Page>([
+    ...(isAdmin ? ["dashboard", "inventory", "transactions", "analytics", "users", "stock-alerts", "reports", "returns", "financial", "purchases", "activity-log", "recycle-bin"] as Page[] : []),
+    ...(isInventoryManager ? ["dashboard", "inventory", "stock-alerts", "analytics", "reports", "returns", "purchases", "recycle-bin", "activity-log"] as Page[] : []),
+    ...(isCashier ? ["dashboard", "inventory", "stock-alerts", "transactions", "analytics", "reports", "activity-log"] as Page[] : []),
+  ])];
   const pageStorageKey = `st_last_page_${user.id}`;
   const getInitialPage = (): Page => {
     try {
@@ -591,7 +592,7 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
   const handleSaveUser = async (original: StaffMember | null, updated: StaffMember, password?: string) => {
     try {
       const payload = {
-        name: updated.name, role: updated.role,
+        name: updated.name, role: updated.role, roles: updated.roles ?? [updated.role],
         email: updated.email, status: updated.status,
         position: updated.position ?? "",
         ...(!original && password ? { password } : {}),
@@ -623,7 +624,7 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
   const handleToggleStatus = async (target: StaffMember, newStatus: "active" | "inactive") => {
     try {
       const payload = {
-        name: target.name, role: target.role,
+        name: target.name, role: target.role, roles: target.roles ?? [target.role],
         email: target.email, status: newStatus,
         position: target.position ?? "",
       };
@@ -1386,7 +1387,7 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
           <div className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-white/[0.05] ${isAdmin ? "bg-blue-500/15" : isInventoryManager ? "bg-amber-400/15" : "bg-violet-400/15"}`}>
             <Shield size={10} className={isAdmin ? "text-blue-300" : isInventoryManager ? "text-amber-300" : "text-violet-300"} />
             <span className={`text-[10px] font-bold ${isAdmin ? "text-blue-300" : isInventoryManager ? "text-amber-300" : "text-violet-300"}`}>
-              {isAdmin ? (user.role === "admin/owner" ? "Admin / Owner" : "Admin") : isInventoryManager ? "Inventory Manager" : "Cashier / Pharmacist"}
+              {ROLE_LABELS[user.role] ?? user.role}
             </span>
           </div>
         </div>
@@ -1855,21 +1856,21 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
               onAddProduct={() => setShowAddProduct(true)} onEditProduct={product => { setSuggestedBatchQty(0); setEditingProduct(product); }}
               onDeleteProduct={setDeletingProduct} onAddCategory={handleAddCategory}
               selectedProductId={selectedProductId} hoveredProductId={hoveredNotifPid} 
-              userRole={user.role} />}
+              userRoles={[user.role]} />}
             {page === "transactions" && <TransactionsPage user={user} transactions={transactions} inventory={inventory}
               selectedTransactionId={selectedTransactionId}
               onAddSale={() => setShowAddSale(true)} onAddReturn={setReturningTx} onViewInvoice={setViewingInvoice} />}
-            {page === "analytics"    && <AnalyticsPage inventory={inventory} transactions={transactions} userRole={user.role} onEditProduct={handleStockAlertEditProduct} />}
-            {page === "stock-alerts" && <StockAlertsPage inventory={inventory} transactions={transactions} onGoToInventory={() => setPage("inventory")} onEditProduct={handleStockAlertEditProduct} userRole={user.role} />}
+            {page === "analytics"    && <AnalyticsPage inventory={inventory} transactions={transactions} userRoles={[user.role]} onEditProduct={handleStockAlertEditProduct} />}
+            {page === "stock-alerts" && <StockAlertsPage inventory={inventory} transactions={transactions} onGoToInventory={() => setPage("inventory")} onEditProduct={handleStockAlertEditProduct} userRoles={[user.role]} />}
             {page === "reports"      && <ReportsPage inventory={inventory} transactions={transactions} user={user} />}
             {page === "returns" && (isAdmin || isInventoryManager) && (
               <ReturnsPage user={user} inventory={inventory} onDispositionComplete={handleReturnDispositionComplete} />
             )}
             {page === "financial"    && isAdmin && <FinancialPage user={user} />}
-            {page === "purchases" && (isAdmin || isInventoryManager) && <PurchaseOrdersPage inventory={inventory} onInventoryChanged={() => { void loadAll(false); }} userRole={user.role} />}
-            {page === "users"        && isAdmin && <UsersPage staff={staff} currentUserId={user.id} currentUserRole={user.role} currentUserName={user.name} roles={roles} onAddUser={() => setShowAddUser(true)} onEditUser={setEditingUser} onDeleteUser={handleDeleteUser} onToggleStatus={handleToggleStatus} onResetPassword={handleAdminResetPassword} onCreatePassword={handleAdminCreatePassword} onRolesChanged={() => { rolesApi.list().then(setRoles).catch(() => {}); }} />}
+            {page === "purchases" && (isAdmin || isInventoryManager) && <PurchaseOrdersPage inventory={inventory} onInventoryChanged={() => { void loadAll(false); }} userRoles={[user.role]} />}
+            {page === "users"        && isAdmin && <UsersPage staff={staff} currentUserId={user.id} currentUserRoles={[user.role]} currentUserName={user.name} roles={roles} onAddUser={() => setShowAddUser(true)} onEditUser={setEditingUser} onDeleteUser={handleDeleteUser} onToggleStatus={handleToggleStatus} onResetPassword={handleAdminResetPassword} onCreatePassword={handleAdminCreatePassword} onRolesChanged={() => { rolesApi.list().then(setRoles).catch(() => {}); }} />}
             {page === "activity-log" && <ActivityLogPanel isAdmin={isAdmin} />}
-            {page === "recycle-bin"  && (isAdmin || isInventoryManager) && <RecycleBinPanel currentUserRole={user.role} currentUserName={user.name} onRestored={() => void loadAll(false)} />}
+            {page === "recycle-bin"  && (isAdmin || isInventoryManager) && <RecycleBinPanel currentUserRoles={[user.role]} currentUserName={user.name} onRestored={() => void loadAll(false)} />}
             </div>
           </main>
         </div>
@@ -1884,8 +1885,8 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
           onClose={() => setDeletingProduct(null)} onConfirm={() => handleDeleteProduct(deletingProduct)} />}
         {showAddSale && <NewSaleModal onClose={() => setShowAddSale(false)} onAdd={handleAddSale} inventory={inventory} currentUser={user} onGoToInventory={() => { setShowAddSale(false); setPage("inventory"); }} />}
         {returningTx  && <ReturnModal saleTx={returningTx} onClose={() => setReturningTx(null)} onAdd={handleReturn} inventory={inventory} currentUser={user} />}
-        {showAddUser  && <UserFormModal onClose={() => setShowAddUser(false)} onSave={handleSaveUser} currentUserRole={user.role} roles={roles} />}
-        {editingUser  && <UserFormModal initial={editingUser} onClose={() => setEditingUser(null)} onSave={handleSaveUser} currentUserRole={user.role} roles={roles} />}
+        {showAddUser  && <UserFormModal onClose={() => setShowAddUser(false)} onSave={handleSaveUser} currentUserRoles={[user.role]} roles={roles} />}
+        {editingUser  && <UserFormModal initial={editingUser} onClose={() => setEditingUser(null)} onSave={handleSaveUser} currentUserRoles={[user.role]} roles={roles} />}
         {viewingInvoice && <InvoiceModal tx={viewingInvoice} settings={receiptSettings} inventory={inventory} onClose={() => setViewingInvoice(null)} />}
         {showAboutSystem && (
           <Modal title="About SmartTrack" onClose={() => setShowAboutSystem(false)} wide>

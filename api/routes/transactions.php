@@ -120,7 +120,7 @@ json_response(['error' => 'Method not allowed.'], 405);
 
 function handle_sale(PDO $pdo, array $authUser): void {
     // Admin and Admin/Owner accounts are read-only.
-    if (in_array($authUser['role'], ['admin', 'admin/owner'], true)) {
+    if (user_has_role($authUser, ['admin', 'admin/owner']) && !user_has_role($authUser, 'cashier')) {
         json_response(['error' => 'Admins cannot create sales. Only cashiers and inventory managers have this permission.'], 403);
     }
 

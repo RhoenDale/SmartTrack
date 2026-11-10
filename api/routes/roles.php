@@ -12,6 +12,10 @@
 require_auth();
 $pdo      = db();
 $authUser = current_user();
+$userRoleJoin = user_roles_enabled($pdo)
+    ? 'LEFT JOIN user_roles ur ON ur.role_id = r.id'
+    : 'LEFT JOIN users u ON u.role = r.id';
+$userCountExpression = user_roles_enabled($pdo) ? 'COUNT(DISTINCT ur.user_id)' : 'COUNT(u.id)';
 
 function format_role(array $r): array {
     $permissions = [];
@@ -36,13 +40,13 @@ function format_role(array $r): array {
 // ── Single role operations: /roles/{id} ───────────────────────────────────────
 if ($id) {
     if ($method === 'GET') {
-        $stmt = $pdo->prepare('
-            SELECT r.*, COUNT(u.id) as user_count 
+        $stmt = $pdo->prepare("
+            SELECT r.*, {$userCountExpression} as user_count
             FROM roles r 
-            LEFT JOIN users u ON u.role = r.id 
+            {$userRoleJoin}
             WHERE r.id = ? 
             GROUP BY r.id
-        ');
+        ");
         $stmt->execute([$id]);
         $role = $stmt->fetch();
         if (!$role) {
@@ -80,13 +84,13 @@ if ($id) {
             WHERE id = ?
         ')->execute([$name, $description, $permissions, $id]);
 
-        $fetchStmt = $pdo->prepare('
-            SELECT r.*, COUNT(u.id) as user_count 
+        $fetchStmt = $pdo->prepare("
+            SELECT r.*, {$userCountExpression} as user_count
             FROM roles r 
-            LEFT JOIN users u ON u.role = r.id 
+            {$userRoleJoin}
             WHERE r.id = ? 
             GROUP BY r.id
-        ');
+        ");
         $fetchStmt->execute([$id]);
         json_response(format_role($fetchStmt->fetch()));
     }
@@ -108,7 +112,9 @@ if ($id) {
         }
 
         // Check if any users are currently assigned to this role
-        $countStmt = $pdo->prepare('SELECT COUNT(*) FROM users WHERE role = ?');
+        $countStmt = user_roles_enabled($pdo)
+            ? $pdo->prepare('SELECT COUNT(*) FROM user_roles WHERE role_id = ?')
+            : $pdo->prepare('SELECT COUNT(*) FROM users WHERE role = ?');
         $countStmt->execute([$id]);
         $assignedCount = (int)$countStmt->fetchColumn();
         if ($assignedCount > 0) {
@@ -126,13 +132,13 @@ if ($id) {
 
 // ── Collection operations: /roles ─────────────────────────────────────────────
 if ($method === 'GET') {
-    $stmt = $pdo->query('
-        SELECT r.*, COUNT(u.id) as user_count 
+    $stmt = $pdo->query("
+        SELECT r.*, {$userCountExpression} as user_count
         FROM roles r 
-        LEFT JOIN users u ON u.role = r.id 
+        {$userRoleJoin}
         GROUP BY r.id 
         ORDER BY r.is_system DESC, r.name ASC
-    ');
+    ");
     $roles = $stmt->fetchAll();
     json_response(array_map('format_role', $roles));
 }
@@ -187,4 +193,3 @@ if ($method === 'POST') {
 }
 
 json_response(['error' => 'Method not allowed.'], 405);
-

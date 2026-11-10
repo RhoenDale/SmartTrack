@@ -138,7 +138,9 @@ function UserCard({
 
       {/* Role + status row */}
       <div className="flex items-center justify-between gap-2">
-        {roleChip(s.role, roleLabelsMap)}
+        <div className="flex flex-wrap gap-1">
+          {(s.roles ?? [s.role]).map(role => <span key={role}>{roleChip(role, roleLabelsMap)}</span>)}
+        </div>
         <button
           type="button"
           onClick={canManage ? onToggleStatus : undefined}
@@ -322,9 +324,9 @@ type RecycleConfirmState =
 const AUTO_PURGE_DAYS = 30;
 
 export function RecycleBinPanel({
-  currentUserRole, currentUserName, onRestored,
+  currentUserRoles, currentUserName, onRestored,
 }: {
-  currentUserRole: string; currentUserName: string; onRestored: () => void;
+  currentUserRoles: string[]; currentUserName: string; onRestored: () => void;
 }) {
   const [deletedUsers,    setDeletedUsers]    = useState<DeletedUser[]>([]);
   const [deletedProducts, setDeletedProducts] = useState<DeletedProduct[]>([]);
@@ -339,8 +341,8 @@ export function RecycleBinPanel({
   const [page,            setPage]            = useState(1);
   const PAGE_SIZE = 10;
 
-  const isOwner = currentUserRole === "admin/owner";
-  const isAdmin = currentUserRole === "admin/owner" || currentUserRole === "admin";
+  const isOwner = currentUserRoles.includes("admin/owner");
+  const isAdmin = isOwner || currentUserRoles.includes("admin");
 
   const load = useCallback(async () => {
     setLoading(true); setError("");
@@ -521,7 +523,7 @@ export function RecycleBinPanel({
                     </div>
                     <p className="text-[11px] text-muted-foreground mt-0.5">
                       {isUser
-                        ? `${ROLE_LABELS[(item as DeletedUser).role] ?? (item as DeletedUser).role}`
+                        ? ((item as DeletedUser).roles ?? [(item as DeletedUser).role]).map(role => ROLE_LABELS[role] ?? role).join(" + ")
                         : `${(item as DeletedProduct).category} · ${(item as DeletedProduct).stock} units`}
                       {" · "}Deleted {item.daysSinceDelete === 0 ? "today" : `${item.daysSinceDelete}d ago`}
                       {item.deletedByName ? ` by ${item.deletedByName}` : ""}
@@ -537,7 +539,7 @@ export function RecycleBinPanel({
                   >
                     <ArchiveRestore size={12} /> Restore
                   </button>
-                  {(isUser ? isOwner : (isAdmin || currentUserRole === "inventory_manager")) && (
+                  {(isUser ? isOwner : (isAdmin || currentUserRoles.includes("inventory_manager"))) && (
                     <button
                       onClick={() => setConfirmPurge(isUser ? { kind: "user", item: item as DeletedUser } : { kind: "product", item: item as DeletedProduct })}
                       disabled={busy !== null}
@@ -590,13 +592,13 @@ export function RecycleBinPanel({
 }
 // ─── Users Page ───────────────────────────────────────────────────────────────
 export default function UsersPage({
-  staff, currentUserId, currentUserRole, currentUserName = "Admin",
+  staff, currentUserId, currentUserRoles, currentUserName = "Admin",
   roles, onAddUser, onEditUser, onDeleteUser, onToggleStatus,
   onResetPassword, onCreatePassword, onRolesChanged,
 }: {
   staff: StaffMember[];
   currentUserId: string;
-  currentUserRole: string;
+  currentUserRoles: string[];
   currentUserName?: string;
   roles?: CustomRole[];
   onAddUser: () => void;
@@ -629,13 +631,17 @@ export default function UsersPage({
   const [staffPage,       setStaffPage]       = useState(1);
   const PAGE_SIZE = 12;
 
-  const isSuperAdmin = currentUserRole === "admin/owner";
-  const isAdmin      = currentUserRole === "admin";
+  const isSuperAdmin = currentUserRoles.includes("admin/owner");
+  const isAdmin      = isSuperAdmin || currentUserRoles.includes("admin");
 
   const canManage = (s: StaffMember) => {
     if (s.id === currentUserId) return false;
+    if ((s.roles ?? [s.role]).includes("admin/owner")) return false;
     if (isSuperAdmin) return true;
-    if (isAdmin) return s.role === "cashier" || s.role === "inventory_manager";
+    if (isAdmin) {
+      const targetRoles = s.roles ?? [s.role];
+      return targetRoles.length > 0 && targetRoles.every(role => ["cashier", "inventory_manager"].includes(role));
+    }
     return false;
   };
 
@@ -655,7 +661,7 @@ export default function UsersPage({
 
   const filteredStaff = useMemo(() => {
     return staff.filter(s => {
-      const matchRole = staffFilter === "all" || s.role === staffFilter;
+      const matchRole = staffFilter === "all" || (s.roles ?? [s.role]).includes(staffFilter);
       const matchSearch = !staffSearch || s.name.toLowerCase().includes(staffSearch.toLowerCase()) || s.email.toLowerCase().includes(staffSearch.toLowerCase());
       return matchRole && matchSearch;
     });
@@ -711,7 +717,7 @@ export default function UsersPage({
   }, []);
 
   // Unique roles present in staff for the filter dropdown
-  const staffRoles = useMemo(() => [...new Set(staff.map(s => s.role))], [staff]);
+  const staffRoles = useMemo(() => [...new Set(staff.flatMap(s => s.roles ?? [s.role]))], [staff]);
 
   // Stats
   const activeCount   = staff.filter(s => s.status === "active").length;
@@ -968,7 +974,7 @@ export default function UsersPage({
       {/* ══════════════════════ RECYCLE BIN TAB ════════════════════════════════ */}
       {activeTab === "recycle" && (
         <RecycleBinPanel
-          currentUserRole={currentUserRole}
+          currentUserRoles={currentUserRoles}
           currentUserName={currentUserName}
           onRestored={() => onRolesChanged?.()}
         />

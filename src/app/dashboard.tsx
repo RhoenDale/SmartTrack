@@ -5,6 +5,7 @@ import {
   getEarliestExpiry,
   parseExpiry,
   groupCartTransactions,
+  hasUserRole,
   type AuthUser,
   type Product,
   type Transaction,
@@ -692,8 +693,9 @@ export default function DashboardView({ user, inventory, transactions, cashierDa
 }) {
   const now      = Date.now();
   const computed = useComputedData(inventory, transactions, now);
-  const isAdmin  = user.role === "admin" || user.role === "admin/owner";
-  const isCashier = user.role === "cashier";
+  const isAdmin  = hasUserRole(user, "admin") || hasUserRole(user, "admin/owner");
+  const isInventoryManager = hasUserRole(user, "inventory_manager");
+  const isCashier = hasUserRole(user, "cashier");
 
   return (
     <div className="p-4 sm:p-6 space-y-5 w-full max-w-[1400px] mx-auto">
@@ -712,13 +714,13 @@ export default function DashboardView({ user, inventory, transactions, cashierDa
           />
         </div>
         <p className="text-sm text-muted-foreground mt-0.5">
-          {greeting(user)} {roleSub(user.role)}
+          {greeting(user)} {roleSub(isAdmin ? "admin" : isInventoryManager ? "inventory_manager" : "cashier")}
         </p>
       </div>
 
-      {isAdmin    && <AdminDashboard computed={computed} />}
-      {!isAdmin && !isCashier && <InventoryManagerDashboard computed={computed} />}
-      {isCashier  && <CashierDashboard user={user} computed={computed} summary={cashierDashboard} />}
+      {isAdmin && <AdminDashboard computed={computed} />}
+      {!isAdmin && isInventoryManager && <InventoryManagerDashboard computed={computed} />}
+      {!isAdmin && !isInventoryManager && isCashier && <CashierDashboard user={user} computed={computed} summary={cashierDashboard} />}
     </div>
   );
 }

@@ -3,7 +3,7 @@
   "description": "SmartTrack desktop offline productivity app",
   "author": "SmartTrack",
   "private": true,
-  "version": "3.11.4",
+  "version": "4.11.10",
   "main": "electron/main.cjs",
   "type": "module",
   "scripts": {

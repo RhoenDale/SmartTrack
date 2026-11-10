@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { AlertTriangle, BarChart3, Bell, Eye, EyeOff, LockKeyhole, Mail, Package, ShieldOff } from "lucide-react";
-import { type AuthUser } from "./data";
-import { authApi, receiptSettingsApi, tokenStore, type PublicBusinessSettings } from "./api";
+import { AlertTriangle, BarChart3, Bell, Eye, EyeOff, LockKeyhole, Mail, Package, Shield, ShieldOff } from "lucide-react";
+import { ROLE_LABELS, type AuthUser } from "./data";
+import { activeRoleStore, authApi, receiptSettingsApi, tokenStore, type PublicBusinessSettings } from "./api";
 import Home from "./home";
 
 const SMARTTRACK_LOGO_URL = `${import.meta.env.BASE_URL}smarttrack-mark.png`;
@@ -363,6 +363,7 @@ function LoginPage({ onLogin, businessSettings }: {
 
 export default function Login() {
   const [user, setUser] = useState<AuthUser | null>(null);
+  const [pendingRoleUser, setPendingRoleUser] = useState<AuthUser | null>(null);
   const [businessSettings, setBusinessSettings] = useState<PublicBusinessSettings | null>(null);
   const [sessionReady, setSessionReady] = useState(false);
   const [settingsReady, setSettingsReady] = useState(false);
@@ -383,7 +384,16 @@ export default function Login() {
     if (image.complete) setLogoReady(true);
 
     authApi.me()
-      .then(res => { if (active) setUser(res.user); })
+      .then(res => {
+        if (!active) return;
+        const assignedRoles = res.user.roles?.length ? res.user.roles : [res.user.role];
+        const savedRole = activeRoleStore.get();
+        if (assignedRoles.length > 1 && (!savedRole || !assignedRoles.includes(savedRole))) {
+          setPendingRoleUser(res.user);
+        } else {
+          setUser({ ...res.user, role: (savedRole && assignedRoles.includes(savedRole) ? savedRole : res.user.role) as AuthUser["role"] });
+        }
+      })
       .catch(() => { if (active) setUser(null); })
       .finally(() => { if (active) setSessionReady(true); });
 
@@ -414,7 +424,28 @@ export default function Login() {
     return () => clearTimeout(timer);
   }, [launchVisible, logoReady, user, homeReady, loginMounted]);
 
-  const handleLogin = useCallback((nextUser: AuthUser) => setUser(nextUser), []);
+  const handleLogin = useCallback((nextUser: AuthUser) => {
+    const assignedRoles = nextUser.roles?.length ? nextUser.roles : [nextUser.role];
+    if (assignedRoles.length > 1) {
+      setPendingRoleUser(nextUser);
+      return;
+    }
+    const selectedRole = assignedRoles[0];
+    activeRoleStore.set(selectedRole);
+    setUser({ ...nextUser, role: selectedRole as AuthUser["role"] });
+  }, []);
+
+  const handleSelectRole = (role: string) => {
+    if (!pendingRoleUser || !(pendingRoleUser.roles ?? [pendingRoleUser.role]).includes(role)) return;
+    activeRoleStore.set(role);
+    setUser({ ...pendingRoleUser, role: role as AuthUser["role"] });
+    setPendingRoleUser(null);
+  };
+
+  const handleCancelRoleSelection = async () => {
+    await authApi.logout();
+    setPendingRoleUser(null);
+  };
   const handleHomeReady = useCallback(() => setHomeReady(true), []);
 
   const handleLogout = async () => {
@@ -442,6 +473,42 @@ export default function Login() {
           businessSettings={businessSettings}
         />
       ) : null}
+
+      {pendingRoleUser && (
+        <div className="fixed inset-0 z-[10001] flex items-center justify-center bg-slate-950/70 p-4">
+          <section role="dialog" aria-modal="true" aria-labelledby="role-choice-title" className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl">
+            <div className="mb-5 flex items-center gap-3">
+              <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
+                <Shield size={22} />
+              </div>
+              <div>
+                <h2 id="role-choice-title" className="text-lg font-bold text-slate-900">Choose a role</h2>
+                <p className="text-sm text-slate-500">Select the role to use for this session.</p>
+              </div>
+            </div>
+            <div className="space-y-2">
+              {(pendingRoleUser.roles ?? [pendingRoleUser.role]).map(role => (
+                <button
+                  key={role}
+                  type="button"
+                  onClick={() => handleSelectRole(role)}
+                  className="flex w-full items-center justify-between rounded-xl border border-slate-200 px-4 py-3 text-left text-sm font-semibold text-slate-800 transition-colors hover:border-blue-400 hover:bg-blue-50"
+                >
+                  {ROLE_LABELS[role] ?? role}
+                  <span className="text-xs font-medium text-slate-400">Use this role</span>
+                </button>
+              ))}
+            </div>
+            <button
+              type="button"
+              onClick={() => void handleCancelRoleSelection()}
+              className="mt-4 w-full rounded-xl py-2 text-sm font-semibold text-slate-500 hover:bg-slate-100"
+            >
+              Sign out
+            </button>
+          </section>
+        </div>
+      )}
 
       {launchVisible && (
         <div

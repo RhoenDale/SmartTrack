@@ -56,7 +56,54 @@ function user_from_token(string $token): ?array {
     );
     $stmt->execute([$token]);
     $row = $stmt->fetch();
-    return $row ?: null;
+    return $row ? attach_user_roles($row) : null;
+}
+
+function user_roles_enabled(?PDO $pdo = null): bool {
+    static $enabled = null;
+    if ($enabled === null) {
+        $pdo = $pdo ?? db();
+        $enabled = (bool)$pdo->query("SHOW TABLES LIKE 'user_roles'")->fetchColumn();
+    }
+    return $enabled;
+}
+
+function user_role_ids(string $userId, ?string $fallbackRole = null): array {
+    if (user_roles_enabled()) {
+        $stmt = db()->prepare(
+            'SELECT role_id FROM user_roles WHERE user_id = ? ORDER BY (role_id = ?) DESC, role_id ASC'
+        );
+        $stmt->execute([$userId, $fallbackRole ?? '']);
+        $roles = array_column($stmt->fetchAll(PDO::FETCH_ASSOC), 'role_id');
+        if ($roles) return $roles;
+    }
+
+    return $fallbackRole !== null && $fallbackRole !== '' ? [$fallbackRole] : [];
+}
+
+function attach_user_roles(array $user): array {
+    $user['roles'] = user_role_ids((string)$user['id'], $user['role'] ?? null);
+    if (!$user['roles'] && !empty($user['role'])) {
+        $user['roles'] = [$user['role']];
+    }
+    $activeRole = trim($_SERVER['HTTP_X_ACTIVE_ROLE'] ?? '');
+    if ($activeRole !== '') {
+        if (!in_array($activeRole, $user['roles'], true)) {
+            json_response(['error' => 'The selected role is not assigned to this account. Please sign in again and choose an assigned role.'], 403);
+        }
+        $user['active_role'] = $activeRole;
+        $user['role'] = $activeRole;
+    } else {
+        $user['active_role'] = $user['role'] ?? null;
+    }
+    return $user;
+}
+
+function user_has_role(array $user, array|string $roles): bool {
+    $activeRole = $user['active_role'] ?? $user['role'] ?? null;
+    $assignedRoles = $activeRole !== null ? [$activeRole] : [];
+    $roles = is_array($roles) ? $roles : [$roles];
+    return (bool)array_intersect($assignedRoles, $roles);
 }
 
 /** Generate a secure random token and persist it for the given user. */
@@ -101,7 +148,8 @@ function current_user(): ?array {
     }
 
     // 2. Session-based (browser)
-    return $_SESSION['smarttrack_user'] ?? null;
+    $user = $_SESSION['smarttrack_user'] ?? null;
+    return $user ? attach_user_roles($user) : null;
 }
 
 /**
@@ -122,7 +170,7 @@ function require_auth(): array {
  */
 function require_role(array $roles): void {
     $user = require_auth();
-    if (!in_array($user['role'], $roles, true)) {
+    if (!user_has_role($user, $roles)) {
         json_response(['error' => 'Forbidden. Insufficient permissions.'], 403);
     }
 }

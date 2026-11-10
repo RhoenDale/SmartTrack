@@ -13,6 +13,8 @@
  */
 
 const TOKEN_KEY = 'st_token';
+const ACTIVE_ROLE_KEY = 'st_active_role';
+let activeRoleMemory: string | null = null;
 
 // Debug logging
 const DEBUG = import.meta.env.DEV;
@@ -45,6 +47,33 @@ export const tokenStore = {
       log('Token cleared');
     } catch {
       log('Failed to clear token');
+    }
+  },
+};
+
+export const activeRoleStore = {
+  get: (): string | null => {
+    try {
+      activeRoleMemory = localStorage.getItem(ACTIVE_ROLE_KEY) ?? activeRoleMemory;
+    } catch {
+      // Keep the selected role for this runtime if storage is unavailable.
+    }
+    return activeRoleMemory;
+  },
+  set: (role: string): void => {
+    activeRoleMemory = role;
+    try {
+      localStorage.setItem(ACTIVE_ROLE_KEY, role);
+    } catch {
+      log('Could not persist active role');
+    }
+  },
+  clear: (): void => {
+    activeRoleMemory = null;
+    try {
+      localStorage.removeItem(ACTIVE_ROLE_KEY);
+    } catch {
+      log('Could not clear persisted active role');
     }
   },
 };
@@ -94,6 +123,8 @@ async function request<T = unknown>(
   const authHeader: Record<string, string> = token
     ? { Authorization: `Bearer ${token}` }
     : {};
+  const activeRole = activeRoleStore.get();
+  if (activeRole) authHeader['X-Active-Role'] = activeRole;
 
   const fullUrl = `${API_BASE}${path}`;
   const startTime = performance.now();
@@ -166,6 +197,7 @@ const del  = <T>(path: string) => request<T>(path, { method: 'DELETE' });
 // ─── Auth ─────────────────────────────────────────────────────────────────────
 export const authApi = {
   login: async (email: string, password: string) => {
+    activeRoleStore.clear();
     const res = await post<{ user: import('./data').AuthUser; token: string }>(
       '/auth/login', { email, password }
     );
@@ -176,6 +208,7 @@ export const authApi = {
   logout: async () => {
     try { await post('/auth/logout', {}); } catch { /* ignore */ }
     tokenStore.clear();
+    activeRoleStore.clear();
   },
   me: () => get<{ user: import('./data').AuthUser }>('/auth/me'),
 };
@@ -198,6 +231,7 @@ export interface DeletedUser {
   name: string;
   initials: string;
   role: string;
+  roles?: string[];
   deletedAt: string;
   deletedByName?: string;
   deleteNote?: string;
