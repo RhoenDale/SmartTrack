@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { ShoppingCart, AlertTriangle, Package, Printer } from "lucide-react";
 import { getReorderUnits, type AuthUser, type Product, type Transaction } from "./data";
 import { fmt, StockBadge, InfoTip, ConfirmDialog } from "./shared";
