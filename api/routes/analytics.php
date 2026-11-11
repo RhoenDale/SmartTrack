@@ -102,8 +102,15 @@ switch ($method . ':' . $action) {
         }
         $forecastRows = [];
         if ($demandRows) {
+            $storeMaxMonthKey = (string)($pdo->query(
+                "SELECT COALESCE(MAX(DATE_FORMAT(transacted_at, '%Y-%m')), '') FROM transactions WHERE type = 'sale'"
+            )->fetchColumn() ?: '');
+            $lastProductMonthKey = $demandRows[count($demandRows) - 1]['monthKey'];
+            $endMonthKey = ($storeMaxMonthKey !== '' && $storeMaxMonthKey > $lastProductMonthKey)
+                ? $storeMaxMonthKey
+                : $lastProductMonthKey;
             $month = new DateTimeImmutable($demandRows[0]['monthKey'] . '-01');
-            $lastMonth = new DateTimeImmutable($demandRows[count($demandRows) - 1]['monthKey'] . '-01');
+            $lastMonth = new DateTimeImmutable($endMonthKey . '-01');
             while ($month <= $lastMonth) {
                 $monthKey = $month->format('Y-m');
                 $monthLabels[$monthKey] ??= $month->format('M Y');
@@ -145,15 +152,20 @@ switch ($method . ':' . $action) {
         }, $flowMonths);
 
         // Also return headline metrics
-        $allDemand = array_map('intval', $demandValues);
-        $sma3Val   = sma($allDemand, 3);
-        $sma6Val   = sma($allDemand, 6);
-        $months    = max(count($allDemand), 1);
-        $annDemand = array_sum($allDemand) * (12 / $months);
+        $allDemand   = array_map('intval', $demandValues);
+        $periodCount = count($allDemand);
+        $activeCount = count(array_filter($allDemand, static fn($v) => $v > 0));
+        $sma3Val     = sma($allDemand, 3);
+        $sma6Val     = sma($allDemand, 6);
+        $months      = max($periodCount, 1);
+        $annDemand   = $sma3Val > 0 ? ($sma3Val * 12) : (array_sum($allDemand) * (12 / $months));
+
+        $orderCostParam   = isset($_GET['order_cost']) ? max(1.0, (float)$_GET['order_cost']) : 120.0;
+        $holdingRateParam = isset($_GET['holding_rate']) ? max(0.01, (float)$_GET['holding_rate']) : 0.2;
 
         $avgCostRow = $pdo->query('SELECT AVG(price) AS avg FROM products')->fetch();
         $avgCost    = (float)($avgCostRow['avg'] ?? 8.75);
-        $eoq        = estimate_eoq((int)round($annDemand), $avgCost);
+        $eoq        = estimate_eoq((int)round($annDemand), $avgCost, $orderCostParam, $holdingRateParam);
 
         $adjustedDmg = (int)$pdo->query(
             "SELECT COALESCE(SUM(damaged_qty),0) FROM transactions WHERE type='adjustment'"
@@ -195,34 +207,44 @@ switch ($method . ':' . $action) {
         $brokenLossAmount = (float)$brokenLoss['broken_loss'];
 
         json_response([
-            'chartData'    => $result,
-            'supplyDemandData' => $supplyDemandData,
-            'sma3'         => round($sma3Val),
-            'sma6'         => round($sma6Val),
-            'eoq'          => $eoq,
-            'totalDamaged' => $adjustedDmg,
-            'adjustCount'  => $adjustCount,
-            'returnLoss'   => round($returnLoss, 2),
-            'brokenLoss'   => round($brokenLossAmount, 2),
-            'totalLoss'    => round($returnLoss + $brokenLossAmount, 2),
+            'chartData'         => $result,
+            'supplyDemandData'  => $supplyDemandData,
+            'sma3'              => round($sma3Val),
+            'sma6'              => round($sma6Val),
+            'periodCount'       => $periodCount,
+            'activePeriodCount' => $activeCount,
+            'sma3Ready'         => $periodCount >= 3,
+            'sma6Ready'         => $periodCount >= 6,
+            'eoq'               => $eoq,
+            'totalDamaged'      => $adjustedDmg,
+            'adjustCount'       => $adjustCount,
+            'returnLoss'        => round($returnLoss, 2),
+            'brokenLoss'        => round($brokenLossAmount, 2),
+            'totalLoss'         => round($returnLoss + $brokenLossAmount, 2),
             'uncostedBrokenCount' => (int)($brokenLoss['uncosted_broken_count'] ?? 0),
         ]);
         break;
 
     // ── EOQ Reorder Recommendations ───────────────────────────────────────────
     case 'GET:eoq':
+        $demandBasis      = trim((string)($_GET['demand_basis'] ?? 'sma3'));
+        $orderCostParam   = isset($_GET['order_cost']) ? max(1.0, (float)$_GET['order_cost']) : 120.0;
+        $holdingRateParam = isset($_GET['holding_rate']) ? max(0.01, (float)$_GET['holding_rate']) : 0.2;
+
         $lowStock = $pdo->query(
             "SELECT p.id, p.name,
                     COALESCE((SELECT GROUP_CONCAT(c.name ORDER BY c.name SEPARATOR ', ')
                               FROM product_category_map pcm
                               JOIN categories c ON c.id = pcm.category_id
                               WHERE pcm.product_id = p.id), '') AS category,
-                    p.reorder, p.price,
-                    COALESCE(SUM(b.qty),0) AS stock
+                    p.reorder, p.price, COALESCE(p.units_per_pack, 1) AS units_per_pack,
+                    COALESCE(SUM(b.qty),0) AS stock,
+                    SUM(CASE WHEN b.unit_cost IS NOT NULL AND b.qty > 0 THEN b.qty * b.unit_cost ELSE 0 END) AS costed_value,
+                    SUM(CASE WHEN b.unit_cost IS NOT NULL AND b.qty > 0 THEN b.qty ELSE 0 END) AS costed_qty
              FROM products p
              LEFT JOIN product_batches b ON b.product_id = p.id AND b.qty > 0
              WHERE p.status IN ('out_of_stock','critical','low')
-             GROUP BY p.id, p.name, p.reorder, p.price"
+             GROUP BY p.id, p.name, p.reorder, p.price, p.units_per_pack"
         )->fetchAll(PDO::FETCH_ASSOC);
 
         $monthCount = (int)$pdo->query(
@@ -230,27 +252,83 @@ switch ($method . ':' . $action) {
              FROM transactions WHERE type='sale'"
         )->fetchColumn() ?: 1;
 
+        $storeMaxMonth = (string)($pdo->query(
+            "SELECT COALESCE(MAX(DATE_FORMAT(transacted_at, '%Y-%m')), '') FROM transactions WHERE type = 'sale'"
+        )->fetchColumn() ?: '');
+        $storeMinMonth = (string)($pdo->query(
+            "SELECT COALESCE(MIN(DATE_FORMAT(transacted_at, '%Y-%m')), '') FROM transactions WHERE type = 'sale'"
+        )->fetchColumn() ?: '');
+
+        $monthKeys = [];
+        if ($storeMinMonth !== '' && $storeMaxMonth !== '') {
+            $cursor = new DateTimeImmutable($storeMinMonth . '-01');
+            $end    = new DateTimeImmutable($storeMaxMonth . '-01');
+            while ($cursor <= $end) {
+                $monthKeys[] = $cursor->format('Y-m');
+                $cursor = $cursor->modify('+1 month');
+            }
+        }
+
         $recs = [];
         foreach ($lowStock as $p) {
-            $soldStmt = $pdo->prepare(
-                "SELECT COALESCE(SUM(qty),0) FROM transactions
-                 WHERE type='sale' AND product_id = ?"
+            $monthlyStmt = $pdo->prepare(
+                "SELECT DATE_FORMAT(transacted_at, '%Y-%m') AS monthKey, COALESCE(SUM(qty), 0) AS qty
+                 FROM transactions
+                 WHERE type = 'sale' AND product_id = ?
+                 GROUP BY DATE_FORMAT(transacted_at, '%Y-%m')"
             );
-            $soldStmt->execute([$p['id']]);
-            $totalSold = (int)$soldStmt->fetchColumn();
+            $monthlyStmt->execute([$p['id']]);
+            $prodMonthMap = [];
+            $totalSold = 0;
+            foreach ($monthlyStmt->fetchAll(PDO::FETCH_ASSOC) as $mRow) {
+                $q = (int)$mRow['qty'];
+                $prodMonthMap[$mRow['monthKey']] = $q;
+                $totalSold += $q;
+            }
 
-            $annDemand = ($totalSold / $monthCount) * 12;
-            $eoq = estimate_eoq(max((int)round($annDemand), $p['reorder'] * 4), (float)$p['price']);
+            $series = array_map(static fn($mk) => $prodMonthMap[$mk] ?? 0, $monthKeys);
+            $prodSma3 = sma($series, 3);
+            $prodSma6 = sma($series, 6);
+            $histMonthly = $totalSold / max($monthCount, 1);
+
+            $reorderUnits = (int)$p['reorder'] * max(1, (int)$p['units_per_pack']);
+            $demandIsFallback = ($totalSold === 0);
+            if ($demandIsFallback) {
+                $annDemand = max(10, $reorderUnits * 6);
+            } elseif ($demandBasis === 'sma6' && $prodSma6 > 0) {
+                $annDemand = $prodSma6 * 12;
+            } elseif ($demandBasis === 'historical') {
+                $annDemand = $histMonthly * 12;
+            } else {
+                $annDemand = ($prodSma3 > 0 ? $prodSma3 : $histMonthly) * 12;
+            }
+
+            $costedQty = (int)($p['costed_qty'] ?? 0);
+            $costIsEstimated = ($costedQty <= 0);
+            $unitCost = !$costIsEstimated
+                ? ((float)$p['costed_value'] / $costedQty)
+                : ((float)$p['price'] > 0 ? (float)$p['price'] * 0.7 : 5.0);
+
+            $rawEoq = estimate_eoq((int)round($annDemand), $unitCost, $orderCostParam, $holdingRateParam);
+            $eoq    = max($rawEoq, $reorderUnits);
             $recs[] = [
-                'id'       => $p['id'],
-                'name'     => $p['name'],
-                'category' => $p['category'],
-                'stock'    => (int)$p['stock'],
-                'reorder'  => (int)$p['reorder'],
-                'price'    => (float)$p['price'],
-                'shortage' => max(0, (int)$p['reorder'] - (int)$p['stock']),
-                'eoq'      => $eoq,
-                'totalSold'=> (int)$totalSold,
+                'id'               => $p['id'],
+                'name'             => $p['name'],
+                'category'         => $p['category'],
+                'stock'            => (int)$p['stock'],
+                'reorder'          => (int)$p['reorder'],
+                'reorderUnits'     => $reorderUnits,
+                'price'            => (float)$p['price'],
+                'unitCost'         => round($unitCost, 2),
+                'costIsEstimated'  => $costIsEstimated,
+                'shortage'         => max(0, $reorderUnits - (int)$p['stock']),
+                'rawEoq'           => $rawEoq,
+                'eoq'              => $eoq,
+                'sma3'             => round($prodSma3, 1),
+                'sma6'             => round($prodSma6, 1),
+                'annualDemand'     => (int)round($annDemand),
+                'demandIsFallback' => $demandIsFallback,
+                'totalSold'        => (int)$totalSold,
             ];
         }
         usort($recs, fn($a, $b) => $b['shortage'] - $a['shortage']);

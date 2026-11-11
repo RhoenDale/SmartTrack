@@ -1047,10 +1047,14 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
             hubToast?.type === "error"
               ? "bg-rose-500/20 text-rose-300"
               : hubToast?.type === "info"
-              ? "bg-blue-500/20 text-blue-300"
+              ? hubToast?.msg.toLowerCase().includes("dark")
+                ? "bg-teal-500/25 text-teal-300"
+                : hubToast?.msg.toLowerCase().includes("light")
+                ? "bg-amber-500/25 text-amber-300"
+                : "bg-blue-500/20 text-blue-300"
               : "bg-emerald-500/20 text-emerald-300"
           }`}>
-            {hubToast?.type === "error" ? "✕" : hubToast?.type === "info" ? "i" : "✓"}
+            {hubToast?.type === "error" ? "✕" : hubToast?.type === "info" ? (hubToast.msg.toLowerCase().includes("dark") ? "🌙" : hubToast.msg.toLowerCase().includes("light") ? "☀️" : "ℹ") : "✓"}
           </span>
           <span className="text-[13px] font-semibold text-white/90 leading-tight truncate">
             {hubToast?.msg}
@@ -1372,8 +1376,14 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
           {darkMode ? <Moon size={13} className="text-teal-400" /> : <Sun size={13} className="text-amber-500" />}
           <span className="text-xs font-medium text-foreground">Dark Mode</span>
         </div>
-        <button onClick={() => setDarkMode(v => !v)}
-          className={`relative w-9 h-5 rounded-full transition-colors duration-200 ${darkMode ? "bg-primary" : "bg-muted"}`}>
+        <button
+          onClick={() => {
+            const nextMode = !darkMode;
+            setDarkMode(nextMode);
+            showHubToast(nextMode ? "Dark mode enabled" : "Light mode enabled", "info");
+          }}
+          className={`relative w-9 h-5 rounded-full transition-colors duration-200 cursor-pointer ${darkMode ? "bg-primary" : "bg-muted"}`}
+        >
           <span className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow-xs transition-transform duration-200 ${darkMode ? "translate-x-4" : "translate-x-0"}`} />
         </button>
       </div>
@@ -1525,6 +1535,30 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
   // ── Render ───────────────────────────────────────────────────────────────────
   return (
     <div className={darkMode ? "dark" : ""}>
+      {/* Floating Top Notification for Classic Sidebar Mode */}
+      {navMode === "sidebar" && hubToast && (
+        <div className="fixed top-3 left-1/2 -translate-x-1/2 z-[100] pointer-events-none animate-in fade-in slide-in-from-top-2 duration-200">
+          <div className="flex items-center gap-2 px-4 py-1.5 rounded-full bg-card/95 border border-border shadow-md backdrop-blur-md">
+            <span className={`w-5 h-5 rounded-full flex items-center justify-center text-xs shrink-0 ${
+              hubToast.type === "error"
+                ? "bg-red-500/20 text-red-500"
+                : hubToast.type === "info"
+                ? hubToast.msg.toLowerCase().includes("dark")
+                  ? "bg-teal-500/20 text-teal-400"
+                  : hubToast.msg.toLowerCase().includes("light")
+                  ? "bg-amber-500/20 text-amber-500"
+                  : "bg-primary/20 text-primary"
+                : "bg-emerald-500/20 text-emerald-500"
+            }`}>
+              {hubToast.type === "error" ? "✕" : hubToast.type === "info" ? (hubToast.msg.toLowerCase().includes("dark") ? "🌙" : hubToast.msg.toLowerCase().includes("light") ? "☀️" : "ℹ") : "✓"}
+            </span>
+            <span className="text-xs font-semibold text-foreground">
+              {hubToast.msg}
+            </span>
+          </div>
+        </div>
+      )}
+
       <div className="st-home-enter flex h-screen bg-background overflow-hidden">
         {/* Sidebar — only in sidebar mode */}
         {navMode === "sidebar" && (

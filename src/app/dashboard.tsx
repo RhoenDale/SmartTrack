@@ -83,7 +83,10 @@ function getSalesOverview(inventory: Product[], transactions: Transaction[], day
       const currentProduct = product.productId
         ? productsById.get(String(product.productId))
         : productsByName.get(product.name.trim().toLocaleLowerCase());
-      return { ...product, stock: currentProduct?.stock ?? null };
+      const stock = currentProduct?.stock ?? null;
+      const dailyRate = product.sold / Math.max(days, 1);
+      const daysLeft = stock != null && dailyRate > 0 ? Math.round(stock / dailyRate) : null;
+      return { ...product, stock, daysLeft };
     });
 
   return {
@@ -291,7 +294,7 @@ function DateRangeSelect({ value, onChange }: { value: 7 | 30; onChange: (days: 
   );
 }
 
-function StockVsSalesChart({ data, dateRange }: { data: { name: string; productId?: string; sold: number; stock: number | null }[]; dateRange: string }) {
+function StockVsSalesChart({ data, dateRange }: { data: { name: string; productId?: string; sold: number; stock: number | null; daysLeft?: number | null }[]; dateRange: string }) {
   if (data.length === 0) {
     return (
       <div className="h-full flex flex-col items-center justify-center text-center">
@@ -307,7 +310,18 @@ function StockVsSalesChart({ data, dateRange }: { data: { name: string; productI
       <div className="space-y-2.5">
         {data.map(product => (
           <div key={product.productId ?? product.name}>
-            <p className="mb-1 truncate text-[11px] font-semibold text-foreground" title={product.name}>{product.name}</p>
+            <div className="mb-1 flex items-center justify-between gap-2">
+              <p className="truncate text-[11px] font-semibold text-foreground" title={product.name}>{product.name}</p>
+              {product.daysLeft != null && (
+                <span className={`shrink-0 rounded px-1.5 py-0.2 text-[9px] font-bold border ${
+                  product.daysLeft <= 14
+                    ? "bg-amber-500/15 text-amber-800 dark:text-amber-300 border-amber-500/30"
+                    : "bg-muted text-muted-foreground border-border"
+                }`}>
+                  {product.daysLeft === 0 ? "Out of stock" : `~${product.daysLeft > 90 ? "90+" : product.daysLeft}d stock left`}
+                </span>
+              )}
+            </div>
             <div className="grid grid-cols-[40px_minmax(0,1fr)_38px] items-center gap-x-2 gap-y-1 text-[10px] text-muted-foreground">
               <span>Stock</span>
               <span className="h-2 overflow-hidden rounded-full bg-muted" aria-label={product.stock === null ? "Current stock unavailable" : `Current stock: ${product.stock} units`}>
@@ -434,17 +448,28 @@ function AdminDashboard({ computed }: {
         </div>
         <div className="bg-card border border-border/80 rounded-2xl p-5 shadow-[0_2px_12px_-4px_rgba(13,148,136,0.06),0_1px_3px_rgba(0,0,0,0.02)]">
           <div className="mb-4">
-            <div className="flex items-center gap-1.5">
-              <h3 className="text-sm font-bold text-foreground">Stock &amp; Sales by Product</h3>
-              <InfoTip
-                title="Current Stock and Recent Sales"
-                lines={[
-                  `Products ranked by units sold from ${sales.dateRange}.`,
-                  "Current stock comes from Inventory. Sold units come from completed sale Transactions.",
-                  "The two bars use the same unit scale. This is a snapshot of current stock beside historical sales, not a stock movement chart.",
-                  "Records explicitly marked as test data are excluded.",
-                ]}
-              />
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-1.5">
+                <h3 className="text-sm font-bold text-foreground">Stock &amp; Sales by Product</h3>
+                <InfoTip
+                  title="Current Stock and Recent Sales"
+                  lines={[
+                    `Products ranked by units sold from ${sales.dateRange}.`,
+                    "Current stock comes from Inventory. Sold units come from completed sale Transactions.",
+                    "Includes estimated days of stock remaining based on the recent daily burn rate.",
+                  ]}
+                />
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  try { localStorage.setItem("smarttrack_analytics_section", "Forecast"); } catch { /* ignore */ }
+                  window.dispatchEvent(new CustomEvent("smarttrack:navigate", { detail: "analytics" }));
+                }}
+                className="text-[11px] font-semibold text-primary hover:underline cursor-pointer"
+              >
+                View Forecast →
+              </button>
             </div>
             <div className="mt-1 flex flex-wrap items-center justify-between gap-2">
               <p className="text-[11px] text-muted-foreground">Current stock vs units sold · {sales.dateRange}</p>
