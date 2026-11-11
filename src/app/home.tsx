@@ -903,7 +903,7 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
     : trackHubAssistantOpen
     ? "min(520px, calc(100dvh - 80px))"
     : trackHubOpen
-    ? "206px"
+    ? "226px"
     : toastOpen
     ? "56px"
     : "42px";
@@ -940,15 +940,21 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
         data-trackhub-target
         className="absolute top-0 left-1/2 -translate-x-1/2 overflow-hidden select-none cursor-default"
         style={{
-          background: "#0a0a0a",
-          border: "1px solid rgba(255, 255, 255, 0.12)",
-          boxShadow: confirmOpen
-            ? "0 20px 60px rgba(0,0,0,0.85)"
-            : (trackHubOpen || trackHubAssistantOpen)
-            ? "0 20px 60px rgba(0,0,0,0.85)"
+          background: "#000000",
+          border: darkMode
+            ? "1px solid rgba(255, 255, 255, 0.28)"
+            : "1px solid rgba(255, 255, 255, 0.12)",
+          boxShadow: darkMode
+            ? confirmOpen || trackHubOpen || trackHubAssistantOpen
+              ? "inset 0 1px 0.5px 0 rgba(255, 255, 255, 0.45), 0 0 12px 0 rgba(255, 255, 255, 0.12), 0 20px 60px rgba(0,0,0,0.85)"
+              : toastOpen
+              ? "inset 0 1px 0.5px 0 rgba(255, 255, 255, 0.45), 0 0 10px 0 rgba(255, 255, 255, 0.12), 0 8px 32px rgba(0,0,0,0.55)"
+              : "inset 0 1px 0.5px 0 rgba(255, 255, 255, 0.45), 0 0 10px 0 rgba(255, 255, 255, 0.12), 0 4px 18px rgba(0,0,0,0.40)"
+            : confirmOpen || trackHubOpen || trackHubAssistantOpen
+            ? "0 20px 60px rgba(0,0,0,0.45)"
             : toastOpen
-            ? "0 8px 32px rgba(0,0,0,0.55)"
-            : "0 4px 18px rgba(0,0,0,0.40)",
+            ? "0 8px 32px rgba(0,0,0,0.30)"
+            : "0 4px 18px rgba(0,0,0,0.22)",
           width:        pillW,
           height:       pillH,
           borderRadius: confirmOpen ? "24px" : (trackHubOpen || trackHubAssistantOpen) ? "24px" : "21px",
@@ -1073,7 +1079,7 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
               setTrackHubOpen(false);
               setTrackHubAssistantOpen(true);
             }}
-            className="mr-2 flex h-7 flex-shrink-0 items-center gap-1.5 rounded-full bg-white/[0.07] px-2 text-white/85 transition-colors hover:bg-white/[0.12]"
+            className="mr-2 flex h-7 flex-shrink-0 items-center gap-1.5 rounded-full bg-white/[0.08] px-2 text-white/85 transition-colors hover:bg-white/[0.12]"
             title="Open SmartTrack Assistant"
             aria-label="Open SmartTrack Assistant"
           >
@@ -1156,7 +1162,7 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
 
         {/* ── Layer 2: Expanded hub (Centrally locked, blooms gracefully) ──── */}
         <div
-          className="absolute top-0 left-1/2 w-[570px] px-3.5 pt-3 pb-3 flex flex-col"
+          className="absolute top-0 left-1/2 w-[570px] px-3.5 pt-3 pb-5 flex flex-col"
           style={{
             opacity:    (!confirmOpen && trackHubOpen && !trackHubAssistantOpen) ? 1 : 0,
             transform:  (!confirmOpen && trackHubOpen && !trackHubAssistantOpen) ? "translateX(-50%) scale(1)" : "translateX(-50%) scale(0.97)",

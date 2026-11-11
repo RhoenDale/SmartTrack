@@ -609,7 +609,7 @@ export default function UsersPage({
   onCreatePassword: (userId: string, password: string) => Promise<void>;
   onRolesChanged?: () => void;
 }) {
-  type MainTab = "users" | "roles" | "activity" | "recycle";
+  type MainTab = "users" | "roles";
   const [activeTab, setActiveTab]         = useState<MainTab>("users");
   const [staffSearch, setStaffSearch]     = useState("");
   const [staffFilter, setStaffFilter]     = useState<string>("all");
@@ -761,10 +761,8 @@ export default function UsersPage({
       {/* ── Tab bar ── */}
       <div className="flex gap-1 border-b border-border">
         {([
-          { id: "users",    label: "Users",        icon: UsersRound },
-          { id: "roles",    label: "Roles",        icon: Shield },
-          { id: "activity", label: "Activity Log", icon: Activity },
-          { id: "recycle",  label: "Recycle Bin",  icon: Trash2 },
+          { id: "users", label: "Users", icon: UsersRound },
+          { id: "roles", label: "Roles", icon: Shield },
         ] as const).map(({ id, label, icon: Icon }) => (
           <button key={id} type="button" onClick={() => setActiveTab(id)}
             className={`inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold border-b-2 transition-colors ${
@@ -966,18 +964,6 @@ export default function UsersPage({
             />
           )}
         </div>
-      )}
-
-      {/* ══════════════════════ ACTIVITY LOG TAB ══════════════════════════════ */}
-      {activeTab === "activity" && <ActivityLogPanel isAdmin={isSuperAdmin || isAdmin} />}
-
-      {/* ══════════════════════ RECYCLE BIN TAB ════════════════════════════════ */}
-      {activeTab === "recycle" && (
-        <RecycleBinPanel
-          currentUserRoles={currentUserRoles}
-          currentUserName={currentUserName}
-          onRestored={() => onRolesChanged?.()}
-        />
       )}
 
       {/* ── Modals & confirms ── */}

@@ -1,0 +1,13 @@
+RewriteEngine On
+
+# Allow direct access to api
+RewriteRule ^api/ - [L]
+
+# Redirect root or non-file/dir requests to dist/
+RewriteRule ^$ dist/ [L]
+
+RewriteCond %{REQUEST_URI} !^/SmartTrack/api
+RewriteCond %{REQUEST_URI} !^/SmartTrack/dist
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^(.*)$ dist/$1 [L]
