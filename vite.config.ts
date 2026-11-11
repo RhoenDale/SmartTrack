@@ -42,7 +42,7 @@ export default defineConfig(({ mode }) => {
     server: {
       // Override the target for XAMPP installations that use a non-default port.
       port: 5173,
-      allowedHosts: ['.trycloudflare.com'],
+      allowedHosts: ['.trycloudflare.com', 'smarttrack.pharmacy.com'],
       proxy: {
         '/SmartTrack/api': {
           target: env.VITE_API_PROXY_TARGET || 'http://127.0.0.1:80',
