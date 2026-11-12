@@ -166,7 +166,7 @@ export function DatabaseBackupModal({
                 <h4 className="font-bold text-foreground text-xs">Automated Schema Updates</h4>
               </div>
               <span className="rounded bg-primary/10 px-2 py-0.5 text-[10px] font-mono font-bold text-primary">
-                v{status?.systemVersion ?? "4.11.10"}
+                v{status?.systemVersion ?? "1.0.0"}
               </span>
             </div>
             <p className="text-[11px] text-muted-foreground leading-relaxed">
@@ -277,3 +277,4 @@ export function DatabaseBackupModal({
     </div>
   );
 }
+

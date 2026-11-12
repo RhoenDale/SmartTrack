@@ -109,3 +109,4 @@ if ($method === 'POST' && $action === 'restore') {
 }
 
 json_response(['error' => "Action '$action' not recognized under backup."], 404);
+

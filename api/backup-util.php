@@ -12,7 +12,7 @@ function generate_database_dump(PDO $pdo): string {
     $dump .= "-- SmartTrack Automated Database Backup\n";
     $dump .= "-- Database: " . $dbName . "\n";
     $dump .= "-- Generated: " . date('Y-m-d H:i:s') . "\n";
-    $dump .= "-- Version: 4.11.10 (Offline Self-Healing Storage)\n";
+    $dump .= "-- Version: 1.0.0 (SmartTrack Capstone Release)\n";
     $dump .= "-- --------------------------------------------------------\n\n";
     $dump .= "SET FOREIGN_KEY_CHECKS=0;\n";
     $dump .= "SET SQL_MODE = 'NO_AUTO_VALUE_ON_ZERO';\n";
@@ -147,6 +147,7 @@ function get_database_status(PDO $pdo): array {
         'backupCount' => count($backups),
         'lastBackup' => $lastBackup,
         'offlineMode' => true,
-        'systemVersion' => '4.11.10',
+        'systemVersion' => '1.0.0',
     ];
 }
+

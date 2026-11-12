@@ -45,7 +45,7 @@ function ensure_baseline_migrations(PDO $pdo): void {
                 mark_migration_applied($pdo, $base, 1);
             }
         }
-        mark_migration_applied($pdo, 'v4.11.10_baseline_initial', 1);
+        mark_migration_applied($pdo, 'v1.0.0_baseline_initial', 1);
     }
 }
 
@@ -116,3 +116,4 @@ function run_auto_migrations(PDO $pdo): array {
         'errors' => $errors,
     ];
 }
+

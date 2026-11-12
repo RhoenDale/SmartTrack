@@ -30,3 +30,4 @@ if exist "release\win-unpacked\SmartTrack.exe" (
 echo SmartTrack is ready.
 timeout /t 3 >nul
 exit
+
