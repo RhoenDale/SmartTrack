@@ -230,7 +230,7 @@ function ForecastTrendChart({
               const label = name === "actual"
                 ? "Recorded sales"
                 : name === "smartFit"
-                  ? `SmartFit Forecast (${activeModel})`
+                  ? `Best-Fit Forecast (${activeModel})`
                   : name === "sma3Forecast"
                     ? "SMA-3 (Fast 3-mo)"
                     : "SMA-6 (Steady 6-mo)";
@@ -1571,7 +1571,7 @@ export default function AnalyticsPage({
   const activeForecastModel = selectedForecast?.model ?? "SMA-3";
   const activeForecastUnits = activeForecastModel === "SMA-3" ? forecastSMA3 : forecastSMA6;
 
-  // ── EOQ & ROP Configurable Parameters + SmartFit Auto Demand Basis ──
+  // ── EOQ & ROP Configurable Parameters + Automated Best-Fit Demand Basis ──
   const demandBasis: "auto" | "sma3" | "sma6" | "historical" = "auto";
 
   const [orderCostSetting, setOrderCostSetting] = useState<number>(() => {
@@ -2675,7 +2675,7 @@ export default function AnalyticsPage({
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
                   <div>
                     <div className="flex items-center gap-2 flex-wrap">
-                      <h3 className="text-sm font-semibold text-foreground">Sales History &amp; SmartFit Demand Forecast</h3>
+                      <h3 className="text-sm font-semibold text-foreground">Sales History &amp; Demand Forecast</h3>
                       <span className="rounded-full bg-teal-500/10 px-2 py-0.5 text-[10px] font-bold text-teal-700 dark:text-teal-300">
                         Auto-Selected: {activeForecastModel}
                       </span>
@@ -2684,7 +2684,7 @@ export default function AnalyticsPage({
                   </div>
                   <div className="flex items-center gap-3 text-xs font-medium flex-wrap">
                     <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-blue-600 inline-block" />Recorded Sales</span>
-                    <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-teal-600 inline-block" />SmartFit ({activeForecastModel})</span>
+                    <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-teal-600 inline-block" />Best-Fit Forecast ({activeForecastModel})</span>
                   </div>
                 </div>
 
@@ -2978,7 +2978,7 @@ export default function AnalyticsPage({
                 <span className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full bg-teal-500" />
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
-                    <h2 className="text-sm font-semibold text-foreground">SmartFit Automated Model Selection</h2>
+                    <h2 className="text-sm font-semibold text-foreground">Automated Best-Fit Model Selection</h2>
                     <span className="rounded-full bg-teal-500/15 px-2.5 py-0.5 text-[11px] font-semibold text-teal-700 dark:text-teal-300">
                       Auto-Selected: {activeForecastModel}
                     </span>
@@ -2988,11 +2988,11 @@ export default function AnalyticsPage({
                   </p>
                   {selectedForecast?.comparison ? (
                     <div className="mt-2.5 text-xs leading-relaxed text-muted-foreground" aria-live="polite">
-                      <strong className="text-foreground">Backtest accuracy result:</strong> Across {selectedForecast.points} shared months, <strong className="text-foreground">SMA-3</strong> had a {selectedForecast.comparison.sma3.toFixed(1)}% error gap and <strong className="text-foreground">SMA-6</strong> had a {selectedForecast.comparison.sma6.toFixed(1)}% error gap. SmartFit automatically selected <strong className="text-teal-600 dark:text-teal-400">{activeForecastModel}</strong> because it tracked recorded sales more closely.
+                      <strong className="text-foreground">Backtest accuracy result:</strong> Across {selectedForecast.points} shared months, <strong className="text-foreground">SMA-3</strong> had a {selectedForecast.comparison.sma3.toFixed(1)}% error gap and <strong className="text-foreground">SMA-6</strong> had a {selectedForecast.comparison.sma6.toFixed(1)}% error gap. SmartTrack automatically selected <strong className="text-teal-600 dark:text-teal-400">{activeForecastModel}</strong> because it tracked recorded sales more closely.
                     </div>
                   ) : (
                     <p className="mt-2.5 text-xs text-muted-foreground">
-                      <strong className="text-foreground">Building comparison history:</strong> SmartFit defaults to <strong className="text-teal-600 dark:text-teal-400">{activeForecastModel}</strong> while more monthly sales history accumulates.
+                      <strong className="text-foreground">Building comparison history:</strong> SmartTrack defaults to <strong className="text-teal-600 dark:text-teal-400">{activeForecastModel}</strong> while more monthly sales history accumulates.
                     </p>
                   )}
 
@@ -3008,7 +3008,7 @@ export default function AnalyticsPage({
                     </span>
                     <span className="text-muted-foreground">→</span>
                     <span className="rounded-md bg-teal-500/15 px-2 py-0.5 border border-teal-500/30 font-semibold text-teal-700 dark:text-teal-300">
-                      Month 7+: Dual Model AutoML Competition (SMA-3 vs SMA-6)
+                      Month 7+: Dual Model Comparison (SMA-3 vs SMA-6)
                     </span>
                   </div>
                 </div>
@@ -3025,15 +3025,15 @@ export default function AnalyticsPage({
             </div>
           </section>
 
-          {/* 3 Clean Summary Cards: SmartFit Active + SMA-3 Reference + SMA-6 Reference */}
+          {/* 3 Clean Summary Cards: Best-Fit Active + SMA-3 Reference + SMA-6 Reference */}
           <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
-            {/* Card 1: SmartFit Active Pick */}
+            {/* Card 1: Best-Fit Active Pick */}
             <section className={`${ANALYTICS_CARD_CLASS} border-teal-500/30 bg-teal-500/[0.03] p-4 sm:p-5 flex flex-col justify-between`}>
               <div>
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="h-2.5 w-2.5 rounded-full bg-teal-500" />
-                    <p className="text-sm font-semibold text-foreground">SmartFit Forecast</p>
+                    <p className="text-sm font-semibold text-foreground">Best-Fit Forecast</p>
                     <span className="rounded-full bg-teal-500/15 px-2 py-0.5 text-[10px] font-semibold text-teal-700 dark:text-teal-300">
                       Active · {activeForecastModel}
                     </span>
@@ -3125,13 +3125,13 @@ export default function AnalyticsPage({
             })}
           </div>
 
-          {/* Monthly Sales History & SmartFit Trajectory Chart */}
+          {/* Monthly Sales History & Trajectory Chart */}
           <section className={`${ANALYTICS_CARD_CLASS} min-w-0 p-4 sm:p-5`}>
             <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
               <div>
-                <h3 className="text-sm font-semibold text-foreground">Monthly sales history &amp; SmartFit forecast</h3>
+                <h3 className="text-sm font-semibold text-foreground">Monthly sales history &amp; demand forecast</h3>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Solid blue line = actual recorded sales. Dashed line = {showChartModelComparison ? "SMA-3 and SMA-6 comparison" : `SmartFit (${activeForecastModel}) trajectory into ${nextForecastMonth}`}.
+                  Solid blue line = actual recorded sales. Dashed line = {showChartModelComparison ? "SMA-3 and SMA-6 comparison" : `Best-Fit (${activeForecastModel}) trajectory into ${nextForecastMonth}`}.
                 </p>
               </div>
               <button
@@ -3143,7 +3143,7 @@ export default function AnalyticsPage({
                     : "border-border bg-background text-muted-foreground hover:bg-muted hover:text-foreground"
                 }`}
               >
-                {showChartModelComparison ? "Showing Both Models (Click for SmartFit Only)" : "Compare Both Models on Chart"}
+                {showChartModelComparison ? "Showing Both Models (Click for Best-Fit Only)" : "Compare Both Models on Chart"}
               </button>
             </div>
             {smaLoading ? (
@@ -3169,7 +3169,7 @@ export default function AnalyticsPage({
                       <span className="inline-flex items-center gap-2"><span className="w-4 border-t-2 border-dashed border-violet-500" /> SMA-6 (Steady 6-mo)</span>
                     </>
                   ) : (
-                    <span className="inline-flex items-center gap-2"><span className="w-4 border-t-2 border-dashed border-teal-600" /> SmartFit forecast ({activeForecastModel})</span>
+                    <span className="inline-flex items-center gap-2"><span className="w-4 border-t-2 border-dashed border-teal-600" /> Best-Fit forecast ({activeForecastModel})</span>
                   )}
                   <span className="ml-auto">Final point = {nextForecastMonth} forecast</span>
                 </div>
@@ -3181,7 +3181,7 @@ export default function AnalyticsPage({
                     <span>Why does the forecast trajectory begin at Month 4 (July)?</span>
                   </div>
                   <p className="mt-1">
-                    Moving averages require completed historical data. <strong className="text-foreground">SMA-3</strong> requires 3 completed prior months (April, May, June) before it can project a forecast for July. Likewise, <strong className="text-foreground">SMA-6</strong> requires 6 completed prior months, so it begins projecting at Month 7 (October). Across shared months, SmartFit compares their accuracy to pick the optimal model.
+                    Moving averages require completed historical data. <strong className="text-foreground">SMA-3</strong> requires 3 completed prior months (April, May, June) before it can project a forecast for July. Likewise, <strong className="text-foreground">SMA-6</strong> requires 6 completed prior months, so it begins projecting at Month 7 (October). Across shared months, SmartTrack compares their accuracy to pick the optimal model.
                   </p>
                 </div>
               </>
@@ -3196,7 +3196,7 @@ export default function AnalyticsPage({
               <div>
                 <h3 className="text-sm font-semibold text-foreground">Expected sales by medicine (Auto-Selected per Medicine)</h3>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  {productForecastList.length} medicines · SmartFit automatically picks SMA-3 or SMA-6 for each medicine based on its sales history
+                  {productForecastList.length} medicines · SmartTrack automatically picks SMA-3 or SMA-6 for each medicine based on its sales history
                 </p>
               </div>
               <div className="relative w-full sm:w-64">
@@ -3219,7 +3219,7 @@ export default function AnalyticsPage({
                     <th className="px-4 py-3 font-medium">
                       <div className="inline-flex items-center gap-1.5">
                         Auto-Selected Model
-                        <InfoTip title="Per-Medicine SmartFit Model" lines={["SmartTrack tests both SMA-3 and SMA-6 on each medicine's own monthly sales history and automatically picks the model with the lower error."]} />
+                        <InfoTip title="Per-Medicine Best-Fit Model" lines={["SmartTrack tests both SMA-3 and SMA-6 on each medicine's own monthly sales history and automatically picks the model with the lower error."]} />
                       </div>
                     </th>
                     <th className="px-4 py-3 text-right font-medium">Expected next month</th>
@@ -3327,7 +3327,7 @@ export default function AnalyticsPage({
                 </div>
                 <p className="mt-1.5 text-sm font-semibold text-foreground">Predicts Expected Demand</p>
                 <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-                  SmartFit automatically picks each medicine’s best SMA model to estimate monthly sales and <strong className="text-foreground">Yearly Demand (D = Monthly × 12)</strong>.
+                  SmartTrack automatically picks each medicine’s best SMA model to estimate monthly sales and <strong className="text-foreground">Yearly Demand (D = Monthly × 12)</strong>.
                 </p>
               </div>
 
@@ -3474,7 +3474,7 @@ export default function AnalyticsPage({
         <section className={`${ANALYTICS_CARD_CLASS} overflow-hidden`}>
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/60 p-4">
             <div>
-              <h2 className="text-sm font-semibold text-foreground">Medicine sales and SmartFit forecast</h2>
+              <h2 className="text-sm font-semibold text-foreground">Medicine sales and demand forecast</h2>
               <p className="mt-1 text-xs text-muted-foreground">Recorded sales, auto-selected forecast model, expected next-month demand, and stock status.</p>
             </div>
             <div className="relative w-full sm:w-64">
@@ -3696,7 +3696,7 @@ export default function AnalyticsPage({
           <CalcInspectorModal
             title={`Show Math · ${pf.product.name} (${pf.recommendedModel})`}
             formula={<SmaFormulaVisual type={isSma6 ? "sma6" : "sma3"} />}
-            explanation={`SmartFit tested both SMA-3 (fast 3-month average) and SMA-6 (steady 6-month baseline) on ${pf.product.name}’s past sales. It automatically selected ${pf.recommendedModel} (${isSma6 ? "steady baseline" : "fast-reacting"}) as the best fit.`}
+            explanation={`SmartTrack tested both SMA-3 (fast 3-month average) and SMA-6 (steady 6-month baseline) on ${pf.product.name}’s past sales. It automatically selected ${pf.recommendedModel} (${isSma6 ? "steady baseline" : "fast-reacting"}) as the best fit.`}
             variables={[
               ...periods.map(p => ({ label: `Recorded sales · ${p.label}`, value: `${p.qty.toLocaleString()} units` })),
               { label: "SMA-3 (3-month average)", value: `${Math.round(pf.monthlySma3).toLocaleString()} units/month${pf.smape3 != null ? ` (${pf.smape3.toFixed(1)}% error)` : ""}` },
@@ -3714,7 +3714,7 @@ export default function AnalyticsPage({
             }
             result={
               pf.totalSold > 0
-                ? `SmartFit Next-Month Forecast: ${roundedMonthly.toLocaleString()} units/month (${annualD.toLocaleString()} units/year)`
+                ? `Best-Fit Next-Month Forecast: ${roundedMonthly.toLocaleString()} units/month (${annualD.toLocaleString()} units/year)`
                 : "No sales history yet — record sales to generate a forecast."
             }
             onClose={() => setSelectedSmaProductId(null)}
@@ -3774,7 +3774,7 @@ export default function AnalyticsPage({
         <CalcInspectorModal
           title="EOQ Restocking — Store-Level Calculation"
           formula={<EoqFormulaVisual />}
-          explanation={`EOQ is a suggested order size that balances order-placement fees (S) and stock-holding costs (H). SmartTrack feeds the SmartFit ${activeForecastModel} demand forecast (D) directly into this formula. Cost settings: order placement ₱${globalOrderCost.toFixed(2)} and holding rate ${Math.round(holdingRateSetting * 100)}%.`}
+          explanation={`EOQ is a suggested order size that balances order-placement fees (S) and stock-holding costs (H). SmartTrack feeds the ${activeForecastModel} demand forecast (D) directly into this formula. Cost settings: order placement ₱${globalOrderCost.toFixed(2)} and holding rate ${Math.round(holdingRateSetting * 100)}%.`}
           variables={[
             { label: `Annual Demand (D · Auto ${activeForecastModel})`, value: `${Math.round(annualDemand).toLocaleString()} units/yr` },
             { label: "Order Cost (S)", value: `₱${globalOrderCost.toFixed(2)} / batch` },
