@@ -1396,32 +1396,19 @@ export default function AnalyticsPage({
       projectedShortfall: number;
     }>();
 
-    // Always also compute monthly SMA-3 and SMA-6 per product for EOQ annualization
-    const allMonthKeys = parsedSales.map(s => s.monthKey).sort();
-    const storeMonthList: string[] = [];
-    if (allMonthKeys.length > 0) {
-      const fKey = allMonthKeys[0];
-      const lKey = allMonthKeys[allMonthKeys.length - 1];
-      const cur = new Date(Number(fKey.slice(0, 4)), Number(fKey.slice(5, 7)) - 1, 1);
-      const endM = new Date(Number(lKey.slice(0, 4)), Number(lKey.slice(5, 7)) - 1, 1);
-      while (cur <= endM) {
-        storeMonthList.push(`${cur.getFullYear()}-${String(cur.getMonth() + 1).padStart(2, "0")}`);
-        cur.setMonth(cur.getMonth() + 1);
-      }
-    }
-
     inventory.forEach(p => {
       const pid = String(p.id);
       const prodSales = parsedSales.filter(s => s.productId === pid);
       const totalSold = prodSales.reduce((sum, s) => sum + s.qty, 0);
 
-      // Monthly series from product's first sale month up to latest store month
+      // Monthly series from product's active recorded sales months
       const monthTotals = new Map<string, number>();
+      const monthLabelsMap = new Map<string, string>();
       prodSales.forEach(s => {
         monthTotals.set(s.monthKey, (monthTotals.get(s.monthKey) ?? 0) + s.qty);
+        monthLabelsMap.set(s.monthKey, s.monthLabel);
       });
-      const firstProdMonthIdx = storeMonthList.findIndex(mk => (monthTotals.get(mk) ?? 0) > 0);
-      const activeMonthWindow = firstProdMonthIdx >= 0 ? storeMonthList.slice(firstProdMonthIdx) : [];
+      const activeMonthWindow = Array.from(monthTotals.keys()).sort();
       const monthlySeries = activeMonthWindow.map(mk => monthTotals.get(mk) ?? 0);
       const monthlySma3 = computeSMA(monthlySeries, 3);
       const monthlySma6 = computeSMA(monthlySeries, 6);
@@ -1429,9 +1416,10 @@ export default function AnalyticsPage({
       // Active display period series (monthly or weekly)
       let displaySeries: { label: string; qty: number }[] = [];
       if (forecastPeriodUnit === "month") {
-        const firstIdx = periodKeys.findIndex(pk => (monthTotals.get(pk.key) ?? 0) > 0);
-        const sliced = firstIdx >= 0 ? periodKeys.slice(firstIdx) : [];
-        displaySeries = sliced.map(pk => ({ label: pk.label, qty: monthTotals.get(pk.key) ?? 0 }));
+        displaySeries = activeMonthWindow.map(mk => ({
+          label: monthLabelsMap.get(mk) ?? mk,
+          qty: monthTotals.get(mk) ?? 0,
+        }));
       } else {
         const weekCounts = periodKeys.map(pk => {
           const qty = prodSales
@@ -1439,8 +1427,7 @@ export default function AnalyticsPage({
             .reduce((sum, s) => sum + s.qty, 0);
           return { label: pk.label, qty };
         });
-        const firstIdx = weekCounts.findIndex(w => w.qty > 0);
-        displaySeries = firstIdx >= 0 ? weekCounts.slice(firstIdx) : [];
+        displaySeries = weekCounts.filter(w => w.qty > 0);
       }
 
       const vals = displaySeries.map(d => d.qty);
@@ -1757,48 +1744,27 @@ export default function AnalyticsPage({
         const histMonthly = totalSold / storeMonths;
         const minReorderUnits = getReorderUnits(p);
 
-        let annualProductDemand = 0;
+        let monthlyDemandUnits = 1;
+        let annualProductDemand = 12;
         let isDemandFallback = false;
         let demandSourceLabel = "";
         let demandSourceShort = "";
 
         if (totalSold === 0) {
           isDemandFallback = true;
-          annualProductDemand = Math.max(10, minReorderUnits * 6);
-          demandSourceLabel = `Fallback estimate (0 sales — 6× min threshold of ${minReorderUnits}u)`;
-          demandSourceShort = "No sales · fallback";
-        } else if (demandBasis === "sma3") {
-          const base = monthlySma3 > 0 ? monthlySma3 : histMonthly;
-          annualProductDemand = base * 12;
-          demandSourceLabel = monthlySma3 > 0
-            ? `SMA-3 forecast (${Math.round(monthlySma3)} u/mo × 12)`
-            : `All-time avg (${totalSold} sold ÷ ${storeMonths} mos × 12)`;
-          demandSourceShort = monthlySma3 > 0 ? "SMA-3" : "Available sales average";
-        } else if (demandBasis === "sma6") {
-          const base = monthlySma6 > 0 ? monthlySma6 : histMonthly;
-          annualProductDemand = base * 12;
-          demandSourceLabel = monthlySma6 > 0
-            ? `SMA-6 forecast (${Math.round(monthlySma6)} u/mo × 12)`
-            : `All-time avg (${totalSold} sold ÷ ${storeMonths} mos × 12)`;
-          demandSourceShort = monthlySma6 > 0 ? "SMA-6" : "Available sales average";
-        } else if (demandBasis === "historical") {
-          annualProductDemand = histMonthly * 12;
-          demandSourceLabel = `All-time monthly avg (${totalSold} sold ÷ ${storeMonths} mos × 12)`;
-          demandSourceShort = "All-time sales average";
+          monthlyDemandUnits = Math.max(1, Math.round(minReorderUnits / 2));
+          annualProductDemand = monthlyDemandUnits * 12;
+          demandSourceLabel = `No sales history yet — estimated from minimum stock threshold (${monthlyDemandUnits.toLocaleString()} units/month × 12 months = ${annualProductDemand.toLocaleString()} units/year)`;
+          demandSourceShort = "No sales yet · Min stock baseline";
         } else {
-          // "auto" — use product's recommended SMA model
+          // SmartFit auto-selected model per medicine
           const recModel = pf?.recommendedModel ?? "SMA-3";
-          const chosenModel = recModel === "SMA-6" && monthlySma6 > 0
-            ? "SMA-6"
-            : monthlySma3 > 0
-              ? "SMA-3"
-              : null;
-          const chosenMonthly = chosenModel === "SMA-6" ? monthlySma6 : chosenModel === "SMA-3" ? monthlySma3 : histMonthly;
-          annualProductDemand = chosenMonthly * 12;
-          demandSourceLabel = chosenModel
-            ? `Recommended ${chosenModel} (${Math.round(chosenMonthly)} u/mo × 12)`
-            : `All-time avg (${totalSold} sold ÷ ${storeMonths} mos × 12)`;
-          demandSourceShort = chosenModel ? `Recommended ${chosenModel}` : "All-time sales average";
+          const chosenModel: "SMA-3" | "SMA-6" = recModel === "SMA-6" && monthlySma6 > 0 ? "SMA-6" : "SMA-3";
+          const rawMonthly = chosenModel === "SMA-6" ? monthlySma6 : (monthlySma3 > 0 ? monthlySma3 : histMonthly);
+          monthlyDemandUnits = Math.max(1, Math.round(rawMonthly));
+          annualProductDemand = monthlyDemandUnits * 12;
+          demandSourceLabel = `Auto-selected ${chosenModel} forecast (${monthlyDemandUnits.toLocaleString()} units/month × 12 months = ${annualProductDemand.toLocaleString()} units/year)`;
+          demandSourceShort = `Auto: ${chosenModel} Forecast`;
         }
 
         const batchesWithCost = p.batches.filter(batch => batch.unitCost != null && batch.unitCost > 0);
@@ -3418,10 +3384,22 @@ export default function AnalyticsPage({
                       </td>
                       <td className="px-4 py-3">
                         <p className="text-xs font-semibold tabular-nums text-foreground">
-                          ~{Math.max(1, Math.round(rec.annualDemand / 12)).toLocaleString()} u/mo · {rec.annualDemand.toLocaleString()} u/yr
+                          {Math.max(1, Math.round(rec.annualDemand / 12)).toLocaleString()} {Math.max(1, Math.round(rec.annualDemand / 12)) === 1 ? "unit" : "units"}/month{" "}
+                          <span className="font-normal text-muted-foreground">({rec.annualDemand.toLocaleString()}/year)</span>
                         </p>
-                        <p className="mt-0.5 text-[11px] text-muted-foreground" title={rec.demandSourceLabel}>
-                          {rec.demandSourceShort}
+                        <p className="mt-1">
+                          <span
+                            title={rec.demandSourceLabel}
+                            className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                              rec.isDemandFallback
+                                ? "bg-muted text-muted-foreground"
+                                : rec.demandSourceShort.includes("SMA-6")
+                                  ? "bg-violet-500/10 text-violet-700 dark:text-violet-300"
+                                  : "bg-orange-500/10 text-orange-700 dark:text-orange-300"
+                            }`}
+                          >
+                            {rec.demandSourceShort}
+                          </span>
                         </p>
                       </td>
                       <td className="px-4 py-3 tabular-nums">
@@ -3685,7 +3663,8 @@ export default function AnalyticsPage({
         const periods = isSma6 ? pf.recent6Periods : pf.recent3Periods;
         const sumQty = periods.reduce((s, p) => s + p.qty, 0);
         const avgQty = periods.length > 0 ? sumQty / periods.length : 0;
-        const annualD = Math.round(pf.monthlyEquivalentForecast * 12);
+        const roundedMonthly = Math.max(1, Math.round(pf.monthlyEquivalentForecast));
+        const annualD = roundedMonthly * 12;
         return (
           <CalcInspectorModal
             title={`Show Math · ${pf.product.name} (${pf.recommendedModel})`}
@@ -3693,22 +3672,22 @@ export default function AnalyticsPage({
             explanation={`SmartFit tested both SMA-3 (fast 3-month average) and SMA-6 (steady 6-month baseline) on ${pf.product.name}’s past sales. It automatically selected ${pf.recommendedModel} (${isSma6 ? "steady baseline" : "fast-reacting"}) as the best fit.`}
             variables={[
               ...periods.map(p => ({ label: `Recorded sales · ${p.label}`, value: `${p.qty.toLocaleString()} units` })),
-              { label: "SMA-3 (3-month average)", value: `${Math.round(pf.monthlySma3).toLocaleString()} units/mo${pf.smape3 != null ? ` (${pf.smape3.toFixed(1)}% error)` : ""}` },
-              { label: "SMA-6 (6-month average)", value: `${Math.round(pf.monthlySma6).toLocaleString()} units/mo${pf.smape6 != null ? ` (${pf.smape6.toFixed(1)}% error)` : ""}` },
-              { label: "Auto-Selected Model", value: `${pf.recommendedModel} (${isSma6 ? "Steady 6-Mo" : "Fast 3-Mo"})` },
+              { label: "SMA-3 (3-month average)", value: `${Math.round(pf.monthlySma3).toLocaleString()} units/month${pf.smape3 != null ? ` (${pf.smape3.toFixed(1)}% error)` : ""}` },
+              { label: "SMA-6 (6-month average)", value: `${Math.round(pf.monthlySma6).toLocaleString()} units/month${pf.smape6 != null ? ` (${pf.smape6.toFixed(1)}% error)` : ""}` },
+              { label: "Auto-Selected Model", value: `${pf.recommendedModel} (${isSma6 ? "Steady 6-Month" : "Fast 3-Month"})` },
             ]}
             trail={
               periods.length > 0
                 ? [
                     `Step 1 (Add recent sales): ${periods.map(p => p.qty.toLocaleString()).join(" + ")} = ${sumQty.toLocaleString()} units.`,
-                    `Step 2 (Divide by ${periods.length} months): ${sumQty.toLocaleString()} ÷ ${periods.length} = ${Math.round(avgQty).toLocaleString()} units expected next month.`,
-                    `Step 3 (Connect to ROP & EOQ): ${Math.round(pf.monthlyEquivalentForecast).toLocaleString()} units/mo × 12 = ${annualD.toLocaleString()} units/year (Annual Demand D).`,
+                    `Step 2 (Divide by ${periods.length} ${periods.length === 1 ? "month" : "months"}): ${sumQty.toLocaleString()} ÷ ${periods.length} = ${roundedMonthly.toLocaleString()} units/month expected next month.`,
+                    `Step 3 (Connect to ROP & EOQ): ${roundedMonthly.toLocaleString()} units/month × 12 months = ${annualD.toLocaleString()} units/year (Annual Demand D).`,
                   ]
                 : ["No recorded sales periods yet for this medicine."]
             }
             result={
               pf.totalSold > 0
-                ? `SmartFit Next-Month Forecast: ≈ ${Math.round(pf.monthlyEquivalentForecast).toLocaleString()} units (${annualD.toLocaleString()} units/yr)`
+                ? `SmartFit Next-Month Forecast: ${roundedMonthly.toLocaleString()} units/month (${annualD.toLocaleString()} units/year)`
                 : "No sales history yet — record sales to generate a forecast."
             }
             onClose={() => setSelectedSmaProductId(null)}

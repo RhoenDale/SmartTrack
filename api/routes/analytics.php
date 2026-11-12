@@ -100,28 +100,7 @@ switch ($method . ':' . $action) {
             $demandMap[$row['monthKey']] = (int)$row['demand'];
             $monthLabels[$row['monthKey']] = $row['month'];
         }
-        $forecastRows = [];
-        if ($demandRows) {
-            $storeMaxMonthKey = (string)($pdo->query(
-                "SELECT COALESCE(MAX(DATE_FORMAT(transacted_at, '%Y-%m')), '') FROM transactions WHERE type = 'sale'"
-            )->fetchColumn() ?: '');
-            $lastProductMonthKey = $demandRows[count($demandRows) - 1]['monthKey'];
-            $endMonthKey = ($storeMaxMonthKey !== '' && $storeMaxMonthKey > $lastProductMonthKey)
-                ? $storeMaxMonthKey
-                : $lastProductMonthKey;
-            $month = new DateTimeImmutable($demandRows[0]['monthKey'] . '-01');
-            $lastMonth = new DateTimeImmutable($endMonthKey . '-01');
-            while ($month <= $lastMonth) {
-                $monthKey = $month->format('Y-m');
-                $monthLabels[$monthKey] ??= $month->format('M Y');
-                $forecastRows[] = [
-                    'monthKey' => $monthKey,
-                    'month' => $monthLabels[$monthKey],
-                    'demand' => $demandMap[$monthKey] ?? 0,
-                ];
-                $month = $month->modify('+1 month');
-            }
-        }
+        $forecastRows = $demandRows;
         $demandValues = array_column($forecastRows, 'demand');
         $result = [];
         foreach ($forecastRows as $i => $row) {
