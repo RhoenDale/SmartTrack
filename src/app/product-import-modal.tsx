@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Upload, Download, FileSpreadsheet, CheckCircle2, AlertTriangle, X, HelpCircle, ArrowRight, RefreshCw, FileText } from "lucide-react";
 import { productsApi } from "./api";
 
@@ -44,6 +44,14 @@ export function ProductImportModal({
   const [importing, setImporting] = useState(false);
   const [resultMsg, setResultMsg] = useState<{ text: string; type: "success" | "error" } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    if (isOpen) window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isOpen, onClose]);
 
   if (!isOpen) return null;
 
@@ -221,8 +229,14 @@ export function ProductImportModal({
   const invalidCount = parsedRows.length - validCount;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-in fade-in duration-150">
-      <div className="relative w-full max-w-3xl rounded-2xl border border-border bg-card p-6 shadow-2xl flex flex-col max-h-[90vh]">
+    <div
+      onClick={onClose}
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-in fade-in duration-150"
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        className="relative w-full max-w-3xl rounded-2xl border border-border bg-card p-6 shadow-2xl flex flex-col max-h-[90vh]"
+      >
         {/* Header */}
         <div className="flex items-start justify-between pb-4 border-b border-border/70">
           <div>
@@ -239,9 +253,10 @@ export function ProductImportModal({
           <button
             type="button"
             onClick={onClose}
-            className="p-1 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors cursor-pointer"
+            aria-label="Close dialog"
+            className="flex h-7 w-7 items-center justify-center rounded-full text-muted-foreground hover:bg-muted/70 hover:text-foreground transition-colors cursor-pointer"
           >
-            <X size={18} />
+            <X size={16} />
           </button>
         </div>
 
@@ -548,20 +563,11 @@ export function ProductImportModal({
             {activeTab === "instructions"
               ? "Read format requirements before importing."
               : parsedRows.length > 0
-              ? `${validCount} of ${parsedRows.length} items will be imported into inventory.`
+              ? `${validCount} of ${parsedRows.length} items ready to import into inventory.`
               : "Select a file or download the template to begin."}
           </p>
 
           <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={onClose}
-              disabled={importing}
-              className="px-4 py-2 rounded-xl border border-border bg-background hover:bg-muted font-semibold text-foreground text-xs transition-colors cursor-pointer"
-            >
-              Cancel
-            </button>
-
             {activeTab === "instructions" ? (
               <button
                 type="button"
@@ -571,20 +577,21 @@ export function ProductImportModal({
                 <span>Continue to Upload</span>
                 <ArrowRight size={13} />
               </button>
-            ) : (
+            ) : validCount > 0 ? (
               <button
                 type="button"
                 onClick={handleConfirmImport}
-                disabled={importing || validCount === 0}
+                disabled={importing}
                 className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs shadow-xs transition-colors disabled:opacity-40 cursor-pointer"
               >
                 {importing ? <RefreshCw size={13} className="animate-spin" /> : <Upload size={13} />}
                 <span>{importing ? "Importing to Inventory…" : `Confirm & Import (${validCount})`}</span>
               </button>
-            )}
+            ) : null}
           </div>
         </div>
       </div>
     </div>
   );
 }
+
