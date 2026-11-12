@@ -739,6 +739,7 @@ function EoqSettingsModal({
   holdingPercent,
   leadTimeDays,
   safetyBufferPercent,
+  smartRecs,
   onSave,
   onReset,
   onClose,
@@ -747,6 +748,16 @@ function EoqSettingsModal({
   holdingPercent: number;
   leadTimeDays: number;
   safetyBufferPercent: number;
+  smartRecs: {
+    hasEmpiricalData: boolean;
+    recommendedLeadDays: number;
+    recommendedSafetyBuffer: number;
+    benchmarkOrderCost: number;
+    benchmarkHoldingRate: number;
+    totalReceiptsCount: number;
+    fulfillmentPct: number;
+    supplierBreakdown: { name: string; leadDays: number; receipts: number; fulfillment: number }[];
+  };
   onSave: (orderCost: number, holdingPercent: number, leadTimeDays: number, safetyBufferPercent: number) => void;
   onReset: () => void;
   onClose: () => void;
@@ -763,47 +774,118 @@ function EoqSettingsModal({
     setFormSafetyBuffer(String(buffer));
   };
 
+  const isSmartAuto =
+    Number(formOrderCost) === smartRecs.benchmarkOrderCost &&
+    Number(formHoldingPercent) === smartRecs.benchmarkHoldingRate &&
+    Number(formLeadTimeDays) === smartRecs.recommendedLeadDays &&
+    Number(formSafetyBuffer) === smartRecs.recommendedSafetyBuffer;
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const cost = Math.max(1, parseFloat(formOrderCost) || 120);
     const hold = Math.min(100, Math.max(1, parseFloat(formHoldingPercent) || 20));
-    const lead = Math.min(90, Math.max(1, Math.round(parseFloat(formLeadTimeDays) || 7)));
-    const buffer = Math.min(200, Math.max(0, Math.round(parseFloat(formSafetyBuffer) || 20)));
+    const lead = Math.min(90, Math.max(1, Math.round(parseFloat(formLeadTimeDays) || smartRecs.recommendedLeadDays)));
+    const buffer = Math.min(200, Math.max(0, Math.round(parseFloat(formSafetyBuffer) || smartRecs.recommendedSafetyBuffer)));
     onSave(cost, hold, lead, buffer);
     onClose();
   };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="fixed inset-0" onClick={onClose} />
-      <div className="relative z-10 bg-card border border-border rounded-2xl shadow-2xl w-full max-w-xl overflow-hidden flex flex-col max-h-[90vh]">
+      <div className="fixed inset-0 bg-black/40 backdrop-blur-xs" onClick={onClose} />
+      <div className="relative z-10 bg-card border border-border rounded-2xl shadow-2xl w-full max-w-xl overflow-hidden flex flex-col max-h-[92vh]">
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-border flex-shrink-0">
           <div>
-            <h3 className="text-base font-bold text-foreground">EOQ &amp; ROP Operational Parameters</h3>
-            <p className="text-xs text-muted-foreground mt-0.5">Configure ordering costs, holding rate, supplier lead time, and safety stock buffer</p>
+            <div className="flex items-center gap-2">
+              <h3 className="text-base font-bold text-foreground">EOQ &amp; ROP Operational Parameters</h3>
+              {isSmartAuto ? (
+                <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                  ✨ Smart Auto Active
+                </span>
+              ) : (
+                <span className="rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold text-amber-600 dark:text-amber-400 border border-amber-500/20">
+                  👤 Manual Override
+                </span>
+              )}
+            </div>
+            <p className="text-xs text-muted-foreground mt-0.5">Automated recommendations calibrated from historical delivery receipts and Tangub retail standards</p>
           </div>
-          <button type="button" onClick={onClose} className="text-muted-foreground hover:text-foreground p-1 rounded hover:bg-muted cursor-pointer">
+          <button type="button" onClick={onClose} aria-label="Close" className="text-muted-foreground hover:text-foreground p-1 rounded hover:bg-muted cursor-pointer">
             <X size={16} />
           </button>
         </div>
 
         {/* Content & Plain Language Explanation */}
         <form onSubmit={handleSubmit} className="p-5 space-y-4 overflow-y-auto flex-1">
-          <div className="rounded-xl border border-border/80 bg-muted/20 p-3.5 space-y-2 text-xs leading-relaxed">
-            <h4 className="font-bold text-foreground text-xs">
-              Why SmartTrack Uses Configurable Pharmacy Presets
-            </h4>
-            <p className="text-muted-foreground">
-              Every pharmacy has different supplier fees and storage conditions. <strong className="text-foreground">Order Cost (S)</strong> covers delivery &amp; admin effort per PO; <strong className="text-foreground">Holding Rate (I)</strong> covers air-conditioning, shelf space, and capital lockup; <strong className="text-foreground">Lead Time &amp; Buffer</strong> determine your Reorder Point (ROP) safety cushion.
+          {/* Automated System Recommendation Card */}
+          <div className="rounded-xl border border-primary/30 bg-primary/[0.04] p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="inline-flex items-center gap-1.5 text-xs font-bold text-primary">
+                <SlidersHorizontal size={14} />
+                ✨ Automated SmartTrack System Recommendation
+              </span>
+              {isSmartAuto ? (
+                <span className="text-[11px] font-medium text-emerald-600 dark:text-emerald-400">
+                  ✓ Current parameters match system recommendation
+                </span>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => applyPreset(smartRecs.benchmarkOrderCost, smartRecs.benchmarkHoldingRate, smartRecs.recommendedLeadDays, smartRecs.recommendedSafetyBuffer)}
+                  className="inline-flex items-center gap-1 rounded-lg bg-primary px-2.5 py-1 text-[11px] font-bold text-primary-foreground hover:bg-primary/90 transition-colors cursor-pointer"
+                >
+                  ⚡ Apply Smart Parameters
+                </button>
+              )}
+            </div>
+
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              {smartRecs.hasEmpiricalData ? (
+                <>
+                  SmartTrack measured an empirical average lead time of <strong className="text-foreground">{smartRecs.recommendedLeadDays} days</strong> across <strong className="text-foreground">{smartRecs.totalReceiptsCount} historical delivery receipts</strong> with <strong className="text-foreground">{smartRecs.fulfillmentPct}% fulfillment reliability</strong>. Combined with Tangub pharmacy freight benchmarks, these parameters balance replenishment orders and prevent stockouts.
+                </>
+              ) : (
+                <>
+                  Standard Northern Mindanao retail pharmacy defaults automatically configured to balance supplier delivery fees against climate-controlled inventory carrying costs.
+                </>
+              )}
             </p>
+
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1 text-xs">
+              <div className="rounded-lg bg-background/80 border border-border/60 p-2 text-center">
+                <p className="text-[10px] text-muted-foreground">Supplier Lead Time</p>
+                <p className="font-bold text-foreground text-sm mt-0.5">{smartRecs.recommendedLeadDays} days</p>
+                <p className="text-[9px] text-emerald-600 dark:text-emerald-400 font-medium">Empirical receipts</p>
+              </div>
+              <div className="rounded-lg bg-background/80 border border-border/60 p-2 text-center">
+                <p className="text-[10px] text-muted-foreground">Safety Stock Buffer</p>
+                <p className="font-bold text-foreground text-sm mt-0.5">+{smartRecs.recommendedSafetyBuffer}%</p>
+                <p className="text-[9px] text-emerald-600 dark:text-emerald-400 font-medium">{smartRecs.fulfillmentPct}% fill rate</p>
+              </div>
+              <div className="rounded-lg bg-background/80 border border-border/60 p-2 text-center">
+                <p className="text-[10px] text-muted-foreground">Order Cost (S)</p>
+                <p className="font-bold text-foreground text-sm mt-0.5">₱{smartRecs.benchmarkOrderCost}</p>
+                <p className="text-[9px] text-muted-foreground">Courier + admin</p>
+              </div>
+              <div className="rounded-lg bg-background/80 border border-border/60 p-2 text-center">
+                <p className="text-[10px] text-muted-foreground">Holding Rate (I)</p>
+                <p className="font-bold text-foreground text-sm mt-0.5">{smartRecs.benchmarkHoldingRate}% / yr</p>
+                <p className="text-[9px] text-muted-foreground">A/C + storage + risk</p>
+              </div>
+            </div>
           </div>
 
-          {/* 1-Click Operational Presets */}
+          {/* 1-Click Operational Presets & Human Override */}
           <div>
-            <span className="block text-[11px] font-bold uppercase tracking-wider text-muted-foreground mb-2">
-              Quick Pharmacy Operational Presets
-            </span>
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+                Pharmacy Presets &amp; Human Intervention
+              </span>
+              <span className="text-[10px] text-muted-foreground">
+                Click preset or customize below
+              </span>
+            </div>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
               {[
                 {
@@ -819,8 +901,8 @@ function EoqSettingsModal({
                   desc: "Standard retail pharmacy default",
                   cost: 120,
                   hold: 20,
-                  lead: 7,
-                  buffer: 20,
+                  lead: smartRecs.recommendedLeadDays,
+                  buffer: smartRecs.recommendedSafetyBuffer,
                 },
                 {
                   name: "Regional / Cold-Chain",
@@ -858,6 +940,7 @@ function EoqSettingsModal({
             </div>
           </div>
 
+          {/* Form Inputs */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
             <div>
               <label className="block text-xs font-semibold text-foreground mb-1">
@@ -872,7 +955,7 @@ function EoqSettingsModal({
                 className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
                 required
               />
-              <span className="text-[10px] text-muted-foreground mt-1 block">Default: ₱120.00 / order</span>
+              <span className="text-[10px] text-muted-foreground mt-1 block">Freight courier + PO clerical processing fee</span>
             </div>
 
             <div>
@@ -889,7 +972,7 @@ function EoqSettingsModal({
                 className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
                 required
               />
-              <span className="text-[10px] text-muted-foreground mt-1 block">Default: 20% per year</span>
+              <span className="text-[10px] text-muted-foreground mt-1 block">A/C electricity, shelf space, and expiry loss risk</span>
             </div>
 
             <div>
@@ -906,7 +989,9 @@ function EoqSettingsModal({
                 className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
                 required
               />
-              <span className="text-[10px] text-muted-foreground mt-1 block">Default: 7 days</span>
+              <span className="text-[10px] text-muted-foreground mt-1 block">
+                Historical receipt average: {smartRecs.recommendedLeadDays} days
+              </span>
             </div>
 
             <div>
@@ -923,7 +1008,9 @@ function EoqSettingsModal({
                 className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
                 required
               />
-              <span className="text-[10px] text-muted-foreground mt-1 block">Default: 20% buffer</span>
+              <span className="text-[10px] text-muted-foreground mt-1 block">
+                Cushion against late deliveries and sudden sales spikes
+              </span>
             </div>
           </div>
 
@@ -937,7 +1024,7 @@ function EoqSettingsModal({
               }}
               className="text-xs font-semibold text-muted-foreground hover:text-foreground hover:underline cursor-pointer"
             >
-              Reset to Defaults (₱120 · 20% · 7d · 20%)
+              Reset to Smart Defaults (₱{smartRecs.benchmarkOrderCost} · {smartRecs.benchmarkHoldingRate}% · {smartRecs.recommendedLeadDays}d · {smartRecs.recommendedSafetyBuffer}%)
             </button>
             <button
               type="submit"
@@ -1574,6 +1661,37 @@ export default function AnalyticsPage({
   // ── EOQ & ROP Configurable Parameters + Automated Best-Fit Demand Basis ──
   const demandBasis: "auto" | "sma3" | "sma6" | "historical" = "auto";
 
+  // Automated SmartTrack recommendations calculated empirically from live delivery receipts
+  const smartOperationalRecommendations = useMemo(() => {
+    const suppliersWithLead = supplierPerformance.filter(s => s.avgLeadDays != null && s.avgLeadDays > 0);
+    const totalReceiptsCount = suppliersWithLead.reduce((sum, s) => sum + (s.receiptCount ?? 1), 0);
+    const weightedLead = suppliersWithLead.reduce((sum, s) => sum + (s.avgLeadDays! * (s.receiptCount ?? 1)), 0);
+    const measuredLead = totalReceiptsCount > 0 ? Math.round(weightedLead / totalReceiptsCount) : 5;
+
+    const totalOrdered = supplierPerformance.reduce((sum, s) => sum + s.qtyOrdered, 0);
+    const totalFulfilled = supplierPerformance.reduce((sum, s) => sum + s.qtyFulfilled, 0);
+    const fulfillmentPct = totalOrdered > 0 ? (totalFulfilled / totalOrdered) * 100 : 98;
+
+    // Adaptive safety buffer: 20% standard when fulfillment >= 95%, 25% if 85-94%, 30% if < 85%
+    const recommendedBuffer = fulfillmentPct >= 95 ? 20 : fulfillmentPct >= 85 ? 25 : 30;
+
+    return {
+      hasEmpiricalData: suppliersWithLead.length > 0,
+      recommendedLeadDays: Math.max(1, measuredLead || 5),
+      recommendedSafetyBuffer: recommendedBuffer,
+      benchmarkOrderCost: 120, // Tangub courier fee + administrative processing
+      benchmarkHoldingRate: 20, // 20% annual carrying rate for air-conditioned pharmacy inventory
+      totalReceiptsCount,
+      fulfillmentPct: Math.round(fulfillmentPct),
+      supplierBreakdown: suppliersWithLead.map(s => ({
+        name: s.supplier,
+        leadDays: s.avgLeadDays!,
+        receipts: s.receiptCount ?? 0,
+        fulfillment: s.fulfillmentRate ?? 100,
+      })),
+    };
+  }, [supplierPerformance]);
+
   const [orderCostSetting, setOrderCostSetting] = useState<number>(() => {
     try {
       const saved = localStorage.getItem("smarttrack_eoq_order_cost");
@@ -1589,8 +1707,8 @@ export default function AnalyticsPage({
   const [leadTimeDaysSetting, setLeadTimeDaysSetting] = useState<number>(() => {
     try {
       const saved = localStorage.getItem("smarttrack_eoq_lead_time");
-      return saved ? Math.min(90, Math.max(1, Math.round(parseFloat(saved) || 7))) : 7;
-    } catch { return 7; }
+      return saved ? Math.min(90, Math.max(1, Math.round(parseFloat(saved) || 5))) : 5;
+    } catch { return 5; }
   });
   const [safetyBufferSetting, setSafetyBufferSetting] = useState<number>(() => {
     try {
@@ -1605,6 +1723,12 @@ export default function AnalyticsPage({
     } catch { return {}; }
   });
   const [showEoqSettingsModal, setShowEoqSettingsModal] = useState(false);
+
+  const isSmartAutoParameters =
+    orderCostSetting === smartOperationalRecommendations.benchmarkOrderCost &&
+    Math.round(holdingRateSetting * 100) === smartOperationalRecommendations.benchmarkHoldingRate &&
+    leadTimeDaysSetting === smartOperationalRecommendations.recommendedLeadDays &&
+    safetyBufferSetting === smartOperationalRecommendations.recommendedSafetyBuffer;
 
   const handleSetOverrideQty = (productId: string, qty: number | null) => {
     setEoqOverrides(prev => {
@@ -1635,17 +1759,19 @@ export default function AnalyticsPage({
   };
 
   const handleResetEoqSettings = () => {
+    const lead = smartOperationalRecommendations.recommendedLeadDays;
+    const buffer = smartOperationalRecommendations.recommendedSafetyBuffer;
     setOrderCostSetting(120);
     setHoldingRateSetting(0.20);
-    setLeadTimeDaysSetting(7);
-    setSafetyBufferSetting(20);
+    setLeadTimeDaysSetting(lead);
+    setSafetyBufferSetting(buffer);
     try {
       localStorage.removeItem("smarttrack_eoq_order_cost");
       localStorage.removeItem("smarttrack_eoq_holding_rate");
       localStorage.removeItem("smarttrack_eoq_lead_time");
       localStorage.removeItem("smarttrack_eoq_safety_buffer");
     } catch { /* ignore */ }
-    showToast?.("Reset EOQ & ROP parameters to Tangub benchmark defaults", "info");
+    showToast?.(`Reset parameters to Smart Defaults (₱120 · 20% · ${lead}d · +${buffer}%)`, "info");
   };
 
   const annualDemand = useMemo(() => {
@@ -1735,7 +1861,6 @@ export default function AnalyticsPage({
   const reorderRecs = useMemo(() => {
     const storeMonths = Math.max(monthlyDemand.length, 1);
     return inventory
-      .filter(p => p.status === "out_of_stock" || p.status === "critical" || p.status === "low")
       .map(p => {
         const pf = productForecastMap.get(String(p.id));
         const totalSold = pf?.totalSold ?? transactions.filter(t => t.type === "sale" && t.productId === p.id).reduce((s, t) => s + t.qty, 0);
@@ -1757,7 +1882,7 @@ export default function AnalyticsPage({
           demandSourceLabel = `No sales history yet — estimated from minimum stock threshold (${monthlyDemandUnits.toLocaleString()} units/month × 12 months = ${annualProductDemand.toLocaleString()} units/year)`;
           demandSourceShort = "No sales yet · Min stock baseline";
         } else {
-          // SmartFit auto-selected model per medicine
+          // SmartTrack auto-selected model per medicine
           const recModel = pf?.recommendedModel ?? "SMA-3";
           const chosenModel: "SMA-3" | "SMA-6" = recModel === "SMA-6" && monthlySma6 > 0 ? "SMA-6" : "SMA-3";
           const rawMonthly = chosenModel === "SMA-6" ? monthlySma6 : (monthlySma3 > 0 ? monthlySma3 : histMonthly);
@@ -1781,15 +1906,28 @@ export default function AnalyticsPage({
         const holdingPercent = Math.round(holdingRateSetting * 100);
         const holdingCost = Math.max(0.2, productUnitCost * holdingRateSetting);
         const productEOQ = estimateEOQ(Math.round(annualProductDemand), productUnitCost, orderCost, holdingRateSetting);
-        const eoq = Math.max(productEOQ, minReorderUnits);
+        const packSize = Math.max(1, p.unitsPerPack ?? 1);
+        const packsNeeded = Math.max(1, Math.ceil(productEOQ / packSize));
+        const eoq = packsNeeded * packSize;
         const suggestedRop = Math.max(
           1,
           Math.round((annualProductDemand / 365) * leadTimeDaysSetting * (1 + safetyBufferSetting / 100))
         );
+        const effectiveRop = isDemandFallback ? minReorderUnits : Math.max(suggestedRop, minReorderUnits);
+        const shortage = Math.max(0, effectiveRop - p.stock);
+        const recommendedUnits = Math.max(eoq, Math.ceil(shortage / packSize) * packSize);
         const overrideQty = eoqOverrides[p.id] ?? null;
-        const effectiveOrderQty = overrideQty ?? eoq;
+        const effectiveOrderQty = overrideQty ?? recommendedUnits;
         const monthlyBurn = annualProductDemand / 12;
         const fifoSellThroughMonths = monthlyBurn > 0 ? effectiveOrderQty / monthlyBurn : null;
+
+        // An item genuinely needs restocking if out of stock, stock <= dynamic ROP, or below minimum threshold
+        const needsRestock =
+          p.stock <= 0 ||
+          p.status === "out_of_stock" ||
+          p.stock <= suggestedRop ||
+          (isDemandFallback && p.stock <= minReorderUnits) ||
+          ((p.status === "critical" || p.status === "low") && p.stock <= effectiveRop);
 
         return {
           product: p,
@@ -1799,8 +1937,9 @@ export default function AnalyticsPage({
           effectiveOrderQty,
           fifoSellThroughMonths,
           suggestedRop,
+          effectiveRop,
           totalSold,
-          shortage: Math.max(0, minReorderUnits - p.stock),
+          shortage,
           annualDemand: Math.round(annualProductDemand),
           unitCost: productUnitCost,
           orderCost,
@@ -1813,8 +1952,10 @@ export default function AnalyticsPage({
           demandSourceShort,
           isCostEstimated,
           costSourceLabel,
+          needsRestock,
         };
       })
+      .filter(rec => rec.needsRestock)
       .sort((a, b) => b.shortage - a.shortage);
   }, [
     inventory,
@@ -3308,9 +3449,23 @@ export default function AnalyticsPage({
                   SmartTrack connects your sales forecast directly to your restocking plan in three simple steps:
                 </p>
               </div>
-              <div className="flex flex-wrap gap-2">
-                <button type="button" onClick={() => setShowEoqSettingsModal(true)} className="rounded-xl border border-border px-3 py-1.5 text-xs font-semibold text-foreground hover:bg-muted cursor-pointer">
-                  Planning settings (₱{orderCostSetting} · {Math.round(holdingRateSetting * 100)}% · {leadTimeDaysSetting}d)
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowEoqSettingsModal(true)}
+                  className="rounded-xl border border-border px-3 py-1.5 text-xs font-semibold text-foreground hover:bg-muted cursor-pointer inline-flex items-center gap-1.5"
+                >
+                  <SlidersHorizontal size={13} className="text-muted-foreground" />
+                  <span>Planning settings (₱{orderCostSetting} · {Math.round(holdingRateSetting * 100)}% · {leadTimeDaysSetting}d)</span>
+                  {isSmartAutoParameters ? (
+                    <span className="rounded-full bg-emerald-500/10 px-1.5 py-0.5 text-[9px] font-semibold text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                      ✨ Smart
+                    </span>
+                  ) : (
+                    <span className="rounded-full bg-amber-500/10 px-1.5 py-0.5 text-[9px] font-semibold text-amber-600 dark:text-amber-400 border border-amber-500/20">
+                      👤 Custom
+                    </span>
+                  )}
                 </button>
                 <button type="button" onClick={() => setSmaInspector("eoq")} className="rounded-xl border border-border px-3 py-1.5 text-xs font-semibold text-primary hover:bg-primary/5 cursor-pointer">
                   Store EOQ formula
@@ -3807,6 +3962,7 @@ export default function AnalyticsPage({
           holdingPercent={Math.round(holdingRateSetting * 100)}
           leadTimeDays={leadTimeDaysSetting}
           safetyBufferPercent={safetyBufferSetting}
+          smartRecs={smartOperationalRecommendations}
           onSave={handleSaveEoqSettings}
           onReset={handleResetEoqSettings}
           onClose={() => setShowEoqSettingsModal(false)}

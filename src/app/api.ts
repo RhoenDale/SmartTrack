@@ -593,6 +593,8 @@ export interface SupplierPerformance {
   qtyFulfilled: number;
   fulfillmentRate: number | null;
   openOrders: number;
+  avgLeadDays?: number | null;
+  receiptCount?: number;
 }
 
 export const purchaseOrdersApi = {

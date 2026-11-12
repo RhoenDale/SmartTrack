@@ -290,7 +290,9 @@ switch ($method . ':' . $action) {
                 : ((float)$p['price'] > 0 ? (float)$p['price'] * 0.7 : 5.0);
 
             $rawEoq = estimate_eoq((int)round($annDemand), $unitCost, $orderCostParam, $holdingRateParam);
-            $eoq    = max($rawEoq, $reorderUnits);
+            $packSize = max(1, (int)$p['units_per_pack']);
+            $packs = max(1, (int)ceil($rawEoq / $packSize));
+            $eoq    = $packs * $packSize;
             $recs[] = [
                 'id'               => $p['id'],
                 'name'             => $p['name'],

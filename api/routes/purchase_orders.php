@@ -43,14 +43,12 @@ if ($method === 'GET' && $id === 'performance') {
                 COUNT(DISTINCT po.id) AS order_count,
                 SUM(i.qty_ordered) AS qty_ordered,
                 SUM(LEAST(i.qty_ordered, COALESCE(r.qty_received, 0))) AS qty_fulfilled,
-                COUNT(DISTINCT CASE WHEN po.status NOT IN ('received', 'cancelled') THEN po.id END) AS open_orders
+                COUNT(DISTINCT CASE WHEN po.status NOT IN ('received', 'cancelled') THEN po.id END) AS open_orders,
+                ROUND(AVG(CASE WHEN r.received_date IS NOT NULL THEN DATEDIFF(r.received_date, po.ordered_at) END), 1) AS avg_lead_days,
+                COUNT(DISTINCT r.id) AS receipt_count
          FROM purchase_orders po
          JOIN purchase_order_items i ON i.purchase_order_id = po.id
-         LEFT JOIN (
-             SELECT purchase_order_item_id, SUM(qty_received) AS qty_received
-             FROM purchase_order_receipts
-             GROUP BY purchase_order_item_id
-         ) r ON r.purchase_order_item_id = i.id
+         LEFT JOIN purchase_order_receipts r ON r.purchase_order_item_id = i.id
          WHERE po.status <> 'cancelled'
          GROUP BY po.supplier
          ORDER BY po.supplier"
@@ -59,6 +57,7 @@ if ($method === 'GET' && $id === 'performance') {
     json_response(array_map(static function ($row) {
         $ordered = (int)$row['qty_ordered'];
         $fulfilled = (int)$row['qty_fulfilled'];
+        $avgLead = $row['avg_lead_days'] !== null ? (float)$row['avg_lead_days'] : null;
         return [
             'supplier' => $row['supplier'],
             'orderCount' => (int)$row['order_count'],
@@ -66,6 +65,8 @@ if ($method === 'GET' && $id === 'performance') {
             'qtyFulfilled' => $fulfilled,
             'fulfillmentRate' => $ordered > 0 ? round(($fulfilled / $ordered) * 100, 1) : null,
             'openOrders' => (int)$row['open_orders'],
+            'avgLeadDays' => $avgLead,
+            'receiptCount' => (int)$row['receipt_count'],
         ];
     }, $rows));
 }
