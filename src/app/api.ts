@@ -619,3 +619,45 @@ export const rolesApi = {
     put<import('./data').CustomRole>(`/roles/${id}`, data),
   delete: (id: string) => del<{ message: string }>(`/roles/${id}`),
 };
+
+// ─── Offline Database & Disaster Recovery ─────────────────────────────────────
+export interface DatabaseBackupStatus {
+  database: string;
+  tableCount: number;
+  productCount: number;
+  transactionCount: number;
+  backupCount: number;
+  lastBackup: {
+    file: string;
+    date: string;
+    size: string;
+  } | null;
+  offlineMode: boolean;
+  systemVersion: string;
+  migrationCount?: number;
+}
+
+export const backupApi = {
+  getStatus: () => get<DatabaseBackupStatus>('/backup/status'),
+  createBackup: () => post<{ success: boolean; message: string; filename: string; size: string }>('/backup/create'),
+  runMigrations: () => post<{ success: boolean; message: string }>('/backup/migrate'),
+  downloadBackupUrl: () => `${getApiBase()}/backup/export`,
+  restoreBackup: async (file: File) => {
+    const formData = new FormData();
+    formData.append('backup_file', file);
+    const token = tokenStore.get();
+    const res = await fetch(`${getApiBase()}/backup/restore`, {
+      method: 'POST',
+      headers: {
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: formData,
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: 'Restore failed' }));
+      throw new Error(err.error || 'Restore failed');
+    }
+    return res.json() as Promise<{ success: boolean; message: string; restoredFrom: string }>;
+  },
+};
+

@@ -17,5 +17,6 @@ credentials.md
 /api/setup-test-users.php
 /api/test_tunnel.log
 /smarttrack.sql
+/api/backups/*.sql
 /.liveui.json
 /.kiro/hooks/auto-approve-all.json

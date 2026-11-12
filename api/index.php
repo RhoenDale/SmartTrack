@@ -69,13 +69,21 @@ $sub2     = $segments[3] ?? null; // batchId under /products/{id}/batches/{batch
 try {
     switch ($resource) {
         case 'health':
-            db();
-            json_response(['status' => 'ok', 'database' => ['status' => 'connected']]);
+            $pdo = db();
+            require_once __DIR__ . '/migrator.php';
+            $migrationStatus = run_auto_migrations($pdo);
+            json_response([
+                'status' => 'ok',
+                'database' => ['status' => 'connected'],
+                'migrations' => $migrationStatus,
+                'offline' => true,
+            ]);
             break;
         case 'setup-test-users': require __DIR__ . '/setup-test-users.php'; break;
         case 'diagnostic':   require __DIR__ . '/diagnostic.php';         break;
         case 'auth':         require __DIR__ . '/routes/auth.php';         break;
         case 'activity':     require __DIR__ . '/routes/activity.php';     break;
+        case 'backup':       require __DIR__ . '/routes/backup.php';       break;
         case 'products':     require __DIR__ . '/routes/products.php';     break;
         case 'purchase-orders': require __DIR__ . '/routes/purchase_orders.php'; break;
         case 'categories':   require __DIR__ . '/routes/categories.php';   break;

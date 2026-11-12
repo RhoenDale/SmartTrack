@@ -5,6 +5,7 @@ import {
   Moon, Sun, Settings, BellRing, ClipboardList, Landmark,
   X, ArrowRight, RefreshCw, Cloud, Copy, ClipboardCheck, Truck,
   ChevronDown, ChevronLeft, ChevronRight, Menu, Activity, Trash2, AlertTriangle, Bot, Info, Maximize2,
+  Database,
 } from "lucide-react";
 import {
   sortBatchesByExpiry, normalizeProduct, groupCartTransactions,
@@ -35,6 +36,7 @@ import UsersPage, { ActivityLogPanel, RecycleBinPanel } from "./users";
 import FinancialPage  from "./financial";
 import PurchaseOrdersPage from "./purchases";
 import CommandAssistant from "./command-assistant";
+import { DatabaseBackupModal } from "./database-backup-modal";
 
 const SMARTTRACK_LOGO_URL = `${import.meta.env.BASE_URL}smarttrack-mark.png`;
 
@@ -135,6 +137,7 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
     typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches
   );
   const [showTrackHubSettings, setShowTrackHubSettings] = useState(false);
+  const [showDatabaseModal, setShowDatabaseModal] = useState(false);
   const trackHubSettingsRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -1736,6 +1739,23 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
             <ChevronRight size={14} className="text-muted-foreground transition-transform group-hover:translate-x-0.5" />
           </button>
         )}
+
+        {isAdmin && (
+          <button
+            type="button"
+            onClick={() => { setShowDatabaseModal(true); setShowTrackHubSettings(false); }}
+            className="group flex w-full items-center gap-2.5 px-3.5 py-3 text-left transition-colors hover:bg-muted/35 active:scale-[0.98]"
+          >
+            <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg bg-blue-500/15 text-blue-500 shadow-2xs">
+              <Database size={14} />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block text-xs font-medium text-foreground">Offline Database &amp; Recovery</span>
+              <span className="block text-[10px] text-muted-foreground">Auto-migrations, backups &amp; data safety</span>
+            </span>
+            <ChevronRight size={14} className="text-muted-foreground transition-transform group-hover:translate-x-0.5" />
+          </button>
+        )}
       </section>
     </div>
   ), [
@@ -1752,6 +1772,7 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
     navMode,
     setNavMode,
     setShowTrackHubSettings,
+    setShowDatabaseModal,
     smartBotEnabled,
     toggleSmartBot,
     handleToggleFullScreen,
@@ -2395,6 +2416,11 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
             </div>
           </Modal>
         )}
+        <DatabaseBackupModal
+          isOpen={showDatabaseModal}
+          onClose={() => setShowDatabaseModal(false)}
+          showToast={showHubToast}
+        />
         {showUserProfile && <UserInfoModal 
           user={{
             ...user,
