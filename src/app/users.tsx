@@ -3,7 +3,7 @@ import {
   Plus, Pencil, Trash2, Shield, UsersRound, ShieldCheck, KeyRound,
   Eye, EyeOff, RotateCcw, ShieldPlus, Lock, Unlock,
   ArchiveRestore, Flame, Clock, AlertTriangle, Activity,
-  CheckCircle2, UserX, RefreshCw, Search, Filter,
+  UserX, RefreshCw, Search, Filter, Pill, UserRound,
 } from "lucide-react";
 import { type StaffMember, type CustomRole, ROLE_LABELS, PERMISSION_MODULES } from "./data";
 import { activityApi, rolesApi, usersApi, productsApi, type ActivityLogEntry, type DeletedUser, type DeletedProduct } from "./api";
@@ -196,6 +196,7 @@ export function ActivityLogPanel({ isAdmin = true }: { isAdmin?: boolean }) {
   const [log, setLog] = useState<ActivityLogEntry[]>([]);
   const [actors, setActors] = useState<{ id: string | null; name: string }[]>([]);
   const [filterActor, setFilterActor] = useState("");
+  const [search, setSearch] = useState("");
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -221,92 +222,153 @@ export function ActivityLogPanel({ isAdmin = true }: { isAdmin?: boolean }) {
     void loadLogs();
   }, [loadLogs]);
 
+  const filteredLog = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    if (!query) return log;
+    return log.filter(entry =>
+      [entry.actor, entry.method, entry.path, String(entry.status)]
+        .some(value => value.toLowerCase().includes(query))
+    );
+  }, [log, search]);
+
   const methodColour = (method: string) => {
-    if (method === "GET") return "bg-blue-500/10 text-blue-600 dark:text-blue-400";
-    if (method === "POST") return "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400";
-    if (method === "PUT" || method === "PATCH") return "bg-amber-500/10 text-amber-600 dark:text-amber-400";
-    if (method === "DELETE") return "bg-red-500/10 text-red-600 dark:text-red-400";
-    return "bg-muted text-muted-foreground";
+    if (method === "GET") return "bg-blue-500/10 text-blue-500 border-blue-500/20";
+    if (method === "POST") return "bg-emerald-500/10 text-emerald-500 border-emerald-500/20";
+    if (method === "PUT" || method === "PATCH") return "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20";
+    if (method === "DELETE") return "bg-rose-500/10 text-rose-500 border-rose-500/20";
+    return "bg-muted text-muted-foreground border-border";
   };
 
   return (
-    <div className="p-4 sm:p-6 space-y-4 w-full max-w-[1400px] mx-auto st-page-in">
-      {/* Page header */}
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <div className="flex items-center gap-2">
-            <h1 className="text-xl font-bold text-foreground">Activity Log</h1>
+    <div className="p-4 sm:p-6 space-y-5 w-full max-w-[1400px] mx-auto st-page-in">
+      <header className="flex items-start justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <span className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-2xl border border-primary/15 bg-primary/10 text-primary">
+            <Activity size={20} />
+          </span>
+          <div>
+            <h1 className="text-xl font-semibold tracking-tight text-foreground">Activity Log</h1>
+            <p className="mt-0.5 text-sm text-muted-foreground">
+              {isAdmin ? "A searchable record of activity across accounts." : "A searchable record of your activity."}
+            </p>
           </div>
-          <p className="text-sm text-muted-foreground mt-0.5">
-            {isAdmin
-              ? "Shared system activity across users and devices, including the request and response status."
-              : "Your activity across devices, including the request and response status."}
-          </p>
         </div>
         <button type="button" onClick={() => void loadLogs()} disabled={loading}
-          className="inline-flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground border border-border rounded-lg px-3 py-2 transition-all flex-shrink-0 disabled:opacity-50">
+          className="inline-flex flex-shrink-0 items-center gap-2 rounded-full border border-border bg-card px-3.5 py-2 text-xs font-medium text-foreground transition-colors hover:bg-muted/60 disabled:opacity-50">
           <RefreshCw size={13} className={loading ? "animate-spin" : ""} /> Refresh
         </button>
-      </div>
+      </header>
 
-      {isAdmin && (
-        <div className="flex flex-wrap items-center gap-2">
-          <label htmlFor="activity-user-filter" className="text-xs font-medium text-muted-foreground">User</label>
-          <select id="activity-user-filter" value={filterActor} onChange={e => {
-            setLog([]);
-            setNextCursor(null);
-            setHasMore(false);
-            setFilterActor(e.target.value);
-          }}
-            className="app-select rounded-lg border border-border bg-background px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-primary/25">
+      <section className="flex flex-col gap-3 rounded-2xl border border-border/70 bg-card/80 p-3 shadow-sm sm:flex-row sm:items-center">
+        <div className="relative min-w-0 flex-1">
+          <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+          <input
+            type="search"
+            value={search}
+            onChange={event => setSearch(event.target.value)}
+            placeholder="Search actor, endpoint, method, or status"
+            aria-label="Search activity log"
+            className="w-full rounded-xl border border-border/70 bg-background py-2.5 pl-9 pr-3 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary/40 focus:outline-none focus:ring-2 focus:ring-primary/15"
+          />
+        </div>
+        {isAdmin && (
+          <select
+            id="activity-user-filter"
+            aria-label="Filter activity by user"
+            value={filterActor}
+            onChange={event => {
+              setLog([]);
+              setNextCursor(null);
+              setHasMore(false);
+              setFilterActor(event.target.value);
+            }}
+            className="app-select w-full rounded-xl border border-border/70 bg-background px-3 py-2.5 text-sm text-foreground focus:border-primary/40 focus:outline-none focus:ring-2 focus:ring-primary/15 sm:w-52"
+          >
             <option value="">All users</option>
             {actors.map((actor, index) => (
               <option key={actor.id ?? `anonymous-${index}`} value={actor.id ?? "anonymous"}>{actor.name}</option>
             ))}
           </select>
-        </div>
-      )}
+        )}
+        <span className="flex-shrink-0 px-1 text-xs tabular-nums text-muted-foreground" aria-live="polite">
+          {filteredLog.length} {filteredLog.length === 1 ? "match" : "matches"} · {log.length} loaded
+        </span>
+      </section>
 
       {error && (
-        <div role="alert" className="flex items-center justify-between gap-3 rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-xs text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300">
+        <div role="alert" className="flex items-center justify-between gap-3 rounded-2xl border border-rose-500/25 bg-rose-500/5 px-4 py-3 text-sm text-rose-700 dark:text-rose-300">
           <span>{error}</span>
-          <button type="button" onClick={() => void loadLogs()} className="font-semibold underline">Retry</button>
+          <button type="button" onClick={() => void loadLogs()} className="flex-shrink-0 font-semibold underline underline-offset-2">Retry</button>
         </div>
       )}
 
-      {log.length === 0 && !loading ? (
-        <div className="flex flex-col items-center py-16 text-center gap-2">
-          <Activity size={32} className="text-muted-foreground/30" />
+      {loading && log.length === 0 ? (
+        <div className="flex flex-col items-center justify-center gap-3 rounded-2xl border border-border/70 bg-card py-16 text-center">
+          <RefreshCw size={20} className="animate-spin text-muted-foreground" />
+          <p className="text-sm text-muted-foreground">Loading activity…</p>
+        </div>
+      ) : log.length === 0 ? (
+        <div className="flex flex-col items-center justify-center gap-3 rounded-2xl border border-border/70 bg-card py-16 text-center">
+          <Activity size={28} className="text-muted-foreground/50" />
           <p className="text-sm text-muted-foreground">No activity records found.</p>
         </div>
+      ) : filteredLog.length === 0 ? (
+        <div className="flex flex-col items-center justify-center gap-3 rounded-2xl border border-border/70 bg-card py-14 text-center">
+          <Search size={24} className="text-muted-foreground/50" />
+          <p className="text-sm text-muted-foreground">No activity matches this search.</p>
+        </div>
       ) : (
-        <div className="rounded-xl border border-border/80 bg-card divide-y divide-border/60 overflow-hidden shadow-sm overflow-y-auto max-h-[calc(100dvh-220px)]">
-          {log.map(e => (
-            <div key={e.id} className="flex items-start gap-3 px-4 py-3 hover:bg-muted/20 transition-colors">
-              <span className={`mt-0.5 flex-shrink-0 min-w-14 text-center text-[9px] font-bold px-1.5 py-1 rounded ${methodColour(e.method)}`}>{e.method}</span>
-              <div className="flex-1 min-w-0">
-                <p className="text-xs text-foreground"><span className="font-semibold">{e.actor}</span></p>
-                <p className="mt-0.5 break-all font-mono text-[11px] text-muted-foreground">{e.path}</p>
-              </div>
-              <div className="flex flex-shrink-0 flex-col items-end gap-1">
-                <span className={`rounded px-1.5 py-0.5 text-[9px] font-semibold ${e.status >= 400 ? "bg-red-500/10 text-red-600 dark:text-red-400" : "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"}`}>
-                  {e.status}
-                </span>
-                <p className="text-[10px] text-muted-foreground tabular-nums whitespace-nowrap">
-                  {new Date(e.ts).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}
-                  {" · "}
-                  {new Date(e.ts).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
-                </p>
-              </div>
-            </div>
-          ))}
+        <div className="max-h-[calc(100dvh-270px)] overflow-y-auto rounded-2xl border border-border/70 bg-card shadow-sm">
+          <div className="divide-y divide-border/60">
+            {filteredLog.map(entry => {
+              const actorInitials = entry.actor.trim().split(/\s+/).slice(0, 2).map(part => part[0]).join("").toUpperCase() || "?";
+              const timestamp = new Date(entry.ts);
+              const timestampLabel = Number.isNaN(timestamp.getTime())
+                ? entry.ts
+                : `${timestamp.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })} ${timestamp.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", second: "2-digit" })}`;
+              return (
+                <article key={entry.id} className="flex flex-col gap-3 px-4 py-4 transition-colors hover:bg-muted/25 sm:flex-row sm:items-center sm:gap-4">
+                  <div className="flex min-w-0 flex-1 items-center gap-3">
+                    <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl border border-primary/15 bg-primary/10 text-xs font-semibold text-primary">
+                      {actorInitials}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="truncate text-sm font-medium text-foreground">{entry.actor || "Unknown actor"}</span>
+                        <span className="rounded-full border border-border/80 bg-muted/50 px-2 py-0.5 text-[10px] text-muted-foreground">
+                          {entry.actorId ? "Account" : "Unattributed"}
+                        </span>
+                      </div>
+                      <p className="mt-1 break-all font-mono text-xs leading-relaxed text-muted-foreground">{entry.path}</p>
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2 sm:flex-shrink-0">
+                    <span className={`inline-flex min-w-14 justify-center rounded-full border px-2.5 py-1 font-mono text-[10px] font-semibold ${methodColour(entry.method)}`}>
+                      {entry.method}
+                    </span>
+                    <span className={`rounded-full border px-2.5 py-1 font-mono text-[10px] font-semibold ${
+                      entry.status >= 400
+                        ? "border-rose-500/20 bg-rose-500/10 text-rose-600 dark:text-rose-400"
+                        : "border-emerald-500/20 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                    }`}>
+                      {entry.status}
+                    </span>
+                    <time dateTime={entry.ts} className="font-mono text-[10px] tabular-nums text-muted-foreground sm:min-w-40 sm:text-right">
+                      {timestampLabel}
+                    </time>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
         </div>
       )}
       {hasMore && nextCursor && (
         <div className="flex justify-center">
           <button type="button" disabled={loading} onClick={() => void loadLogs(nextCursor)}
-            className="rounded-lg border border-border px-4 py-2 text-xs font-semibold text-muted-foreground hover:bg-muted/50 hover:text-foreground disabled:opacity-50">
-            {loading ? "Loading…" : "Load older activity"}
+            className="inline-flex items-center gap-2 rounded-full border border-border bg-card px-4 py-2.5 text-xs font-medium text-foreground shadow-sm transition-colors hover:bg-muted/60 disabled:opacity-50">
+            {loading && <RefreshCw size={13} className="animate-spin" />}
+            {loading ? "Loading…" : "Load More"}
           </button>
         </div>
       )}
@@ -361,7 +423,6 @@ export function RecycleBinPanel({
 
   const allItems = [...deletedUsers, ...deletedProducts];
   const expired  = allItems.filter(i => i.daysSinceDelete >= AUTO_PURGE_DAYS);
-  const recent   = allItems.filter(i => i.daysSinceDelete < 1);
 
   const handleRestore = async (state: RecycleConfirmState) => {
     if (!state) return;
@@ -423,137 +484,189 @@ export function RecycleBinPanel({
   }, [currentItems.length]);
 
   return (
-    <div className="p-4 sm:p-6 space-y-4 w-full max-w-[1400px] mx-auto st-page-in">
-      {/* Header */}
-      <div className="flex items-start justify-between gap-3 flex-wrap">
-        <div>
-          <h1 className="text-xl font-bold text-foreground">Recycle Bin</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">
-            Deleted items are held for {AUTO_PURGE_DAYS} days. Restore anytime or purge permanently.
-          </p>
+    <div className="p-4 sm:p-6 space-y-5 w-full max-w-[1400px] mx-auto st-page-in">
+      <header className="flex flex-wrap items-start justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <span className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-2xl border border-border/70 bg-muted/60 text-muted-foreground">
+            <Trash2 size={20} />
+          </span>
+          <div>
+            <h1 className="text-xl font-semibold tracking-tight text-foreground">Recycle Bin</h1>
+            <p className="mt-0.5 text-sm text-muted-foreground">Restore deleted items or remove them permanently.</p>
+          </div>
         </div>
         <div className="flex items-center gap-2">
-          <button onClick={() => void load()} disabled={loading}
-            className="inline-flex items-center gap-1.5 text-xs border border-border rounded-lg px-3 py-2 hover:bg-muted/50 transition-all disabled:opacity-50">
-            <RefreshCw size={12} className={loading ? "animate-spin" : ""} /> Refresh
+          <button type="button" onClick={() => void load()} disabled={loading}
+            className="inline-flex items-center gap-2 rounded-full border border-border bg-card px-3.5 py-2 text-xs font-medium text-foreground transition-colors hover:bg-muted/60 disabled:opacity-50">
+            <RefreshCw size={13} className={loading ? "animate-spin" : ""} /> Refresh
           </button>
           {isOwner && expired.length > 0 && (
-            <button onClick={() => setConfirmPurgeAll(true)}
-              className="inline-flex items-center gap-1.5 text-xs bg-red-600 text-white rounded-lg px-3 py-2 hover:bg-red-700 transition-all">
-              <Flame size={12} /> Purge {expired.length} expired
+            <button type="button" onClick={() => setConfirmPurgeAll(true)}
+              className="inline-flex items-center gap-2 rounded-full border border-rose-500/20 bg-rose-500/10 px-3.5 py-2 text-xs font-medium text-rose-600 transition-colors hover:bg-rose-500/15 dark:text-rose-400">
+              <Flame size={13} /> Purge expired ({expired.length})
             </button>
           )}
         </div>
-      </div>
+      </header>
 
-      {error && <p role="alert" className="text-xs text-red-600 bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 rounded-lg px-3 py-2">{error}</p>}
-
-      {/* Smart notices */}
-      {recent.length > 0 && (
-        <div className="rounded-lg border border-amber-200 dark:border-amber-500/20 bg-amber-50 dark:bg-amber-500/10 px-4 py-3 flex items-start gap-2.5">
-          <AlertTriangle size={14} className="text-amber-600 mt-0.5 flex-shrink-0" />
-          <div>
-            <p className="text-xs font-semibold text-amber-800 dark:text-amber-300">Recent deletion detected</p>
-            <p className="text-[11px] text-amber-700 dark:text-amber-400 mt-0.5">
-              {recent.map(i => i.name).join(", ")} {recent.length === 1 ? "was" : "were"} deleted less than 24 hours ago. Restore if it was a mistake.
-            </p>
-          </div>
-        </div>
-      )}
-      {expired.length > 0 && isOwner && (
-        <div className="rounded-lg border border-red-200 dark:border-red-500/20 bg-red-50 dark:bg-red-500/10 px-4 py-3 flex items-start gap-2.5">
-          <Flame size={14} className="text-red-600 mt-0.5 flex-shrink-0" />
-          <div>
-            <p className="text-xs font-semibold text-red-700 dark:text-red-300">{expired.length} item{expired.length > 1 ? "s" : ""} ready for purge</p>
-            <p className="text-[11px] text-red-600 dark:text-red-400 mt-0.5">{expired.map(i => i.name).join(", ")} {expired.length === 1 ? "has" : "have"} been in the bin for {AUTO_PURGE_DAYS}+ days.</p>
-          </div>
-        </div>
-      )}
-
-      {/* Tabs & Search */}
-      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 border-b border-border pb-2">
-        <div className="flex gap-1">
-          {([
-            { id: "products" as const, label: `Products (${deletedProducts.length})` },
-            { id: "users"    as const, label: `Users (${deletedUsers.length})` },
-          ]).map(t => (
-            <button key={t.id} type="button" onClick={() => { setActiveTab(t.id); setPage(1); }}
-              className={`px-4 py-2 text-xs font-semibold border-b-2 transition-colors ${
-                activeTab === t.id ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground"
-              }`}>
-              {t.label}
-            </button>
-          ))}
-        </div>
-        <div className="relative min-w-[220px]">
-          <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-          <input
-            value={search}
-            onChange={e => { setSearch(e.target.value); setPage(1); }}
-            placeholder={`Search deleted ${activeTab}…`}
-            className="w-full rounded-lg border border-border bg-background pl-8 pr-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-primary/25"
-          />
+      <div className="flex items-start gap-3 rounded-2xl border border-border/70 bg-muted/35 p-4">
+        <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl border border-border/70 bg-card text-muted-foreground shadow-sm">
+          <Clock size={17} />
+        </span>
+        <div>
+          <p className="text-sm font-medium text-foreground">Items in Trash are automatically deleted after {AUTO_PURGE_DAYS} days.</p>
+          <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">Restore an item before then, or permanently purge it now.</p>
         </div>
       </div>
 
-      {loading ? (
-        <p className="text-sm text-muted-foreground py-8 text-center">Loading…</p>
-      ) : currentItems.length === 0 ? (
-        <div className="flex flex-col items-center py-12 gap-2 text-center">
-          <CheckCircle2 size={28} className="text-emerald-500/50" />
-          <p className="text-sm text-muted-foreground">No deleted {activeTab} found.</p>
+      {error && (
+        <div role="alert" className="flex items-center justify-between gap-3 rounded-2xl border border-rose-500/25 bg-rose-500/5 px-4 py-3 text-sm text-rose-700 dark:text-rose-300">
+          <span>{error}</span>
+          <button type="button" onClick={() => void load()} className="flex-shrink-0 font-semibold underline underline-offset-2">Retry</button>
         </div>
-      ) : (
-        <div className="rounded-xl border border-border/80 bg-card divide-y divide-border/60 overflow-hidden shadow-sm">
-          {pageItems.map(item => {
-            const isExpired = item.daysSinceDelete >= AUTO_PURGE_DAYS;
-            const isRecent  = item.daysSinceDelete < 1;
-            const isUser    = activeTab === "users";
-            return (
-              <div key={item.id} className={`flex items-center justify-between gap-3 px-4 py-3 hover:bg-muted/20 transition-colors ${isExpired ? "bg-red-50/40 dark:bg-red-500/5" : ""}`}>
-                <div className="flex items-center gap-3 min-w-0">
-                  <div className={`w-9 h-9 rounded-lg flex items-center justify-center text-xs font-bold flex-shrink-0 ${isUser ? "bg-muted text-muted-foreground" : "bg-primary/10 text-primary"}`}>
-                    {isUser ? (item as DeletedUser).initials : (item as DeletedProduct).name.slice(0, 2).toUpperCase()}
-                  </div>
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <p className="text-sm font-semibold text-foreground">{item.name}</p>
-                      {isRecent  && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 border border-amber-200 dark:bg-amber-500/10 dark:text-amber-400 dark:border-amber-500/20">Recent</span>}
-                      {isExpired && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-red-100 text-red-700 border border-red-200 dark:bg-red-500/10 dark:text-red-400 dark:border-red-500/20">Expired</span>}
+      )}
+
+      <section className="space-y-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div role="tablist" aria-label="Recycle Bin item type" className="inline-flex w-full rounded-xl border border-border/70 bg-muted/45 p-1 sm:w-auto">
+            {([
+              { id: "products" as const, label: "Products", count: deletedProducts.length },
+              { id: "users" as const, label: "Users", count: deletedUsers.length },
+            ]).map(tab => (
+              <button
+                key={tab.id}
+                type="button"
+                role="tab"
+                aria-selected={activeTab === tab.id}
+                onClick={() => { setActiveTab(tab.id); setPage(1); }}
+                className={`flex flex-1 items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm transition-all sm:flex-initial ${
+                  activeTab === tab.id
+                    ? "bg-card font-semibold text-foreground shadow-sm"
+                    : "font-medium text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                {tab.label}
+                <span className="rounded-full bg-muted px-2 py-0.5 text-xs tabular-nums text-muted-foreground">{tab.count}</span>
+              </button>
+            ))}
+          </div>
+          <div className="relative w-full sm:max-w-xs">
+            <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+            <input
+              type="search"
+              value={search}
+              onChange={event => { setSearch(event.target.value); setPage(1); }}
+              placeholder={`Search deleted ${activeTab}…`}
+              aria-label={`Search deleted ${activeTab}`}
+              className="w-full rounded-xl border border-border/70 bg-background py-2.5 pl-9 pr-3 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary/40 focus:outline-none focus:ring-2 focus:ring-primary/15"
+            />
+          </div>
+        </div>
+
+        <p className="text-xs text-muted-foreground">
+          {currentItems.length} {currentItems.length === 1 ? "item" : "items"} in {activeTab === "products" ? "Products" : "Users"}
+          {search.trim() ? " matching your search" : ""}
+        </p>
+
+        {loading ? (
+          <div className="flex flex-col items-center justify-center gap-3 rounded-2xl border border-border/70 bg-card py-16 text-center">
+            <RefreshCw size={20} className="animate-spin text-muted-foreground" />
+            <p className="text-sm text-muted-foreground">Loading Trash…</p>
+          </div>
+        ) : currentItems.length === 0 ? (
+          <div className="flex flex-col items-center justify-center gap-3 rounded-2xl border border-border/70 bg-card px-6 py-16 text-center">
+            <span className="flex h-16 w-16 items-center justify-center rounded-3xl border border-border/70 bg-muted/50 text-muted-foreground/70">
+              {search.trim() ? <Search size={26} /> : <Trash2 size={27} />}
+            </span>
+            <div>
+              <p className="text-sm font-semibold text-foreground">
+                {search.trim() ? "No matching items" : deletedUsers.length + deletedProducts.length === 0 ? "Trash is Empty" : `No deleted ${activeTab}`}
+              </p>
+              <p className="mt-1 max-w-sm text-xs leading-relaxed text-muted-foreground">
+                {search.trim()
+                  ? "Try a different search term."
+                  : deletedUsers.length + deletedProducts.length === 0
+                  ? `Deleted items from the last ${AUTO_PURGE_DAYS} days will appear here.`
+                  : `There are no deleted ${activeTab} to show.`}
+              </p>
+            </div>
+          </div>
+        ) : (
+          <div className="grid gap-3 md:grid-cols-2">
+            {pageItems.map(item => {
+              const isExpired = item.daysSinceDelete >= AUTO_PURGE_DAYS;
+              const isRecent = item.daysSinceDelete < 1;
+              const isUser = activeTab === "users";
+              const daysLeft = Math.max(0, AUTO_PURGE_DAYS - item.daysSinceDelete);
+              const countdownClass = isExpired
+                ? "border-rose-500/20 bg-rose-500/10 text-rose-600 dark:text-rose-400"
+                : daysLeft <= 7
+                ? "border-amber-500/20 bg-amber-500/10 text-amber-700 dark:text-amber-400"
+                : "border-emerald-500/15 bg-emerald-500/5 text-emerald-700 dark:text-emerald-400";
+              const canPurge = isUser ? isOwner : (isAdmin || currentUserRoles.includes("inventory_manager"));
+              return (
+                <article key={item.id} className="flex min-w-0 flex-col justify-between gap-4 rounded-2xl border border-border/70 bg-card p-4 shadow-sm transition-shadow hover:shadow-md">
+                  <div className="flex min-w-0 items-start gap-3">
+                    <span className={`flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-2xl border ${
+                      isUser
+                        ? "border-violet-500/15 bg-violet-500/10 text-violet-600 dark:text-violet-400"
+                        : "border-primary/15 bg-primary/10 text-primary"
+                    }`}>
+                      {isUser ? <UserRound size={19} /> : <Pill size={19} />}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h2 className="break-words text-sm font-semibold text-foreground">{item.name}</h2>
+                        {isRecent && <span className="rounded-full border border-border/70 bg-muted/50 px-2 py-0.5 text-[10px] font-medium text-muted-foreground">Recently deleted</span>}
+                      </div>
+                      <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                        {isUser
+                          ? ((item as DeletedUser).roles ?? [(item as DeletedUser).role]).map(role => ROLE_LABELS[role] ?? role).join(" · ")
+                          : `${(item as DeletedProduct).category} · ${(item as DeletedProduct).stock} units`}
+                      </p>
                     </div>
-                    <p className="text-[11px] text-muted-foreground mt-0.5">
-                      {isUser
-                        ? ((item as DeletedUser).roles ?? [(item as DeletedUser).role]).map(role => ROLE_LABELS[role] ?? role).join(" + ")
-                        : `${(item as DeletedProduct).category} · ${(item as DeletedProduct).stock} units`}
-                      {" · "}Deleted {item.daysSinceDelete === 0 ? "today" : `${item.daysSinceDelete}d ago`}
+                  </div>
+
+                  <div className="space-y-3">
+                    <span className={`inline-flex max-w-full items-center rounded-full border px-3 py-1.5 text-[11px] font-medium ${countdownClass}`}>
+                      {isExpired
+                        ? "Ready for permanent purge"
+                        : `${daysLeft} day${daysLeft === 1 ? "" : "s"} left until permanent purge`}
+                    </span>
+                    <p className="text-[11px] leading-relaxed text-muted-foreground">
+                      Deleted {item.daysSinceDelete === 0 ? "today" : `${item.daysSinceDelete} ${item.daysSinceDelete === 1 ? "day" : "days"} ago`}
                       {item.deletedByName ? ` by ${item.deletedByName}` : ""}
-                      {item.deleteNote ? ` · "${item.deleteNote}"` : ""}
+                      {item.deleteNote ? ` · ${item.deleteNote}` : ""}
                     </p>
                   </div>
-                </div>
-                <div className="flex items-center gap-1.5 flex-shrink-0">
-                  <button
-                    onClick={() => setConfirmRestore(isUser ? { kind: "user", item: item as DeletedUser } : { kind: "product", item: item as DeletedProduct })}
-                    disabled={busy !== null}
-                    className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-2.5 py-1.5 text-[11px] font-semibold text-white hover:bg-emerald-700 disabled:opacity-50 transition-all"
-                  >
-                    <ArchiveRestore size={12} /> Restore
-                  </button>
-                  {(isUser ? isOwner : (isAdmin || currentUserRoles.includes("inventory_manager"))) && (
+
+                  <div className="flex flex-wrap items-center gap-2 border-t border-border/60 pt-3">
                     <button
-                      onClick={() => setConfirmPurge(isUser ? { kind: "user", item: item as DeletedUser } : { kind: "product", item: item as DeletedProduct })}
+                      type="button"
+                      onClick={() => setConfirmRestore(isUser ? { kind: "user", item: item as DeletedUser } : { kind: "product", item: item as DeletedProduct })}
                       disabled={busy !== null}
-                      className="inline-flex items-center gap-1 rounded-lg border border-red-300/60 px-2.5 py-1.5 text-[11px] font-semibold text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 disabled:opacity-50 transition-all"
+                      className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-border bg-background px-3 py-2 text-xs font-medium text-foreground transition-colors hover:bg-muted/60 disabled:opacity-50"
                     >
-                      <Trash2 size={12} /> Purge
+                      <ArchiveRestore size={14} /> Put Back
                     </button>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
+                    {canPurge && (
+                      <button
+                        type="button"
+                        onClick={() => setConfirmPurge(isUser ? { kind: "user", item: item as DeletedUser } : { kind: "product", item: item as DeletedProduct })}
+                        disabled={busy !== null}
+                        className="inline-flex items-center justify-center gap-1.5 rounded-xl px-3 py-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-rose-500/10 hover:text-rose-600 disabled:opacity-50 dark:hover:text-rose-400"
+                      >
+                        <Trash2 size={14} /> Purge Permanently
+                      </button>
+                    )}
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        )}
+      </section>
+
       {!loading && currentItems.length > 0 && (
         <TablePager total={currentItems.length} page={page} pageSize={PAGE_SIZE} onPage={setPage} />
       )}

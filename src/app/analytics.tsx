@@ -25,6 +25,28 @@ import {
 import { fmt, StockBadge, InfoTip, ConfirmDialog } from "./shared";
 import { analyticsApi, purchaseOrdersApi, type PurchaseOrder, type SupplierPerformance } from "./api";
 
+const ANALYTICS_CARD_CLASS = "rounded-2xl border border-border/60 bg-card/90 shadow-sm transition-all duration-200 ease-out hover:-translate-y-0.5 hover:shadow-md motion-reduce:transition-none motion-reduce:hover:translate-y-0";
+const CATEGORY_COLORS = ["#0d9488", "#06b6d4", "#8b5cf6", "#f59e0b", "#3b82f6", "#ec4899", "#64748b"];
+
+function AnalyticsColumnHeader({
+  label,
+  title,
+  description,
+  align = "left",
+}: {
+  label: string;
+  title: string;
+  description: string;
+  align?: "left" | "right";
+}) {
+  return (
+    <span className={`inline-flex items-center gap-1.5 ${align === "right" ? "justify-end" : "justify-start"}`}>
+      <span>{label}</span>
+      <InfoTip title={title} lines={[description]} />
+    </span>
+  );
+}
+
 /* ---------- Pure Mathematical Formula Visualizers ---------- */
 function parseTransactionDate(value: string): Date | null {
   const match = /^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:\s+(\d{1,2}):(\d{2}))?$/.exec(value.trim());
@@ -40,7 +62,7 @@ export function SmaFormulaVisual({
   type?: "general" | "sma3" | "sma6";
 }) {
   return (
-    <div className="flex flex-col items-center justify-center py-4 px-5 bg-[#f4f2ea] dark:bg-[#1a2527] border border-[#e2ded2] dark:border-teal-900/40 rounded-xl text-[#1a4a52] dark:text-teal-200 shadow-inner select-none transition-colors">
+    <div className="flex flex-col items-center justify-center py-4 px-5 bg-muted/40 border border-border/70 rounded-2xl text-foreground shadow-sm select-none transition-colors">
       <div className="flex items-center gap-3.5 sm:gap-4">
         <span className="text-2xl sm:text-3xl font-extrabold tracking-tight">
           SMA =
@@ -61,13 +83,13 @@ export function SmaFormulaVisual({
               </>
             )}
           </div>
-          <div className="w-full h-[2.5px] bg-[#1a4a52] dark:bg-teal-200 rounded-full" />
+          <div className="w-full h-[2.5px] bg-foreground/70 rounded-full" />
           <div className="pt-1.5 text-base sm:text-lg font-extrabold">
             {type === "sma3" ? "3" : type === "sma6" ? "6" : "n"}
           </div>
         </div>
       </div>
-      <div className="mt-3 w-full border-t border-[#1a4a52]/15 pt-3 text-[10px] font-medium opacity-90 dark:border-teal-200/20">
+      <div className="mt-3 w-full border-t border-border/70 pt-3 text-[10px] font-medium">
         <p className="mb-2 text-center font-semibold">
           {type === "general"
             ? "Add the sales shown, then divide by the number of periods (n)."
@@ -86,13 +108,13 @@ export function SmaFormulaVisual({
 
 export function EoqFormulaVisual() {
   return (
-    <div className="flex flex-col items-center justify-center py-4 px-5 bg-[#f4f2ea] dark:bg-[#1a2527] border border-[#e2ded2] dark:border-teal-900/40 rounded-xl text-[#1a4a52] dark:text-teal-200 shadow-inner select-none transition-colors">
+    <div className="flex flex-col items-center justify-center py-4 px-5 bg-muted/40 border border-border/70 rounded-2xl text-foreground shadow-sm select-none transition-colors">
       <div className="flex flex-wrap items-center justify-center gap-4">
         <div className="flex items-center gap-1.5">
           <span className="text-2xl sm:text-3xl font-extrabold tracking-tight">EOQ =</span>
           <div className="flex items-center">
             <span className="text-4xl sm:text-5xl font-light leading-none -mr-0.5 select-none font-serif">√</span>
-            <div className="border-t-2 border-[#1a4a52] dark:border-teal-200 pt-1 -ml-1">
+            <div className="border-t-2 border-foreground/70 pt-1 -ml-1">
               <div className="inline-flex flex-col items-center px-1.5">
                 <div className="px-2 pb-1 text-sm sm:text-base font-bold tracking-wide">
                   2 × D × S
@@ -106,13 +128,13 @@ export function EoqFormulaVisual() {
           </div>
         </div>
 
-        <div className="text-xs sm:text-sm font-semibold opacity-85 flex items-center gap-1.5 border-l border-[#1a4a52]/20 dark:border-teal-200/20 pl-3">
+        <div className="text-xs sm:text-sm font-semibold flex items-center gap-1.5 border-l border-border/70 pl-3">
           <span>·</span>
           <span>H = C × I</span>
         </div>
       </div>
 
-      <div className="mt-3 pt-2 border-t border-[#1a4a52]/15 dark:border-teal-200/20 text-[11px] font-medium opacity-85 text-center">
+      <div className="mt-3 pt-2 border-t border-border/70 text-[11px] font-medium text-center">
         D = Annual Demand · S = Order Cost · H = Holding Cost (Unit Cost C × Carrying Rate I)
       </div>
     </div>
@@ -602,15 +624,18 @@ function EoqBreakdownModal({
             <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">Variables &amp; Data Sources</p>
             <div className="divide-y divide-border border border-border rounded-lg overflow-hidden text-[11px]">
               {[
-                { label: "Annual Demand (D)", value: `${annualDemand.toLocaleString()} units/yr`, sub: demandSourceLabel },
-                { label: "Order Cost (S)", value: `₱${orderCost.toFixed(2)} / order`, sub: "Configurable in Cost Parameters" },
-                { label: "Unit Purchase Cost (C)", value: `₱${unitCost.toFixed(2)}`, sub: costSourceLabel },
-                { label: "Annual Carrying Rate (I)", value: `${holdingPercent}%`, sub: "Configurable storage & capital rate" },
-                { label: "Unit Holding Cost (H = C × I)", value: `₱${holdingCost.toFixed(2)} / unit / yr`, sub: `₱${unitCost.toFixed(2)} × ${holdingPercent}%` },
+                { label: "Annual Demand (D)", value: `${annualDemand.toLocaleString()} units/yr`, sub: demandSourceLabel, help: "Estimated units needed in a year. This follows the selected demand basis and is used in EOQ calculations." },
+                { label: "Order Cost (S)", value: `₱${orderCost.toFixed(2)} / order`, sub: "Configurable in Cost Parameters", help: "Estimated fixed cost each time a purchase order is placed, such as delivery and administration." },
+                { label: "Unit Purchase Cost (C)", value: `₱${unitCost.toFixed(2)}`, sub: costSourceLabel, help: "Purchase cost for one base unit, taken from the displayed cost source." },
+                { label: "Annual Carrying Rate (I)", value: `${holdingPercent}%`, sub: "Configurable storage & capital rate", help: "Estimated yearly share of unit cost spent holding stock, including storage and tied-up capital." },
+                { label: "Unit Holding Cost (H = C × I)", value: `₱${holdingCost.toFixed(2)} / unit / yr`, sub: `₱${unitCost.toFixed(2)} × ${holdingPercent}%`, help: "Estimated annual cost of holding one unit. EOQ compares this with the cost of placing orders." },
               ].map((v, i) => (
                 <div key={i} className={`flex items-start justify-between gap-3 px-3.5 py-2 ${i % 2 === 0 ? "bg-muted/20" : ""}`}>
-                  <div>
-                    <span className="text-muted-foreground block">{v.label}</span>
+                  <div className="min-w-0">
+                    <span className="flex items-center gap-1.5 text-muted-foreground">
+                      {v.label}
+                      <InfoTip title={v.label} lines={[v.help]} />
+                    </span>
                     <span className="text-[10px] text-muted-foreground/80">{v.sub}</span>
                   </div>
                   <span className="font-semibold text-foreground font-mono text-right shrink-0">{v.value}</span>
@@ -729,17 +754,26 @@ function EoqBreakdownModal({
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1 text-center">
                 <div className="bg-background/60 p-2 rounded border border-border/40">
-                  <span className="text-[10px] text-muted-foreground block">Lead Time Demand</span>
+                  <span className="flex items-center justify-center gap-1 text-[10px] text-muted-foreground">
+                    Lead Time Demand
+                    <InfoTip title="Lead-time demand" lines={["Estimated units expected to sell while waiting for the supplier's delivery, based on annual demand and lead time."]} />
+                  </span>
                   <span className="font-semibold text-foreground font-mono">{leadTimeDemand.toLocaleString()} units</span>
                   <span className="text-[9px] text-muted-foreground block">({(annualDemand / 365).toFixed(1)}/day × {leadTimeDays}d)</span>
                 </div>
                 <div className="bg-background/60 p-2 rounded border border-border/40">
-                  <span className="text-[10px] text-muted-foreground block">Safety Stock ({safetyBufferPercent}%)</span>
+                  <span className="flex items-center justify-center gap-1 text-[10px] text-muted-foreground">
+                    Safety Stock ({safetyBufferPercent}%)
+                    <InfoTip title="Safety stock" lines={["An extra reserve added to lead-time demand to help cover delays or higher-than-usual demand. The percentage is adjustable in parameters."]} />
+                  </span>
                   <span className="font-semibold text-foreground font-mono">{safetyStockUnits.toLocaleString()} units</span>
                   <span className="text-[9px] text-muted-foreground block">Buffer reserve</span>
                 </div>
                 <div className="bg-primary/10 p-2 rounded border border-primary/20">
-                  <span className="text-[10px] text-primary font-medium block">Suggested ROP</span>
+                  <span className="flex items-center justify-center gap-1 text-[10px] text-primary font-medium">
+                    Suggested ROP
+                    <InfoTip title="Suggested reorder point" lines={["The stock threshold for considering a new order: estimated demand during supplier lead time plus safety stock. It is advisory and does not place an order."]} />
+                  </span>
                   <span className="font-bold text-primary font-mono">{suggestedRop.toLocaleString()} units</span>
                   <span className="text-[9px] text-muted-foreground block">Configured: {product.reorder} packs ({getReorderUnits(product)} units)</span>
                 </div>
@@ -1123,6 +1157,17 @@ export default function AnalyticsPage({
       .finally(() => { if (active) setCategorySalesLoading(false); });
     return () => { active = false; };
   }, [transactions, inventory]);
+
+  const chartCategoryData = useMemo(() => {
+    if (categoryData.length <= 7) return categoryData;
+    const top = categoryData.slice(0, 6);
+    const rest = categoryData.slice(6);
+    const restTotal = Math.round(rest.reduce((acc, c) => acc + c.value, 0) * 10) / 10;
+    if (restTotal > 0) {
+      return [...top, { name: `Other Categories (${rest.length})`, value: restTotal }];
+    }
+    return top;
+  }, [categoryData]);
 
   const [forecastPeriodUnit, setForecastPeriodUnit] = useState<"month" | "week">("month");
   const [productForecastSearch, setProductForecastSearch] = useState("");
@@ -2066,9 +2111,10 @@ export default function AnalyticsPage({
     "Restocking":        { icon: "⚡", title: "Restock Planning", desc: "Review reorder quantities, lead-time thresholds, and planning assumptions." },
     "Products":          { icon: "🏷️", title: "Product Performance",         desc: "Sales volume, revenue, and demand by product." },
   };
+  const sectionTabs = ["Overview", "Forecast", "Restocking", "Products"] as const;
 
   return (
-    <div className="flex flex-col w-full max-w-[1480px] mx-auto" style={{ height: "calc(100dvh - 56px)" }}>
+    <div className="flex w-full max-w-[1480px] mx-auto flex-col font-sans" style={{ height: "calc(100dvh - 56px)", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" }}>
 
       {/* ── Fixed header: title + tab nav ── */}
       <div className="flex-shrink-0 px-4 sm:px-7 lg:px-8 pt-5 sm:pt-7 pb-0 bg-background border-b border-border/70 z-20">
@@ -2092,19 +2138,29 @@ export default function AnalyticsPage({
         </div>
 
         {/* Section navigation */}
-        <nav aria-label="Analytics sections" className="flex gap-5 overflow-x-auto mt-5">
-          {(["Overview", "Forecast", "Restocking", "Products"] as const).map(section => (
-            <button
-              key={section}
-              type="button"
-              aria-current={activeSection === section ? "page" : undefined}
-              onClick={() => setActiveSection(section)}
-              className={`shrink-0 border-b-2 px-0.5 py-3 text-sm transition-colors cursor-pointer ${activeSection === section ? "border-primary font-semibold text-foreground" : "border-transparent font-medium text-muted-foreground hover:text-foreground"}`}
-            >
-              {section}
-              {section === "Restocking" && reorderRecs.length > 0 && <span className="ml-1.5 text-xs tabular-nums text-muted-foreground">{reorderRecs.length}</span>}
-            </button>
-          ))}
+        <nav aria-label="Analytics sections" className="mt-5 pb-3">
+          <div role="tablist" aria-label="Analytics views" className="relative grid w-full grid-cols-4 rounded-2xl border border-border/70 bg-muted/45 p-1 sm:w-[min(100%,520px)]">
+            <span
+              aria-hidden="true"
+              className="pointer-events-none absolute inset-y-1 left-1 rounded-xl border border-border/50 bg-card shadow-sm transition-transform duration-200 ease-out motion-reduce:transition-none"
+              style={{ width: "calc((100% - 0.5rem) / 4)", transform: `translateX(${sectionTabs.indexOf(activeSection) * 100}%)` }}
+            />
+            {sectionTabs.map(section => (
+              <button
+                key={section}
+                type="button"
+                role="tab"
+                aria-selected={activeSection === section}
+                onClick={() => setActiveSection(section)}
+                className={`relative z-10 rounded-xl px-2 py-2 text-xs transition-colors duration-200 ease-out motion-reduce:transition-none sm:px-3 sm:text-sm ${
+                  activeSection === section ? "font-semibold text-foreground" : "font-medium text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                {section}
+                {section === "Restocking" && reorderRecs.length > 0 && <span className="ml-1.5 rounded-full bg-muted px-1.5 py-0.5 text-[10px] tabular-nums text-muted-foreground">{reorderRecs.length}</span>}
+              </button>
+            ))}
+          </div>
         </nav>
       </div>
 
@@ -2127,13 +2183,13 @@ export default function AnalyticsPage({
             {showScopeFilter && (
               <div className="flex items-center gap-2 flex-shrink-0 flex-wrap">
                 {activeSection === "Forecast" && (
-                  <div className="inline-flex items-center rounded-lg border border-border bg-muted/30 p-0.5 text-xs font-medium">
+                  <div className="inline-flex items-center rounded-2xl border border-border/70 bg-muted/45 p-1 text-xs font-medium">
                     <button
                       type="button"
                       onClick={() => setForecastPeriodUnit("month")}
                       className={`px-2.5 py-1 rounded-md transition-colors cursor-pointer ${
                         forecastPeriodUnit === "month"
-                          ? "bg-primary text-primary-foreground shadow-2xs"
+                          ? "bg-card text-foreground shadow-sm ring-1 ring-border/50"
                           : "text-muted-foreground hover:text-foreground"
                       }`}
                     >
@@ -2144,7 +2200,7 @@ export default function AnalyticsPage({
                       onClick={() => setForecastPeriodUnit("week")}
                       className={`px-2.5 py-1 rounded-md transition-colors cursor-pointer ${
                         forecastPeriodUnit === "week"
-                          ? "bg-primary text-primary-foreground shadow-2xs"
+                          ? "bg-card text-foreground shadow-sm ring-1 ring-border/50"
                           : "text-muted-foreground hover:text-foreground"
                       }`}
                     >
@@ -2191,10 +2247,13 @@ export default function AnalyticsPage({
       {/* Overview: Executive Intelligence, Direct Detail Linking, and Decision Metrics */}
       {activeSection === "Overview" && <>
       {/* ── 1. Executive Intelligence & Synthesis Strip ("Pharmacy Operational Pulse") ── */}
-      <div className="rounded-2xl border border-border bg-card p-5 sm:p-6 space-y-4">
+      <div className={`${ANALYTICS_CARD_CLASS} p-5 sm:p-6 space-y-4`}>
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
-            <p className="text-sm font-semibold text-foreground">Business summary</p>
+            <div className="flex items-center gap-1.5">
+              <p className="text-sm font-semibold text-foreground">Business summary</p>
+              <InfoTip title="How to read this summary" lines={["Estimated demand is based on the active forecast model. Restock counts use current stock thresholds, and estimated restock cost uses the planned order quantities. These are decision-support estimates, not automatic orders."]} />
+            </div>
             <p className="mt-0.5 text-xs text-muted-foreground">Based on recorded sales and current inventory</p>
           </div>
           <span className="text-xs text-muted-foreground">{scopedInventory.length} products</span>
@@ -2269,7 +2328,7 @@ export default function AnalyticsPage({
       {/* ── 2. Interconnected Executive Stat Tiles ── */}
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
         {/* Tile 1: Projected Demand (Direct link to Forecast) */}
-        <div className="rounded-xl border border-border bg-card p-4 sm:p-5 flex flex-col justify-between">
+        <div className={`${ANALYTICS_CARD_CLASS} p-4 sm:p-5 flex flex-col justify-between`}>
           <div>
             <div className="flex items-center justify-between gap-2">
               <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Projected Demand · {nextForecastMonth}</p>
@@ -2301,7 +2360,7 @@ export default function AnalyticsPage({
         </div>
 
         {/* Tile 2: Restock Capital Needed (Direct link to Restocking) */}
-        <div className="rounded-xl border border-border bg-card p-4 sm:p-5 flex flex-col justify-between">
+        <div className={`${ANALYTICS_CARD_CLASS} p-4 sm:p-5 flex flex-col justify-between`}>
           <div>
             <div className="flex items-center justify-between gap-2">
               <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Restock Urgency (EOQ)</p>
@@ -2333,7 +2392,7 @@ export default function AnalyticsPage({
         </div>
 
         {/* Tile 3: Current Stock on Hand (Direct link to Products) */}
-        <div className="rounded-xl border border-border bg-card p-4 sm:p-5 flex flex-col justify-between">
+        <div className={`${ANALYTICS_CARD_CLASS} p-4 sm:p-5 flex flex-col justify-between`}>
           <div>
             <div className="flex items-center justify-between gap-2">
               <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Current Stock on Hand</p>
@@ -2364,7 +2423,7 @@ export default function AnalyticsPage({
         </div>
 
         {/* Tile 4: Top Demand Category (Direct link to Products) */}
-        <div className="rounded-xl border border-border bg-card p-4 sm:p-5 flex flex-col justify-between">
+        <div className={`${ANALYTICS_CARD_CLASS} p-4 sm:p-5 flex flex-col justify-between`}>
           <div>
             <div className="flex items-center justify-between gap-2">
               <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Top Category Volume</p>
@@ -2416,7 +2475,7 @@ export default function AnalyticsPage({
       {/* Charts row */}
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 items-start">
         {/* Current supply and recent demand by product */}
-        <div className="xl:col-span-2 bg-card border border-border rounded-2xl p-5 min-h-[340px]">
+        <div className={`xl:col-span-2 ${ANALYTICS_CARD_CLASS} p-5 min-h-[340px]`}>
           <div className="flex items-start justify-between mb-4 gap-3 flex-wrap">
             <div>
               <div className="flex items-center gap-1.5">
@@ -2473,7 +2532,7 @@ export default function AnalyticsPage({
         </div>
 
         {/* Category pie chart */}
-        <div className="bg-card border border-border rounded-2xl p-5 h-[340px] flex flex-col min-h-0">
+        <div className={`${ANALYTICS_CARD_CLASS} p-5 h-[340px] flex flex-col min-h-0`}>
           <div className="mb-4 flex items-start justify-between gap-2">
             <div>
               <div className="flex items-center gap-1.5">
@@ -2501,10 +2560,10 @@ export default function AnalyticsPage({
           <div className="h-[160px] flex-shrink-0">
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
-                {categoryData.length > 0 && (
+                {chartCategoryData.length > 0 && (
                   <>
                     <Pie
-                      data={categoryData}
+                      data={chartCategoryData}
                       cx="50%"
                       cy="50%"
                       innerRadius={48}
@@ -2513,7 +2572,7 @@ export default function AnalyticsPage({
                       dataKey="value"
                       isAnimationActive={false}
                     >
-                      {categoryData.map((_, i) => <Cell key={`cell-${i}`} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
+                      {chartCategoryData.map((_, i) => <Cell key={`cell-${i}`} fill={CATEGORY_COLORS[i % CATEGORY_COLORS.length]} />)}
                     </Pie>
                     <Tooltip
                       formatter={(v: number) => `${v}%`}
@@ -2533,16 +2592,16 @@ export default function AnalyticsPage({
             <p className="text-xs text-muted-foreground text-center">Loading…</p>
           ) : categorySalesError ? (
             <p className="text-xs text-destructive text-center">Unable to load category sales.</p>
-          ) : categoryData.length === 0 ? (
+          ) : chartCategoryData.length === 0 ? (
             <p className="text-xs text-muted-foreground text-center">No sales data available.</p>
           ) : <div className="space-y-2 mt-2 flex-1 min-h-0 overflow-y-auto pr-1">
-            {categoryData.map((cat, i) => (
+            {chartCategoryData.map((cat, i) => (
               <div key={cat.name} className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <span className="w-2 h-2 rounded-sm flex-shrink-0" style={{ backgroundColor: PIE_COLORS[i % PIE_COLORS.length] }} />
-                  <span className="text-xs text-muted-foreground">{cat.name}</span>
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="w-2 h-2 rounded-sm flex-shrink-0" style={{ backgroundColor: CATEGORY_COLORS[i % CATEGORY_COLORS.length] }} />
+                  <span className="text-xs text-muted-foreground truncate">{cat.name}</span>
                 </div>
-                <span className="text-xs font-semibold text-foreground">{cat.value}%</span>
+                <span className="text-xs font-semibold text-foreground flex-shrink-0">{cat.value}%</span>
               </div>
             ))}
           </div>}
@@ -2582,7 +2641,7 @@ export default function AnalyticsPage({
           const sma6Acc = getAccuracyBadge(sma6Error && !sma6Error.insufficientData ? sma6Error.smape : null);
           const has6Periods = smaMonths.length >= 6;
           return (
-            <div className="rounded-2xl border border-border bg-card p-5 sm:p-7">
+            <div className={`${ANALYTICS_CARD_CLASS} p-5 sm:p-7`}>
               <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-5">
                 <div className="space-y-2">
                   <div className="flex items-center gap-2 flex-wrap">
@@ -2590,6 +2649,15 @@ export default function AnalyticsPage({
                       <TrendingUp size={14} className="text-primary" />
                       Projected Demand · <span className="text-foreground font-bold">{nextForecastMonth}</span>
                     </span>
+                    <InfoTip
+                      title="Projected demand"
+                      color="sky"
+                      lines={[
+                        `This is an estimate of units customers may buy in ${nextForecastMonth}, based on completed sales periods for ${scopeLabel}.`,
+                        "SMA-3 follows recent changes more closely; SMA-6 smooths short-term swings with a longer baseline.",
+                        "Use it as a planning aid, not a guarantee of future sales.",
+                      ]}
+                    />
                     <span className="text-muted-foreground/40">·</span>
                     <span className="text-xs text-muted-foreground font-medium">{scopeLabel}</span>
                   </div>
@@ -2644,21 +2712,37 @@ export default function AnalyticsPage({
                     >
                       Accuracy History ({activeForecastModel === "SMA-3" ? (sma3Error ? `${sma3Error.points} checks` : "Needs 4+ periods") : (sma6Error && !sma6Error.insufficientData ? `${sma6Error.points} checks` : "Needs 7+ periods")})
                     </button>
+                    <InfoTip
+                      title="Back-test accuracy and volatility"
+                      lines={[
+                      "SmartTrack re-estimates past periods using only sales that came before each period, then compares each estimate with recorded sales.",
+                      "The score is an average relative difference: lower means closer. It is not the percentage of units missed.",
+                      "High Volatility means the past differences were large; it does not predict future volatility.",
+                      ]}
+                    />
                   </div>
                 </div>
 
                 {/* Quick Model Selector Segment */}
                 <div className="flex flex-col gap-1.5 shrink-0 border-t lg:border-t-0 lg:border-l border-border/80 pt-3 lg:pt-0 lg:pl-6">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-                    Active Forecast Model
-                  </span>
-                  <div className="inline-flex rounded-xl border border-border bg-muted/30 p-1 gap-1">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Active Forecast Model</span>
+                    <InfoTip
+                      title="Choose a forecast model"
+                      lines={[
+                      "SMA-3 averages the latest three completed periods and responds faster when demand changes.",
+                      "SMA-6 averages up to six periods, so it is a steadier baseline that is less affected by a single spike.",
+                      "You can switch models at any time; this selection is a recommendation, not an automatic order.",
+                      ]}
+                    />
+                  </div>
+                  <div className="inline-flex rounded-2xl border border-border/70 bg-muted/45 p-1 gap-1">
                     <button
                       type="button"
                       onClick={() => setSelectedModelOverride("SMA-3")}
                       className={`text-left px-3.5 py-2 rounded-lg transition-all cursor-pointer ${
                         activeForecastModel === "SMA-3"
-                          ? "bg-card text-foreground shadow-xs font-bold"
+                        ? "bg-card text-foreground shadow-sm font-bold ring-1 ring-border/50"
                           : "text-muted-foreground hover:text-foreground font-medium"
                       }`}
                     >
@@ -2700,7 +2784,7 @@ export default function AnalyticsPage({
         })()}
 
         {/* ── Row 2: Product-Level Demand Forecast Table (Answers "Which Specific Products Will Customers Buy?") ── */}
-        <div className="rounded-2xl border border-border bg-card overflow-hidden shadow-sm">
+        <div className={`${ANALYTICS_CARD_CLASS} overflow-hidden`}>
           <div className="px-5 py-4 border-b border-border space-y-3">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
@@ -2729,7 +2813,7 @@ export default function AnalyticsPage({
                     onClick={() => { setProductForecastFilter(tab.id); setProductForecastPage(1); }}
                     className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer border ${
                       productForecastFilter === tab.id
-                        ? "bg-primary text-primary-foreground border-primary shadow-2xs"
+                        ? "bg-card text-foreground border-border shadow-sm"
                         : "bg-background text-muted-foreground border-border hover:bg-muted hover:text-foreground"
                     }`}
                   >
@@ -2765,18 +2849,28 @@ export default function AnalyticsPage({
             </div>
           </div>
 
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto" data-table-scroll="fixed">
             <table className="w-full text-xs">
               <thead className="bg-muted/20 border-b border-border/60 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
                 <tr>
-                  <th className="py-3 px-5 text-left">Medicine</th>
-                  <th className="py-3 px-4 text-left">Recent Sales</th>
-                  <th className="py-3 px-4 text-left text-foreground bg-primary/[0.03]">
-                    {nextForecastMonth} Forecast
+                  <th className="py-3 px-5 text-left">
+                    <AnalyticsColumnHeader label="Medicine" title="Medicine & confidence" description="Each row is one medicine. High Confidence means at least six periods with sales in four of the latest six; Short History means there are at least three periods and some recent sales; Sporadic Sales means sales are intermittent. No Sales History means there is not enough activity to forecast from." />
                   </th>
-                  <th className="py-3 px-4 text-left">Trend</th>
-                  <th className="py-3 px-4 text-left">Stock &amp; Coverage</th>
-                  <th className="py-3 px-5 text-right">Action</th>
+                  <th className="py-3 px-4 text-left">
+                    <AnalyticsColumnHeader label="Recent Sales" title="Recent recorded sales" description="The quantities sold in the latest completed periods shown here, plus the total sales in the history used for this medicine." />
+                  </th>
+                  <th className="py-3 px-4 text-left text-foreground bg-primary/[0.03]">
+                    <AnalyticsColumnHeader label={`${nextForecastMonth} Forecast`} title="Projected demand" description={`A model-based estimate of how many units may sell in ${nextForecastMonth}. SMA-3 reacts more to recent changes; SMA-6 uses a longer history for a steadier estimate. It is guidance, not a guaranteed sale.`} />
+                  </th>
+                  <th className="py-3 px-4 text-left">
+                    <AnalyticsColumnHeader label="Trend" title="Recent demand trend" description="Compares the short-term average with the longer baseline. Rising and slowing describe the observed direction; they do not guarantee what will happen next." />
+                  </th>
+                  <th className="py-3 px-4 text-left">
+                    <AnalyticsColumnHeader label="Stock & Coverage" title="Stock and days of supply" description="Shows current stock, incoming purchase-order units, and the estimated days current stock can cover at recent forecast demand. A shortfall means expected demand may exceed stock plus incoming units." />
+                  </th>
+                  <th className="py-3 px-5 text-right">
+                    <AnalyticsColumnHeader label="Action" title="Inspect or restock" description="Inspect focuses the forecast on this medicine. Restock opens its planning row when its stock status needs attention." align="right" />
+                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border/40">
@@ -2904,7 +2998,7 @@ export default function AnalyticsPage({
                             onClick={() => setScope(isFocused ? "all" : `product:${p.id}`)}
                             className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition-all cursor-pointer ${
                               isFocused
-                                ? "bg-primary text-primary-foreground border-primary shadow-xs"
+                                ? "bg-card text-foreground border-border shadow-sm"
                                 : "bg-background hover:bg-muted text-foreground border-border"
                             }`}
                           >
@@ -2946,7 +3040,7 @@ export default function AnalyticsPage({
         </div>
 
         {/* ── Row 3: Historical Back-Test Overlay & Trend Chart ── */}
-        <div className="rounded-2xl border border-border bg-card p-4 sm:p-5 shadow-sm space-y-4">
+        <div className={`${ANALYTICS_CARD_CLASS} p-4 sm:p-5 space-y-4`}>
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <h3 className="text-sm font-bold text-foreground">
@@ -2979,14 +3073,20 @@ export default function AnalyticsPage({
           {/* Clean 3-Metric Summary Footer Bar */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-3 border-t border-border/70 text-xs">
             <div className="rounded-xl border border-border bg-muted/20 px-3.5 py-2.5">
-              <span className="block text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Latest Recorded Sales</span>
+              <div className="flex items-center gap-1.5">
+                <span className="block text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Latest Recorded Sales</span>
+                <InfoTip title="Latest recorded sales" lines={["Actual units recorded as sold in the most recent completed period with sales. This is historical data, not a forecast."]} />
+              </div>
               <span className="text-base font-bold tabular-nums text-foreground mt-0.5 block">
                 {latestSalesMonth ? `${latestSalesMonth.demand.toLocaleString()} units` : "No sales yet"}
               </span>
               <span className="text-[11px] text-muted-foreground">Recorded in {latestSalesMonth?.month ?? "recent transactions"}</span>
             </div>
             <div className="rounded-xl border border-border bg-muted/20 px-3.5 py-2.5">
-              <span className="block text-[10px] font-bold uppercase tracking-wider text-muted-foreground">SMA-3 Short-Term Avg</span>
+              <div className="flex items-center gap-1.5">
+                <span className="block text-[10px] font-bold uppercase tracking-wider text-muted-foreground">SMA-3 Short-Term Avg</span>
+                <InfoTip title="SMA-3 short-term average" lines={["The average sales across up to the latest three completed periods. It follows recent changes more quickly than SMA-6."]} />
+              </div>
               <span className="text-base font-bold tabular-nums text-foreground mt-0.5 block">
                 {Math.round(forecastSMA3).toLocaleString()} units
               </span>
@@ -2997,7 +3097,10 @@ export default function AnalyticsPage({
               </span>
             </div>
             <div className="rounded-xl border border-border bg-muted/20 px-3.5 py-2.5">
-              <span className="block text-[10px] font-bold uppercase tracking-wider text-muted-foreground">SMA-6 Steady Baseline</span>
+              <div className="flex items-center gap-1.5">
+                <span className="block text-[10px] font-bold uppercase tracking-wider text-muted-foreground">SMA-6 Steady Baseline</span>
+                <InfoTip title="SMA-6 steady baseline" lines={["The average sales across up to the latest six completed periods. Its longer window smooths short-term swings compared with SMA-3."]} />
+              </div>
               <span className="text-base font-bold tabular-nums text-foreground mt-0.5 block">
                 {Math.round(forecastSMA6).toLocaleString()} units
               </span>
@@ -3011,7 +3114,7 @@ export default function AnalyticsPage({
         </div>
 
         {/* ── Row 4: Expandable SMA-3 vs. SMA-6 Detailed Formula Evaluation ── */}
-        <details className="group rounded-2xl border border-border/80 bg-card overflow-hidden shadow-sm">
+        <details className={`group ${ANALYTICS_CARD_CLASS} overflow-hidden`}>
           <summary className="px-5 py-3.5 flex items-center justify-between cursor-pointer hover:bg-muted/30 transition-colors select-none">
             <div className="flex items-center gap-2">
               <Calculator size={14} className="text-primary" />
@@ -3027,16 +3130,16 @@ export default function AnalyticsPage({
             </span>
           </summary>
 
-          <div className="overflow-x-auto border-t border-border/60">
+          <div className="overflow-x-auto border-t border-border/60" data-table-scroll="fixed">
             <table className="w-full text-xs">
               <thead>
                 <tr className="border-b border-border/60 bg-muted/20 text-muted-foreground text-[10px] uppercase font-bold tracking-wider">
-                  <th className="py-2.5 px-5 text-left">Model</th>
-                  <th className="py-2.5 px-4 text-left">Formula</th>
-                  <th className="py-2.5 px-4 text-left">Sales Averaged</th>
-                  <th className="py-2.5 px-4 text-left">Historical Accuracy (Back-Test)</th>
-                  <th className="py-2.5 px-4 text-left font-bold text-foreground">{nextForecastMonth} Forecast</th>
-                  <th className="py-2.5 px-5 text-right">Calculation</th>
+                  <th className="py-2.5 px-5 text-left"><AnalyticsColumnHeader label="Model" title="Forecast model" description="SMA-3 averages the latest three completed periods and responds faster to recent changes. SMA-6 averages up to six periods and gives a steadier baseline." /></th>
+                  <th className="py-2.5 px-4 text-left"><AnalyticsColumnHeader label="Formula" title="How the average is calculated" description="Add the recorded sales from the available recent periods, then divide by the number of periods included. A₁, A₂, and so on represent each period's sales." /></th>
+                  <th className="py-2.5 px-4 text-left"><AnalyticsColumnHeader label="Sales Averaged" title="Sales included in this model" description="These are the recorded units used for the displayed average. If there are fewer periods than the model's full window, the available periods are shown." /></th>
+                  <th className="py-2.5 px-4 text-left"><AnalyticsColumnHeader label="Historical Accuracy (Back-Test)" title="Back-test difference and volatility" description="SmartTrack replays past estimates using only earlier sales, then compares them with what actually sold. The percentage is average relative difference, not percent of units missed; lower means closer. High Volatility means the past differences were large, not that future demand is certain to vary." /></th>
+                  <th className="py-2.5 px-4 text-left font-bold text-foreground"><AnalyticsColumnHeader label={`${nextForecastMonth} Forecast`} title="Projected demand" description={`The model's estimated unit demand for ${nextForecastMonth}, based on the sales periods above. Treat it as a planning estimate rather than a promise.`} /></th>
+                  <th className="py-2.5 px-5 text-right"><AnalyticsColumnHeader label="Calculation" title="Calculation details" description="Open the step-by-step calculation to see the inputs and arithmetic used for this model." align="right" /></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border/40">
@@ -3143,10 +3246,18 @@ export default function AnalyticsPage({
       {/* Restocking: Highlight EOQ (Economic Order Quantity) & Reorder Point (ROP) clearly */}
       {activeSection === "Restocking" && <>
       {/* ── Top Bar: Sleek Unified Control Strip (Linear Style) ── */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl border border-border bg-card p-4">
+      <div className={`${ANALYTICS_CARD_CLASS} flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4`}>
         <div className="flex items-center gap-2.5 flex-wrap">
           <span className="text-xs font-bold text-foreground">Demand Basis:</span>
-          <div className="inline-flex rounded-lg border border-border bg-muted/30 p-0.5 text-xs font-semibold">
+          <InfoTip
+            title="Restocking demand basis (D)"
+            lines={[
+              "D is the annual demand estimate used by EOQ and lead-time ROP calculations.",
+              "Auto uses the selected forecast recommendation. SMA-3 responds faster to recent changes; SMA-6 is steadier; All-Time Avg uses the full available sales history.",
+              "Changing the basis can change order quantities. It never creates an order by itself.",
+            ]}
+          />
+          <div className="inline-flex rounded-2xl border border-border/70 bg-muted/45 p-1 text-xs font-semibold">
             {([
               { id: "auto", label: "Auto (SMA)" },
               { id: "sma3", label: "SMA-3" },
@@ -3159,7 +3270,7 @@ export default function AnalyticsPage({
                 onClick={() => handleSetDemandBasis(opt.id)}
                 className={`px-3 py-1 rounded-md transition-all cursor-pointer ${
                   demandBasis === opt.id
-                    ? "bg-card text-foreground font-bold shadow-2xs"
+                    ? "bg-card text-foreground font-bold shadow-sm ring-1 ring-border/50"
                     : "text-muted-foreground hover:text-foreground"
                 }`}
               >
@@ -3216,9 +3327,12 @@ export default function AnalyticsPage({
       {/* ── 4 Summary KPI Cards ── */}
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
         {/* Card 1 */}
-        <div className="rounded-xl border border-border bg-card p-4 sm:p-5 flex flex-col justify-between">
+        <div className={`${ANALYTICS_CARD_CLASS} p-4 sm:p-5 flex flex-col justify-between`}>
           <div>
-            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">To Restock</p>
+            <div className="flex items-center gap-1.5">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">To Restock</p>
+              <InfoTip title="Products to restock" lines={["Count of products currently below their configured reorder thresholds and included in this restock plan."]} />
+            </div>
             <p className={`mt-1.5 text-2xl font-extrabold tabular-nums ${reorderRecs.length ? "text-amber-600 dark:text-amber-400" : "text-foreground"}`}>
               {reorderRecs.length} <span className="text-xs font-medium text-muted-foreground">products</span>
             </p>
@@ -3231,7 +3345,7 @@ export default function AnalyticsPage({
         </div>
 
         {/* Card 2 */}
-        <div className="rounded-xl border border-border bg-card p-4 sm:p-5 flex flex-col justify-between">
+        <div className={`${ANALYTICS_CARD_CLASS} p-4 sm:p-5 flex flex-col justify-between`}>
           <div>
             <div className="flex items-center justify-between gap-2">
               <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Planned Order Units</p>
@@ -3254,7 +3368,7 @@ export default function AnalyticsPage({
         </div>
 
         {/* Card 3 */}
-        <div className="rounded-xl border border-border bg-card p-4 sm:p-5 flex flex-col justify-between">
+        <div className={`${ANALYTICS_CARD_CLASS} p-4 sm:p-5 flex flex-col justify-between`}>
           <div>
             <div className="flex items-center justify-between gap-2">
               <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Advisory ROP</p>
@@ -3277,9 +3391,12 @@ export default function AnalyticsPage({
         </div>
 
         {/* Card 4 */}
-        <div className="rounded-xl border border-border bg-card p-4 sm:p-5 flex flex-col justify-between">
+        <div className={`${ANALYTICS_CARD_CLASS} p-4 sm:p-5 flex flex-col justify-between`}>
           <div>
-            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Estimated Budget</p>
+            <div className="flex items-center gap-1.5">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Estimated Budget</p>
+              <InfoTip title="Estimated restock budget" lines={["Estimated cost of the planned order quantities across the products in this plan. Product-level costs use the unit cost shown in the calculation details."]} />
+            </div>
             <p className="mt-1.5 text-2xl font-extrabold tabular-nums text-foreground">
               {fmt(estimatedRestockCost)}
             </p>
@@ -3292,7 +3409,7 @@ export default function AnalyticsPage({
 
       {/* ── Row 3: Actionable EOQ Reorder Recommendations Table ── */}
       {reorderRecs.length > 0 && (
-        <div className="bg-card border border-border/80 rounded-2xl overflow-hidden shadow-sm">
+        <div className={`${ANALYTICS_CARD_CLASS} overflow-hidden`}>
           {/* Table Header + Search & Status Filter Bar */}
           <div className="px-5 py-3.5 border-b border-border space-y-3">
             <div className="flex items-center justify-between flex-wrap gap-2">
@@ -3355,7 +3472,7 @@ export default function AnalyticsPage({
                     onClick={() => { setRestockStatusFilter(tab.id); setRestockPage(1); }}
                     className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer border ${
                       restockStatusFilter === tab.id
-                        ? "bg-primary text-primary-foreground border-primary shadow-2xs"
+                        ? "bg-card text-foreground border-border shadow-sm"
                         : "bg-background text-muted-foreground border-border hover:bg-muted hover:text-foreground"
                     }`}
                   >
@@ -3366,18 +3483,18 @@ export default function AnalyticsPage({
             </div>
           </div>
 
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto" data-table-scroll="fixed">
             <table className="w-full">
               <thead className="sticky top-0 z-10 bg-card shadow-sm">
                 <tr className="border-b border-border/60 bg-muted/20 text-muted-foreground text-[10px] uppercase font-bold tracking-wider">
-                  <th className="py-3 px-5 text-left">Product</th>
-                  <th className="py-3 px-4 text-left">Stock vs. Min</th>
-                  <th className="py-3 px-4 text-left">Annual Demand (D)</th>
-                  <th className="py-3 px-4 text-left">Advisory ROP</th>
-                  <th className="py-3 px-4 text-left text-foreground bg-primary/[0.03]">Planned Order (EOQ)</th>
-                  <th className="py-3 px-4 text-left">Est. Cost</th>
-                  <th className="py-3 px-4 text-left">Status</th>
-                  <th className="py-3 px-5 text-right">Actions</th>
+                  <th className="py-3 px-5 text-left"><AnalyticsColumnHeader label="Product" title="Product details" description="Medicine name, category, and supplier. The product identity helps you review the recommendation with its supplier." /></th>
+                  <th className="py-3 px-4 text-left"><AnalyticsColumnHeader label="Stock vs. Min" title="Stock compared with minimum" description="Current on-hand units compared with the configured minimum reorder level. The shortage indicates how many units are below that threshold." /></th>
+                  <th className="py-3 px-4 text-left"><AnalyticsColumnHeader label="Annual Demand (D)" title="Annual demand (D)" description={`The estimated number of units used in one year. Its source follows the selected demand basis (currently ${demandBasis === "sma3" ? "SMA-3" : demandBasis === "sma6" ? "SMA-6" : demandBasis === "historical" ? "All-Time Average" : "Auto"}); changing that basis can change the order recommendation.`} /></th>
+                  <th className="py-3 px-4 text-left"><AnalyticsColumnHeader label="Advisory ROP" title="Reorder point (ROP)" description={`The stock level that signals when to reorder: expected demand during the ${leadTimeDaysSetting}-day supplier lead time plus a ${safetyBufferSetting}% safety buffer. It is advisory; your configured minimum still controls stock alerts.`} /></th>
+                  <th className="py-3 px-4 text-left text-foreground bg-primary/[0.03]"><AnalyticsColumnHeader label="Planned Order (EOQ)" title="Economic order quantity (EOQ)" description="The recommended order size balances the cost of placing orders against the cost of holding inventory. Pack sizes can round this quantity, and FIFO sell-through estimates how long the batch may take to sell relative to shelf life." /></th>
+                  <th className="py-3 px-4 text-left"><AnalyticsColumnHeader label="Est. Cost" title="Estimated order cost" description="Planned order units multiplied by the available unit purchase cost. The product's cost source is shown in its calculation details." /></th>
+                  <th className="py-3 px-4 text-left"><AnalyticsColumnHeader label="Status" title="Current stock status" description="A status based on the product's current on-hand stock and configured reorder thresholds." /></th>
+                  <th className="py-3 px-5 text-right"><AnalyticsColumnHeader label="Actions" title="Review or create an order" description="Math opens the calculation details. Create PO starts a purchase-order draft for human review; it does not place an order automatically." align="right" /></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border/40">
@@ -3536,8 +3653,15 @@ export default function AnalyticsPage({
       {activeSection === "Products" && <>
       {(() => {
         const perfTotal = perf.length;
+        const perfColumns = [
+          { label: "Product", title: "Product", description: "The medicine represented by this row." },
+          { label: "Category", title: "Category", description: "The inventory category assigned to this medicine." },
+          { label: "Units Sold", title: "Units sold", description: "Total units sold in the recorded transaction history used for this report." },
+          { label: "Revenue", title: "Recorded revenue", description: "Sales revenue attributed to this product in the recorded transaction history." },
+          { label: "Demand Level", title: "Demand level", description: "A relative grouping based on historical product sales. It summarizes past activity and is not a forecast guarantee." },
+        ];
         return (
-          <div className="bg-card border border-border/80 rounded-2xl overflow-hidden shadow-[0_2px_12px_-4px_rgba(13,148,136,0.06),0_1px_3px_rgba(0,0,0,0.02)]">
+          <div className={`${ANALYTICS_CARD_CLASS} overflow-hidden`}>
             <div className="px-5 py-4 border-b border-border/70 space-y-3">
               <div className="flex items-center justify-between flex-wrap gap-2">
                 <div>
@@ -3595,7 +3719,7 @@ export default function AnalyticsPage({
                         onClick={() => { setProductPerfDemandFilter(lvl); setProductPerfPage(1); }}
                         className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-all cursor-pointer ${
                           productPerfDemandFilter === lvl
-                            ? "bg-primary text-primary-foreground shadow-xs"
+                            ? "bg-card text-foreground shadow-sm ring-1 ring-border/50"
                             : "bg-muted/60 text-muted-foreground hover:bg-muted hover:text-foreground border border-border/50"
                         }`}
                       >
@@ -3607,12 +3731,14 @@ export default function AnalyticsPage({
               )}
             </div>
 
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto" data-table-scroll="fixed">
               <table className="w-full">
                 <thead className="sticky top-0 z-10 bg-card shadow-sm">
                   <tr className="border-b border-border/60 bg-muted/20">
-                    {["Product", "Category", "Units Sold", "Revenue", "Demand Level"].map(h => (
-                      <th key={h} className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide py-3 text-left px-4 first:px-5">{h}</th>
+                    {perfColumns.map(column => (
+                      <th key={column.label} className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide py-3 text-left px-4 first:px-5">
+                        <AnalyticsColumnHeader label={column.label} title={column.title} description={column.description} />
+                      </th>
                     ))}
                   </tr>
                 </thead>

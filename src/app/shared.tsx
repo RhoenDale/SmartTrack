@@ -478,8 +478,10 @@ export function InfoTip({
         <button
           type="button"
           onClick={() => setOpen(v => !v)}
-          className={`inline-flex items-center justify-center w-5 h-5 rounded-full transition-all cursor-pointer shadow-2xs hover:scale-110 active:scale-95 ${ringColor}`}
-          aria-label="Help and information"
+          className={`inline-flex h-5 w-5 items-center justify-center rounded-full transition-all cursor-pointer shadow-2xs hover:scale-110 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 ${ringColor}`}
+          aria-label={`Information: ${title}`}
+          aria-expanded={open}
+          aria-haspopup="dialog"
           title="Click for guide and information"
         >
           <Info size={13.5} strokeWidth={2.4} className="shrink-0" />
@@ -488,6 +490,8 @@ export function InfoTip({
       {open && coords && createPortal(
         <div
           ref={popoverRef}
+          role="dialog"
+          aria-label={title}
           style={{
             position: "fixed",
             top: coords.placeAbove ? undefined : `${coords.top}px`,
@@ -728,8 +732,16 @@ export function ViewReasonModal({ tx, onClose }: { tx: Transaction; onClose: () 
 
 // ─── Notification Panel ───────────────────────────────────────────────────────
 import { useRef, useEffect, useState, useMemo } from "react";
-import { AlertTriangle as _AlertTriangle, FileText as _FileText, Check as _Check, CheckCheck, RefreshCw, X as _X, ShoppingCart } from "lucide-react";
+import { AlertTriangle as _AlertTriangle, ArrowRight as _ArrowRight, BellRing as _BellRing, FileText as _FileText, Check as _Check, CheckCheck, RefreshCw, X as _X, ShoppingCart } from "lucide-react";
 import { sortBatchesFIFO, sortBatchesByExpiry, deductFIFO, getTotalStock, getEarliestExpiry, parseExpiry, formatExpiryString, ROLE_LABELS, computeTax, VAT_RATE_LABEL, type Notification, type ProductBatch } from "./data";
+
+function formatNotificationTime(value: string): string {
+  const minutes = /^(\d+)\s+min ago$/i.exec(value.trim());
+  if (minutes) return `${minutes[1]}m ago`;
+  const hours = /^(\d+)\s+hr ago$/i.exec(value.trim());
+  if (hours) return `${hours[1]}h ago`;
+  return value;
+}
 
 export function NotificationPanel({
   notifs, onMarkAll, onMarkOne, onNotificationClick, onNotificationHover, productMap, onClose,
@@ -743,6 +755,7 @@ export function NotificationPanel({
   onClose: () => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
+  const [filter, setFilter] = useState<"all" | "unread" | "alerts">("all");
   useEffect(() => {
     function handler(e: MouseEvent) {
       if (ref.current && !ref.current.contains(e.target as Node)) onClose();
@@ -752,49 +765,137 @@ export function NotificationPanel({
   }, [onClose]);
 
   const iconMap = {
-    alert: <_AlertTriangle size={13} className="text-amber-500" />,
-    order: <_FileText size={13} className="text-primary" />,
-    info: <_Check size={13} className="text-emerald-500" />,
+    alert: { icon: <_AlertTriangle size={14} />, className: "bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/20" },
+    order: { icon: <_FileText size={14} />, className: "bg-primary/15 text-primary border border-primary/20" },
+    info: { icon: <_Check size={14} />, className: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20" },
   };
+  const unreadCount = notifs.filter(notification => !notification.read).length;
+  const alertCount = notifs.filter(notification => notification.type === "alert").length;
+  const filteredNotifs = notifs.filter(notification => {
+    if (filter === "unread") return !notification.read;
+    if (filter === "alerts") return notification.type === "alert";
+    return true;
+  });
+  const noNotifications = notifs.length === 0;
+  const noUnread = filter === "unread" && unreadCount === 0;
 
   return (
-    <div ref={ref} className="absolute right-0 top-full mt-2 w-80 sm:w-96 bg-card border border-border/80 rounded-2xl shadow-[0_20px_50px_-10px_rgba(13,148,136,0.15),0_10px_20px_-5px_rgba(0,0,0,0.08)] overflow-hidden st-dropdown-in" style={{ zIndex: 200 }}>
-      <div className="flex items-center justify-between px-4 py-3 border-b border-border/60 bg-card/50">
-        <div>
-          <p className="text-sm font-bold text-foreground">Notifications</p>
-          <p className="text-[10px] text-muted-foreground">{notifs.filter(n => !n.read).length} unread</p>
+    <div ref={ref} role="dialog" aria-label="Notifications" className="absolute right-0 top-full mt-2 w-[min(24rem,calc(100vw-2rem))] bg-card border border-border rounded-2xl shadow-[0_20px_50px_-10px_rgba(15,23,42,0.18),0_10px_20px_-5px_rgba(0,0,0,0.08)] overflow-hidden st-dropdown-in" style={{ zIndex: 200 }}>
+      <div className="flex items-center justify-between gap-3 px-4 py-3">
+        <div className="min-w-0">
+          <p className="text-sm font-semibold tracking-tight text-foreground">Notifications</p>
+          <p className="text-xs text-muted-foreground mt-0.5">{unreadCount} unread</p>
         </div>
-        <button onClick={onMarkAll} className="flex items-center gap-1 text-[11px] text-primary hover:underline font-semibold">
-          <CheckCheck size={12} />Mark all read
+        <button type="button" onClick={onMarkAll} disabled={unreadCount === 0} className="flex flex-shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-primary hover:bg-primary/5 disabled:cursor-default disabled:opacity-45">
+          <CheckCheck size={14} />Mark all read
         </button>
       </div>
-      <div className="max-h-72 overflow-y-auto divide-y divide-border/60">
-        {notifs.map(n => (
-          <div
-            key={n.id}
-            onClick={() => onNotificationClick(n)}
-            onMouseEnter={() => onNotificationHover(n.productId ?? null)}
-            onMouseLeave={() => onNotificationHover(null)}
-            className={`flex gap-3 px-4 py-3 cursor-pointer transition-colors hover:bg-muted/40 ${n.read ? "opacity-60" : ""}`}
+      <div role="group" aria-label="Filter notifications" className="mx-3 mb-2 flex rounded-lg border border-border bg-muted/40 p-1">
+        {([
+          { key: "all", label: "All", count: notifs.length },
+          { key: "unread", label: "Unread", count: unreadCount },
+          { key: "alerts", label: "Alerts", count: alertCount },
+        ] as const).map(item => (
+          <button
+            key={item.key}
+            type="button"
+            aria-pressed={filter === item.key}
+            onClick={() => setFilter(item.key)}
+            className={`flex min-w-0 flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-xs transition-colors ${
+              filter === item.key
+                ? "bg-card font-semibold text-foreground shadow-sm"
+                : "font-medium text-muted-foreground hover:text-foreground"
+            }`}
           >
-            <div className="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5"
-              style={{ background: n.type === "alert" ? "#fef3c7" : n.type === "order" ? "#ccfbf1" : "#f0fdf4" }}>
-              {iconMap[n.type]}
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="flex items-start justify-between gap-2">
-                <p className={`text-xs font-semibold text-foreground leading-tight ${!n.read ? "" : "font-medium"}`}>{n.title}</p>
-                {!n.read && <span className="w-1.5 h-1.5 rounded-full bg-primary flex-shrink-0 mt-1" />}
-              </div>
-              <p className="text-[10px] text-muted-foreground mt-0.5 leading-relaxed">{n.body}</p>
-              {productMap[n.productId ?? ""] && (
-                <p className="text-[10px] text-primary mt-1">View product: {productMap[n.productId ?? ""]}</p>
-              )}
-              <p className="text-[10px] text-muted-foreground mt-1">{n.time}</p>
-            </div>
-          </div>
+            {item.label}
+            <span className={`tabular-nums ${filter === item.key ? "text-muted-foreground" : "text-muted-foreground/75"}`}>{item.count}</span>
+          </button>
         ))}
-        {notifs.length === 0 && <p className="text-center text-sm text-muted-foreground py-8">No notifications</p>}
+      </div>
+
+      <div className="max-h-[min(65vh,420px)] overflow-y-auto border-y border-border/70">
+        {filteredNotifs.length > 0 ? (
+          <div className="divide-y divide-border/60">
+            {filteredNotifs.map(n => {
+              const icon = iconMap[n.type];
+              const linkedProduct = productMap[n.productId ?? ""];
+              return (
+                <article
+                  key={n.id}
+                  onMouseEnter={() => onNotificationHover(n.productId ?? null)}
+                  onMouseLeave={() => onNotificationHover(null)}
+                  className="group flex items-start gap-3 px-4 py-3 transition-colors hover:bg-muted/35"
+                >
+                  <button
+                    type="button"
+                    onClick={() => onNotificationClick(n)}
+                    className="flex min-w-0 flex-1 items-start gap-3 rounded-md text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+                    aria-label={`${n.title}${linkedProduct ? `, open ${linkedProduct}` : ""}`}
+                  >
+                    <span className={`mt-0.5 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg ${icon.className}`}>
+                      {icon.icon}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="flex items-start justify-between gap-2">
+                        <span className={`text-sm leading-snug ${n.read ? "font-medium text-foreground" : "font-semibold text-foreground"}`}>{n.title}</span>
+                        {!n.read && <span className="mt-1 h-2 w-2 flex-shrink-0 rounded-full bg-primary" aria-label="Unread" />}
+                      </span>
+                      <span className="mt-1 block text-xs leading-relaxed text-muted-foreground">{n.body}</span>
+                      {linkedProduct && (
+                        <span className="mt-2 inline-flex max-w-full items-center gap-1.5 rounded-full border border-border bg-muted/40 px-2.5 py-1 text-[11px] font-medium text-primary">
+                          <Package size={12} className="flex-shrink-0" />
+                          <span className="truncate">{linkedProduct}</span>
+                          <_ArrowRight size={11} className="flex-shrink-0" />
+                        </span>
+                      )}
+                      <span className="mt-2 block text-[11px] text-muted-foreground">{formatNotificationTime(n.time)}</span>
+                    </span>
+                  </button>
+                  {!n.read && (
+                    <button
+                      type="button"
+                      onClick={() => onMarkOne(n.id)}
+                      title="Mark as read"
+                      aria-label={`Mark ${n.title} as read`}
+                      className="mt-0.5 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md text-muted-foreground opacity-100 transition-all hover:bg-muted hover:text-foreground focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 group-hover:opacity-100 sm:opacity-0"
+                    >
+                      <_Check size={15} />
+                    </button>
+                  )}
+                </article>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="flex flex-col items-center px-6 py-9 text-center">
+            <span className="mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-muted text-muted-foreground">
+              {filter === "alerts" ? <_BellRing size={18} /> : <CheckCheck size={18} />}
+            </span>
+            <p className="text-sm font-semibold text-foreground">
+              {filter === "alerts" && !noNotifications ? "No pharmacy alerts right now." : "You're all caught up!"}
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {filter === "alerts" && !noNotifications
+                ? "There are no stock or expiry notices to review."
+                : noNotifications || noUnread
+                ? "No pending pharmacy alerts."
+                : "No notifications match this filter."}
+            </p>
+          </div>
+        )}
+      </div>
+
+      <div className="p-2">
+        <button
+          type="button"
+          onClick={() => {
+            window.dispatchEvent(new CustomEvent("smarttrack:navigate", { detail: "stock-alerts" }));
+            onClose();
+          }}
+          className="flex w-full items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
+        >
+          View all Stock &amp; Expiry Alerts <_ArrowRight size={13} />
+        </button>
       </div>
     </div>
   );

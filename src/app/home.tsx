@@ -1426,7 +1426,7 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
 
   // ── Sidebar ──────────────────────────────────────────────────────────────────
   // Shared settings panel content (used in both TrackHub and sidebar topbars)
-  const settingsPanelContent = (
+  const settingsPanelContent = useMemo(() => (
     <div className="space-y-3.5">
       <section className="overflow-hidden rounded-2xl border border-border/60 bg-muted/20 divide-y divide-border/40">
         <div className="flex items-center justify-between gap-3 px-3.5 py-3">
@@ -1738,7 +1738,33 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
         )}
       </section>
     </div>
-  );
+  ), [
+    user.initials,
+    user.name,
+    user.role,
+    user.roles,
+    roleActionBusy,
+    activateRole,
+    setRoleToRemove,
+    darkMode,
+    setDarkMode,
+    showHubToast,
+    navMode,
+    setNavMode,
+    setShowTrackHubSettings,
+    smartBotEnabled,
+    toggleSmartBot,
+    handleToggleFullScreen,
+    isMac,
+    shareStatus,
+    handleCopyShareLink,
+    handleStopShare,
+    handleStartShare,
+    shareMessage,
+    isAdmin,
+    isInventoryManager,
+    setPage,
+  ]);
 
   const sidebarContent = (
     <div className="flex flex-col h-full" style={{ background: "linear-gradient(180deg, #0b1528 0%, #060b14 100%)" }}>
@@ -1843,7 +1869,7 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
       {/* Floating Top Notification for Classic Sidebar Mode */}
       {navMode === "sidebar" && hubToast && (
         <div className="fixed top-3 left-1/2 -translate-x-1/2 z-[100] pointer-events-none animate-in fade-in slide-in-from-top-2 duration-200">
-          <div className="flex items-center gap-2 px-4 py-1.5 rounded-full bg-card/95 border border-border shadow-md backdrop-blur-md">
+          <div className="flex items-center gap-2 px-4 py-1.5 rounded-full bg-card border border-border shadow-md">
             <span className={`w-5 h-5 rounded-full flex items-center justify-center text-xs shrink-0 ${
               hubToast.type === "error"
                 ? "bg-red-500/20 text-red-500"
@@ -1926,7 +1952,7 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
                   )}
                   {/* Search Dropdown */}
                   {searchOpen && searchQuery.length >= 2 && (
-                    <div className="absolute top-full left-0 right-0 mt-1.5 bg-card/95 backdrop-blur-md border border-border/80 rounded-xl shadow-[0_12px_32px_-4px_rgba(37,99,235,0.15),0_4px_12px_rgba(0,0,0,0.06)] overflow-hidden z-50">
+                    <div className="absolute top-full left-0 right-0 mt-1.5 bg-card border border-border rounded-xl shadow-[0_12px_32px_-4px_rgba(37,99,235,0.15),0_4px_12px_rgba(0,0,0,0.06)] overflow-hidden z-50">
                       {searchResults.length === 0 ? (
                         <div className="px-4 py-3 text-xs text-muted-foreground">No results for "{searchQuery}"</div>
                       ) : (
@@ -2049,7 +2075,7 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
                       <Settings size={16} />
                     </button>
                     {showTrackHubSettings && (
-                      <div className="absolute right-0 top-full mt-2 w-[min(24rem,calc(100vw_-_1.5rem))] max-h-[calc(100dvh_-_5rem)] overflow-y-auto scrollbar-thin rounded-3xl border border-border/80 bg-card/95 p-3.5 shadow-[0_20px_50px_rgba(0,0,0,0.25)] backdrop-blur-2xl z-50 st-dropdown-in">
+                      <div className="absolute right-0 top-full mt-2 w-[min(24rem,calc(100vw_-_1.5rem))] max-h-[calc(100dvh_-_5rem)] overflow-y-auto scrollbar-thin rounded-3xl border border-border bg-card p-3.5 shadow-[0_20px_50px_rgba(0,0,0,0.18)] dark:shadow-[0_24px_50px_rgba(0,0,0,0.6)] z-50 st-dropdown-in transform-gpu">
                         <div className="flex items-center justify-between border-b border-border/60 pb-2 mb-3">
                           <div className="flex items-center gap-2">
                             <Settings size={14} className="text-primary" />
@@ -2112,7 +2138,7 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
 
                     {/* Dropdown */}
                     {searchOpen && searchQuery.length >= 2 && (
-                      <div className="absolute top-full left-0 right-0 mt-1.5 bg-card/95 backdrop-blur-md border border-border/80 rounded-xl shadow-[0_12px_32px_-4px_rgba(37,99,235,0.15),0_4px_12px_rgba(0,0,0,0.06)] overflow-hidden z-50">
+                      <div className="absolute top-full left-0 right-0 mt-1.5 bg-card border border-border rounded-xl shadow-[0_12px_32px_-4px_rgba(37,99,235,0.15),0_4px_12px_rgba(0,0,0,0.06)] overflow-hidden z-50">
                         {searchResults.length === 0 ? (
                           <div className="px-4 py-3 text-xs text-muted-foreground">No results for "{searchQuery}"</div>
                         ) : (
@@ -2233,7 +2259,7 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
                       <Settings size={16} />
                     </button>
                     {showTrackHubSettings && (
-                      <div className="absolute right-0 top-full mt-2 w-[min(24rem,calc(100vw_-_1.5rem))] max-h-[calc(100dvh_-_5rem)] overflow-y-auto scrollbar-thin rounded-3xl border border-border/80 bg-card/95 p-3.5 shadow-[0_20px_50px_rgba(0,0,0,0.25)] backdrop-blur-2xl z-50 st-dropdown-in">
+                      <div className="absolute right-0 top-full mt-2 w-[min(24rem,calc(100vw_-_1.5rem))] max-h-[calc(100dvh_-_5rem)] overflow-y-auto scrollbar-thin rounded-3xl border border-border bg-card p-3.5 shadow-[0_20px_50px_rgba(0,0,0,0.18)] dark:shadow-[0_24px_50px_rgba(0,0,0,0.6)] z-50 st-dropdown-in transform-gpu">
                         <div className="flex items-center justify-between border-b border-border/60 pb-2 mb-3">
                           <div className="flex items-center gap-2">
                             <Settings size={14} className="text-primary" />
