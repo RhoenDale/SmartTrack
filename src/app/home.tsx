@@ -130,8 +130,20 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
   }, [navMode]);
   const [trackHubOpen, setTrackHubOpen] = useState(false);
   const [trackHubAssistantOpen, setTrackHubAssistantOpen] = useState(false);
+  const [trackHubAlertPeekOpen, setTrackHubAlertPeekOpen] = useState(false);
+  const [reduceTrackHubMotion, setReduceTrackHubMotion] = useState(() =>
+    typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches
+  );
   const [showTrackHubSettings, setShowTrackHubSettings] = useState(false);
   const trackHubSettingsRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const updatePreference = () => setReduceTrackHubMotion(mediaQuery.matches);
+    updatePreference();
+    mediaQuery.addEventListener("change", updatePreference);
+    return () => mediaQuery.removeEventListener("change", updatePreference);
+  }, []);
 
   // ── Dynamic Island Toast Notification ───────────────────────────────────────
   const [hubToast, setHubToast] = useState<{ msg: string; type: "success" | "error" | "info" } | null>(null);
@@ -157,6 +169,7 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         setTrackHubOpen(false);
+        setTrackHubAlertPeekOpen(false);
         setShowTrackHubSettings(false);
       }
     };
@@ -276,7 +289,21 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
     const pollNotifications = async () => {
       try {
         const latest = await notificationsApi.list();
-        if (active) setNotifs(latest);
+        if (active) {
+          setNotifs(previous => {
+            const unchanged = previous.length === latest.length && latest.every((notification, index) => {
+              const current = previous[index];
+              return current.id === notification.id &&
+                current.type === notification.type &&
+                current.title === notification.title &&
+                current.body === notification.body &&
+                current.time === notification.time &&
+                current.read === notification.read &&
+                current.productId === notification.productId;
+            });
+            return unchanged ? previous : latest;
+          });
+        }
       } catch (error) {
         console.error("Notification refresh failed:", error);
       }
@@ -355,9 +382,24 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
   }, [isAdmin, isCashier, isInventoryManager, page]);
 
   // ── Computed alert counts ────────────────────────────────────────────────────
-  const now = Date.now();
-  const lowStockCount = inventory.filter(i => i.status === "out_of_stock" || i.status === "critical" || i.status === "low").length;
+  const { lowStockCount, outOfStockCount, criticalStockCount, lowStockOnlyCount } = useMemo(() => {
+    const counts = { lowStockCount: 0, outOfStockCount: 0, criticalStockCount: 0, lowStockOnlyCount: 0 };
+    inventory.forEach(product => {
+      if (product.status === "out_of_stock") {
+        counts.lowStockCount++;
+        counts.outOfStockCount++;
+      } else if (product.status === "critical") {
+        counts.lowStockCount++;
+        counts.criticalStockCount++;
+      } else if (product.status === "low") {
+        counts.lowStockCount++;
+        counts.lowStockOnlyCount++;
+      }
+    });
+    return counts;
+  }, [inventory]);
   const expiryAlerts  = useMemo(() => {
+    const now = Date.now();
     const expired: Product[] = [], within30: Product[] = [], within90: Product[] = [];
     inventory.forEach(p => {
       const batches = sortBatchesByExpiry(p.batches);
@@ -368,8 +410,49 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
       else if (days <= 90)  within90.push(p);
     });
     return { expired, within30, within90 };
-  }, [inventory, now]);
+  }, [inventory]);
   const totalExpiryAlerts = expiryAlerts.expired.length + expiryAlerts.within30.length + expiryAlerts.within90.length;
+  const hasUrgentPharmacyAlerts = outOfStockCount > 0 || expiryAlerts.expired.length > 0;
+  const hasPharmacyWarnings = criticalStockCount > 0 || lowStockOnlyCount > 0 ||
+    expiryAlerts.within30.length > 0 || expiryAlerts.within90.length > 0;
+  const pharmacyHealth = hasUrgentPharmacyAlerts
+    ? {
+        label: "Urgent pharmacy alerts",
+        dotClass: "bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.9)]",
+        textClass: "text-rose-300",
+        pulse: true,
+      }
+    : hasPharmacyWarnings
+    ? {
+        label: "Pharmacy stock needs review",
+        dotClass: "bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.9)]",
+        textClass: "text-amber-300",
+        pulse: true,
+      }
+    : {
+        label: "All stock healthy",
+        dotClass: "bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.9)]",
+        textClass: "text-emerald-300",
+        pulse: true,
+      };
+  const pharmacyHealthSubtitle = hasUrgentPharmacyAlerts || hasPharmacyWarnings
+    ? [
+        outOfStockCount > 0 ? `${outOfStockCount} out` : null,
+        criticalStockCount > 0 ? `${criticalStockCount} crit` : null,
+        expiryAlerts.expired.length > 0 ? `${expiryAlerts.expired.length} expired` : null,
+        lowStockOnlyCount > 0 ? `${lowStockOnlyCount} low` : null,
+        expiryAlerts.within30.length > 0 ? `${expiryAlerts.within30.length} exp ≤30d` : null,
+        expiryAlerts.within90.length > 0 ? `${expiryAlerts.within90.length} exp ≤90d` : null,
+      ].filter((item): item is string => item !== null).slice(0, 2).join(" · ") || "Expiry alert"
+    : "All stock healthy";
+  const pharmacyAlertPeek = [
+    outOfStockCount > 0 ? `${outOfStockCount} Out of Stock` : null,
+    criticalStockCount > 0 ? `${criticalStockCount} Critical` : null,
+    expiryAlerts.expired.length > 0 ? `${expiryAlerts.expired.length} Expired` : null,
+    lowStockOnlyCount > 0 ? `${lowStockOnlyCount} Low` : null,
+    expiryAlerts.within30.length > 0 ? `${expiryAlerts.within30.length} Expiring ≤30d` : null,
+    expiryAlerts.within90.length > 0 ? `${expiryAlerts.within90.length} Expiring ≤90d` : null,
+  ].filter((item): item is string => item !== null).join(" · ") || "All stock and expiry dates are healthy";
   const totalAlertBadge   = lowStockCount + totalExpiryAlerts;
   const unreadCount       = notifs.filter(n => !n.read).length;
 
@@ -828,7 +911,7 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
   // ── TrackHub close-on-outside-click ────────────────────────────────────
   const trackHubRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    if (!trackHubOpen && !trackHubAssistantOpen) return;
+    if (!trackHubOpen && !trackHubAssistantOpen && !trackHubAlertPeekOpen) return;
     const handler = (e: MouseEvent) => {
       const target = e.target as Node;
       // Also ignore clicks inside the portaled assistant modal (rendered outside trackHubRef in document.body)
@@ -839,14 +922,16 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
       ) {
         setTrackHubOpen(false);
         setTrackHubAssistantOpen(false);
+        setTrackHubAlertPeekOpen(false);
       }
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
-  }, [trackHubOpen, trackHubAssistantOpen]);
+  }, [trackHubOpen, trackHubAssistantOpen, trackHubAlertPeekOpen]);
 
   useEffect(() => {
     if (navMode !== "island") setTrackHubAssistantOpen(false);
+    if (navMode !== "island") setTrackHubAlertPeekOpen(false);
   }, [navMode]);
 
   useEffect(() => {
@@ -887,7 +972,7 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
   // Collapsed pill width/height depends on whether a confirm dialog or toast is active
   const activeConfirm = useIslandConfirm();
   const confirmOpen   = activeConfirm !== null;
-  const toastOpen     = !confirmOpen && hubToast !== null && !trackHubOpen && !trackHubAssistantOpen;
+  const toastOpen     = !confirmOpen && hubToast !== null && !trackHubOpen && !trackHubAssistantOpen && !trackHubAlertPeekOpen;
   const collapsedPillWidth = smartBotEnabled ? "280px" : "228px";
   const pillW         = confirmOpen
     ? "430px"
@@ -895,6 +980,8 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
     ? "min(570px, calc(100vw - 24px))"
     : trackHubOpen
     ? "570px"
+    : trackHubAlertPeekOpen
+    ? "min(440px, calc(100vw - 24px))"
     : toastOpen
     ? "280px"
     : collapsedPillWidth;
@@ -904,12 +991,17 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
     ? "min(520px, calc(100dvh - 80px))"
     : trackHubOpen
     ? "226px"
+    : trackHubAlertPeekOpen
+    ? "56px"
     : toastOpen
     ? "56px"
     : "42px";
 
   useEffect(() => {
-    if (confirmOpen) setTrackHubOpen(false);
+    if (confirmOpen) {
+      setTrackHubOpen(false);
+      setTrackHubAlertPeekOpen(false);
+    }
   }, [confirmOpen]);
 
   useEffect(() => {
@@ -958,7 +1050,7 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
           width:        pillW,
           height:       pillH,
           borderRadius: confirmOpen ? "24px" : (trackHubOpen || trackHubAssistantOpen) ? "24px" : "21px",
-          transition: [
+          transition: reduceTrackHubMotion ? "none" : [
             `width ${confirmOpen ? 280 : (trackHubOpen || trackHubAssistantOpen) ? 260 : toastOpen ? 280 : 200}ms cubic-bezier(0.16, 1, 0.3, 1)`,
             `height ${confirmOpen ? 280 : (trackHubOpen || trackHubAssistantOpen) ? 260 : toastOpen ? 280 : 200}ms cubic-bezier(0.16, 1, 0.3, 1)`,
             "box-shadow 240ms ease",
@@ -977,7 +1069,7 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
             height: "148px",
             opacity: confirmOpen ? 1 : 0,
             transform: confirmOpen ? "translateX(-50%) scale(1)" : "translateX(-50%) scale(0.95)",
-            transition: confirmOpen
+            transition: reduceTrackHubMotion ? "none" : confirmOpen
               ? "opacity 160ms 40ms ease, transform 240ms cubic-bezier(0.16, 1, 0.3, 1)"
               : "opacity 60ms ease, transform 60ms ease",
             pointerEvents: confirmOpen ? "auto" : "none",
@@ -1036,7 +1128,7 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
           style={{
             opacity:    toastOpen ? 1 : 0,
             transform:  toastOpen ? "translateX(-50%) scale(1)" : "translateX(-50%) scale(0.94)",
-            transition: toastOpen
+            transition: reduceTrackHubMotion ? "none" : toastOpen
               ? "opacity 160ms 60ms ease, transform 220ms 60ms cubic-bezier(0.16, 1, 0.3, 1)"
               : "opacity 60ms ease, transform 60ms ease",
             pointerEvents: "none",
@@ -1063,17 +1155,20 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
 
         {/* ── Layer 1: Collapsed pill (Centrally locked) ───────────────────── */}
         <div
-          className="absolute top-0 left-1/2 h-[42px] flex items-center px-3 cursor-pointer hover:bg-white/[0.04]"
+          className="absolute top-0 left-1/2 h-[42px] flex items-center px-3 cursor-pointer hover:bg-white/[0.04] motion-reduce:transition-none"
           style={{
             width: collapsedPillWidth,
-            opacity:    (confirmOpen || trackHubOpen || trackHubAssistantOpen || toastOpen) ? 0 : 1,
-            transform:  (confirmOpen || trackHubOpen || trackHubAssistantOpen || toastOpen) ? "translateX(-50%) scale(0.94)" : "translateX(-50%) scale(1)",
-            transition: (confirmOpen || trackHubOpen || trackHubAssistantOpen || toastOpen)
+            opacity:    (confirmOpen || trackHubOpen || trackHubAssistantOpen || trackHubAlertPeekOpen || toastOpen) ? 0 : 1,
+            transform:  (confirmOpen || trackHubOpen || trackHubAssistantOpen || trackHubAlertPeekOpen || toastOpen) ? "translateX(-50%) scale(0.94)" : "translateX(-50%) scale(1)",
+            transition: reduceTrackHubMotion ? "none" : (confirmOpen || trackHubOpen || trackHubAssistantOpen || trackHubAlertPeekOpen || toastOpen)
               ? "opacity 50ms ease, transform 60ms ease"
               : "opacity 140ms 40ms ease, transform 180ms 40ms cubic-bezier(0.16, 1, 0.3, 1)",
-            pointerEvents: (confirmOpen || trackHubOpen || trackHubAssistantOpen || toastOpen) ? "none" : "auto",
+            pointerEvents: (confirmOpen || trackHubOpen || trackHubAssistantOpen || trackHubAlertPeekOpen || toastOpen) ? "none" : "auto",
           }}
-          onClick={() => setTrackHubOpen(true)}
+          onClick={() => {
+            setTrackHubAlertPeekOpen(false);
+            setTrackHubOpen(true);
+          }}
           title="Click to open navigation"
         >
           {smartBotEnabled && <button
@@ -1081,6 +1176,7 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
             onClick={e => {
               e.stopPropagation();
               setTrackHubOpen(false);
+              setTrackHubAlertPeekOpen(false);
               setTrackHubAssistantOpen(true);
             }}
             className="mr-2 flex h-7 flex-shrink-0 items-center gap-1.5 rounded-full bg-white/[0.08] px-2 text-white/85 transition-colors hover:bg-white/[0.12]"
@@ -1091,15 +1187,27 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
             <span className="text-[10px] font-semibold leading-none">Assistant</span>
           </button>}
 
-          {/* Green dot — standalone on the left side, not on top of icon, slightly larger with pulse glow */}
-          <span className="w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.9)] animate-pulse flex-shrink-0 mr-2" />
+          <button
+            type="button"
+            aria-label={`${pharmacyHealth.label}. ${pharmacyHealthSubtitle}. Show alert summary`}
+            aria-expanded={trackHubAlertPeekOpen}
+            onClick={event => {
+              event.stopPropagation();
+              setTrackHubOpen(false);
+              setTrackHubAlertPeekOpen(open => !open);
+            }}
+            title="Show pharmacy health summary"
+            className="mr-2 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60"
+          >
+            <span className={`h-2 w-2 rounded-full ${pharmacyHealth.dotClass} ${pharmacyHealth.pulse ? "animate-pulse motion-reduce:animate-none" : ""}`} />
+          </button>
 
           {/* Active page icon + label container */}
           <div
             key={page}
             className="flex items-center gap-2 flex-1 min-w-0"
             style={{
-              animation: pillSlide ? "th-pill-content-in 300ms cubic-bezier(0.16, 1, 0.3, 1) both" : "none",
+              animation: pillSlide && !reduceTrackHubMotion ? "th-pill-content-in 300ms cubic-bezier(0.16, 1, 0.3, 1) both" : "none",
             }}
           >
             {/* Active page squircle icon (clean, no overlapping dot) */}
@@ -1107,22 +1215,64 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
               <ActiveIcon size={14} className="text-blue-400" />
             </span>
 
-            {/* Page title + NAVIGATION indicator */}
+            {/* Page title + pharmacy health summary */}
             <div className="flex flex-col min-w-0 justify-center">
               <span className="text-[12.5px] font-semibold text-white/95 tracking-tight leading-tight truncate">
                 {activeLabel}
               </span>
-              <span className="text-[8.5px] font-bold text-blue-400 tracking-widest uppercase leading-none mt-0.5">
-                NAVIGATION
+              <span className={`text-[9px] font-medium leading-none mt-0.5 truncate ${pharmacyHealth.textClass}`}>
+                {pharmacyHealthSubtitle}
               </span>
             </div>
           </div>
 
           {/* Chevron */}
-          <div className="w-5 h-5 rounded-full bg-white/[0.08] flex items-center justify-center flex-shrink-0 ml-1.5"
-               style={{ transition: "background-color 150ms ease" }}>
+          <div className="w-5 h-5 rounded-full bg-white/[0.08] flex items-center justify-center flex-shrink-0 ml-1.5 motion-reduce:transition-none"
+               style={{ transition: reduceTrackHubMotion ? "none" : "background-color 150ms ease" }}>
             <ChevronDown size={11} className="text-white/50" />
           </div>
+        </div>
+
+        {/* ── Layer 1.5: Compact pharmacy alert peek ─────────────────────── */}
+        <div
+          role="region"
+          aria-label="Pharmacy alert summary"
+          className="absolute inset-0 flex items-center gap-2 px-3 motion-reduce:transition-none"
+          style={{
+            opacity: !confirmOpen && trackHubAlertPeekOpen && !trackHubOpen && !trackHubAssistantOpen ? 1 : 0,
+            transform: !confirmOpen && trackHubAlertPeekOpen && !trackHubOpen && !trackHubAssistantOpen ? "scale(1)" : "scale(0.97)",
+            transition: reduceTrackHubMotion
+              ? "none"
+              : trackHubAlertPeekOpen
+              ? "opacity 120ms ease, transform 180ms cubic-bezier(0.16, 1, 0.3, 1)"
+              : "opacity 60ms ease, transform 60ms ease",
+            pointerEvents: !confirmOpen && trackHubAlertPeekOpen && !trackHubOpen && !trackHubAssistantOpen ? "auto" : "none",
+          }}
+        >
+          <span className={`h-2 w-2 flex-shrink-0 rounded-full ${pharmacyHealth.dotClass} ${pharmacyHealth.pulse ? "animate-pulse motion-reduce:animate-none" : ""}`} />
+          <span className="min-w-0 flex-1 truncate text-[11px] font-medium text-white/85" title={pharmacyAlertPeek}>
+            {pharmacyAlertPeek}
+          </span>
+          <button
+            type="button"
+            onClick={event => {
+              event.stopPropagation();
+              setTrackHubAlertPeekOpen(false);
+              setTrackHubOpen(false);
+              setPage("stock-alerts");
+            }}
+            className="flex flex-shrink-0 items-center gap-1 rounded-full bg-white/[0.1] px-2.5 py-1.5 text-[10px] font-semibold text-white/90 transition-colors hover:bg-white/[0.18] motion-reduce:transition-none"
+          >
+            Review Alerts <ArrowRight size={11} />
+          </button>
+          <button
+            type="button"
+            onClick={() => setTrackHubAlertPeekOpen(false)}
+            aria-label="Close alert summary"
+            className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full text-white/55 transition-colors hover:bg-white/10 hover:text-white motion-reduce:transition-none"
+          >
+            <X size={12} />
+          </button>
         </div>
 
         {/* TrackHub expands into the assistant itself, embedded in the island pill. */}
@@ -1131,7 +1281,7 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
           style={{
             opacity: (!confirmOpen && trackHubAssistantOpen) ? 1 : 0,
             transform: (!confirmOpen && trackHubAssistantOpen) ? "scale(1)" : "scale(0.97)",
-            transition: (!confirmOpen && trackHubAssistantOpen)
+            transition: reduceTrackHubMotion ? "none" : (!confirmOpen && trackHubAssistantOpen)
               ? "opacity 160ms ease, transform 220ms cubic-bezier(0.16, 1, 0.3, 1)"
               : "opacity 60ms ease, transform 60ms ease",
             pointerEvents: (!confirmOpen && trackHubAssistantOpen) ? "auto" : "none",
@@ -1170,7 +1320,7 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
           style={{
             opacity:    (!confirmOpen && trackHubOpen && !trackHubAssistantOpen) ? 1 : 0,
             transform:  (!confirmOpen && trackHubOpen && !trackHubAssistantOpen) ? "translateX(-50%) scale(1)" : "translateX(-50%) scale(0.97)",
-            transition: (!confirmOpen && trackHubOpen && !trackHubAssistantOpen)
+            transition: reduceTrackHubMotion ? "none" : (!confirmOpen && trackHubOpen && !trackHubAssistantOpen)
               ? "opacity 150ms ease, transform 220ms cubic-bezier(0.16, 1, 0.3, 1)"
               : "opacity 60ms ease, transform 60ms ease",
             pointerEvents: (!confirmOpen && trackHubOpen && !trackHubAssistantOpen) ? "auto" : "none",
@@ -1179,7 +1329,7 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
           {/* Header */}
           <div className="flex items-center justify-between pb-2 mb-2 border-b border-white/[0.06] px-1">
             <div className="flex items-center gap-2">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+              <span className={`w-1.5 h-1.5 rounded-full ${pharmacyHealth.dotClass} ${pharmacyHealth.pulse ? "animate-pulse motion-reduce:animate-none" : ""}`} />
               <span className="text-[10px] font-bold text-white/80 tracking-wider uppercase">Navigation</span>
               <span className="text-[9px] font-medium px-1.5 py-0.5 rounded-full bg-white/[0.07] border border-white/10 text-white/55">
                 {isAdmin ? "Admin / Owner" : isInventoryManager ? "Inventory Manager" : "Cashier"}
@@ -1188,8 +1338,8 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
             <button
               type="button"
               onClick={(e) => { e.stopPropagation(); setTrackHubOpen(false); }}
-              className="w-5 h-5 rounded-full bg-white/10 hover:bg-white/20 text-white/60 hover:text-white flex items-center justify-center"
-              style={{ transition: "background-color 150ms ease, color 150ms ease" }}
+              className="w-5 h-5 rounded-full bg-white/10 hover:bg-white/20 text-white/60 hover:text-white flex items-center justify-center motion-reduce:transition-none"
+              style={{ transition: reduceTrackHubMotion ? "none" : "background-color 150ms ease, color 150ms ease" }}
               title="Close (Esc)"
             >
               <X size={10} />
@@ -1214,6 +1364,7 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
                     setTimeout(() => {
                       setPage(item.id);
                       setTrackHubOpen(false);
+                      setTrackHubAlertPeekOpen(false);
                       setPressedItem(null);
                     }, 85);
                   }}
@@ -1221,10 +1372,10 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
                     isActive
                       ? "bg-blue-500/15 border border-blue-400/30"
                       : "border border-transparent hover:bg-white/[0.05]"
-                  }`}
+                  } motion-reduce:transition-none`}
                   style={{
                     transform:  isPressed ? "scale(0.92)" : "scale(1)",
-                    transition: isPressed
+                    transition: reduceTrackHubMotion ? "none" : isPressed
                       ? "transform 70ms cubic-bezier(0.32, 0.72, 0, 1), background-color 70ms ease"
                       : "transform 240ms cubic-bezier(0.16, 1, 0.3, 1), background-color 150ms ease, border-color 150ms ease",
                   }}
@@ -1240,7 +1391,7 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
                       }`}
                       style={{
                         transform: isPressed ? "scale(0.88)" : "scale(1)",
-                        transition: isPressed
+                        transition: reduceTrackHubMotion ? "none" : isPressed
                           ? "transform 70ms cubic-bezier(0.32, 0.72, 0, 1)"
                           : "transform 260ms cubic-bezier(0.16, 1, 0.3, 1), background-color 150ms ease",
                       }}
@@ -1257,7 +1408,7 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
                     className={`text-[10px] leading-tight text-center line-clamp-1 w-full px-0.5 ${
                       isActive ? "text-blue-300 font-bold" : "text-white/65 group-hover:text-white font-medium"
                     }`}
-                    style={{ transition: "color 150ms ease" }}
+                    style={{ transition: reduceTrackHubMotion ? "none" : "color 150ms ease" }}
                   >
                     {item.label}
                   </span>
@@ -1276,33 +1427,58 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
   // ── Sidebar ──────────────────────────────────────────────────────────────────
   // Shared settings panel content (used in both TrackHub and sidebar topbars)
   const settingsPanelContent = (
-    <div className="space-y-3">
-      <section className="border-b border-border/60 pb-3">
-        <div className="mb-2 flex items-center justify-between">
-          <div>
-            <p className="text-xs font-semibold text-foreground">My roles</p>
-            <p className="text-[10px] text-muted-foreground">Switch roles without signing out. You can remove roles, but cannot add them here.</p>
+    <div className="space-y-3.5">
+      <section className="overflow-hidden rounded-2xl border border-border/60 bg-muted/20 divide-y divide-border/40">
+        <div className="flex items-center justify-between gap-3 px-3.5 py-3">
+          <div className="flex min-w-0 items-center gap-2.5">
+            <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-purple-500/15 text-purple-600 shadow-2xs dark:text-purple-400">
+              <Shield size={15} />
+            </span>
+            <div className="min-w-0">
+              <p className="text-xs font-semibold text-foreground">Account &amp; Roles</p>
+              <p className="text-[10px] text-muted-foreground">Choose which role is active.</p>
+            </div>
+          </div>
+          <InfoTip
+            title="Account roles"
+            lines={[
+              "Switching roles changes your permissions and which navigation items are available without signing out.",
+              "Removing a role updates the account; at least one role must remain.",
+            ]}
+          />
+        </div>
+        <div className="flex items-center gap-3 px-3.5 py-3">
+          <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl border border-primary/15 bg-primary/10 text-xs font-semibold text-primary">
+            {user.initials}
+          </span>
+          <div className="min-w-0">
+            <p className="truncate text-sm font-medium text-foreground">{user.name}</p>
+            <p className="text-[10px] text-muted-foreground">Signed-in account</p>
           </div>
         </div>
-        <div className="space-y-1.5">
+        <div role="group" aria-label="Available account roles" className="px-2.5 py-2">
           {(user.roles?.length ? user.roles : [user.role]).map(role => (
-            <div key={role} className="flex items-center gap-2 rounded-lg border border-border/60 px-2.5 py-2">
+            <div key={role} className="flex items-center gap-2 rounded-xl px-1.5 py-1 transition-colors hover:bg-muted/50">
               <button
                 type="button"
+                aria-pressed={user.role === role}
                 disabled={roleActionBusy}
                 onClick={() => activateRole(role)}
-                className={`min-w-0 flex-1 truncate text-left text-xs font-semibold transition-colors disabled:cursor-wait ${
-                  user.role === role ? "text-primary" : "text-foreground hover:text-primary"
-                }`}
-                aria-pressed={user.role === role}
+                className="flex min-w-0 flex-1 items-center gap-2.5 rounded-lg px-2 py-2 text-left transition-transform active:scale-[0.98] disabled:cursor-wait"
               >
-                {ROLE_LABELS[role] ?? role}{user.role === role ? " · Active" : ""}
+                <span className={`flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full border ${
+                  user.role === role ? "border-primary" : "border-muted-foreground/50"
+                }`}>
+                  {user.role === role && <span className="h-2 w-2 rounded-full bg-primary" />}
+                </span>
+                <span className="min-w-0 flex-1 truncate text-xs font-medium text-foreground">{ROLE_LABELS[role] ?? role}</span>
+                {user.role === role && <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[9px] font-semibold text-primary">Active</span>}
               </button>
               <button
                 type="button"
                 disabled={roleActionBusy || (user.roles?.length ?? 1) <= 1}
                 onClick={() => setRoleToRemove(role)}
-                className="shrink-0 rounded-md px-2 py-1 text-[10px] font-semibold text-red-500 hover:bg-red-500/10 disabled:cursor-not-allowed disabled:opacity-40"
+                className="shrink-0 rounded-lg px-2 py-1.5 text-[10px] font-medium text-muted-foreground transition-colors hover:bg-rose-500/10 hover:text-rose-600 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40 dark:hover:text-rose-400"
                 title={(user.roles?.length ?? 1) <= 1 ? "Your account must keep at least one role" : `Remove ${ROLE_LABELS[role] ?? role}`}
               >
                 Remove
@@ -1311,134 +1487,256 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
           ))}
         </div>
       </section>
-      <div className="border-b border-border/60 pb-3">
+
+      <section className="overflow-hidden rounded-2xl border border-border/60 bg-muted/20 divide-y divide-border/40">
+        <div className="flex items-center justify-between gap-3 px-3.5 py-3">
+          <div className="flex min-w-0 items-center gap-2.5">
+            <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-slate-700/10 text-slate-600 shadow-2xs dark:bg-slate-700/30 dark:text-teal-400">
+              <Settings size={15} />
+            </span>
+            <div>
+              <p className="text-xs font-semibold text-foreground">Appearance &amp; Layout</p>
+              <p className="text-[10px] text-muted-foreground">Personalize how SmartTrack looks.</p>
+            </div>
+          </div>
+          <InfoTip title="Appearance and layout" lines={["These preferences change the appearance and navigation layout on this device."]} />
+        </div>
+        <div className="flex items-center justify-between gap-3 px-3.5 py-3">
+          <div className="flex min-w-0 items-center gap-2.5">
+            <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg bg-amber-500/15 text-amber-500 shadow-2xs">
+              {darkMode ? <Moon size={14} /> : <Sun size={14} />}
+            </span>
+            <div className="min-w-0">
+              <p className="text-xs font-medium text-foreground">Dark Mode</p>
+              <p className="text-[10px] text-muted-foreground">Use a darker appearance.</p>
+            </div>
+          </div>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={darkMode}
+            aria-label="Dark Mode"
+            onClick={() => {
+              const nextMode = !darkMode;
+              setDarkMode(nextMode);
+              showHubToast(nextMode ? "Dark mode enabled" : "Light mode enabled", "info");
+            }}
+            className={`relative h-6 w-11 flex-shrink-0 rounded-full shadow-inner transition-colors duration-300 ease-[cubic-bezier(0.2,0.8,0.2,1)] active:scale-[0.98] motion-reduce:transition-none ${
+              darkMode ? "bg-primary shadow-[0_0_10px_rgba(59,130,246,0.22)]" : "bg-muted-foreground/30"
+            }`}
+          >
+            <span className={`absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-white shadow-sm transition-transform duration-300 ease-[cubic-bezier(0.2,0.8,0.2,1)] motion-reduce:transition-none ${
+              darkMode ? "translate-x-5" : "translate-x-0"
+            }`} />
+          </button>
+        </div>
+        <div className="px-3.5 py-3">
+          <div className="mb-2 flex items-start justify-between gap-3">
+            <div className="flex min-w-0 items-center gap-2.5">
+              <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg bg-teal-500/15 text-teal-500 shadow-2xs">
+                <Menu size={14} />
+              </span>
+              <div>
+                <p className="text-xs font-medium text-foreground">Navigation Style</p>
+                <p className="text-[10px] text-muted-foreground">Choose your preferred navigation.</p>
+              </div>
+            </div>
+            <InfoTip
+              title="Navigation style"
+              lines={[
+                "TrackHub is the compact floating navigation pill. Classic Sidebar keeps navigation visible along the side of the window.",
+                "Changing styles does not change your account permissions.",
+              ]}
+            />
+          </div>
+          <div className="relative grid grid-cols-2 rounded-xl bg-muted/80 p-1">
+            <span
+              aria-hidden="true"
+              className="pointer-events-none absolute inset-y-1 left-1 rounded-lg border border-border/50 bg-card shadow-sm transition-transform duration-200 ease-out motion-reduce:transition-none"
+              style={{ width: "calc(50% - 0.25rem)", transform: `translateX(${navMode === "island" ? 0 : 100}%)` }}
+            />
+            <button
+              type="button"
+              aria-pressed={navMode === "island"}
+              onClick={() => { setNavMode("island"); setShowTrackHubSettings(false); }}
+              className={`relative z-10 rounded-lg px-2 py-2 text-xs transition-colors active:scale-[0.98] motion-reduce:transition-none ${
+                navMode === "island" ? "font-semibold text-foreground" : "font-medium text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              TrackHub
+            </button>
+            <button
+              type="button"
+              aria-pressed={navMode === "sidebar"}
+              onClick={() => { setNavMode("sidebar"); setShowTrackHubSettings(false); }}
+              className={`relative z-10 rounded-lg px-2 py-2 text-xs transition-colors active:scale-[0.98] motion-reduce:transition-none ${
+                navMode === "sidebar" ? "font-semibold text-foreground" : "font-medium text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              Classic Sidebar
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <section className="overflow-hidden rounded-2xl border border-border/60 bg-muted/20 divide-y divide-border/40">
+        <div className="flex items-center justify-between gap-3 px-3.5 py-3">
+          <div className="flex min-w-0 items-center gap-2.5">
+            <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-indigo-500/15 text-indigo-500 shadow-2xs">
+              <Bot size={15} />
+            </span>
+            <div>
+              <p className="text-xs font-semibold text-foreground">Features &amp; Workspace</p>
+              <p className="text-[10px] text-muted-foreground">Quick actions and sharing.</p>
+            </div>
+          </div>
+          <InfoTip title="Workspace features" lines={["Show or hide the assistant, change the window display mode, or create a temporary share link when running the Electron app."]} />
+        </div>
+        <div className="flex items-center justify-between gap-3 px-3.5 py-3">
+          <div className="flex min-w-0 items-center gap-2.5">
+            <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg bg-indigo-500/15 text-indigo-500 shadow-2xs">
+              <Bot size={14} />
+            </span>
+            <div className="min-w-0">
+              <p className="text-xs font-medium text-foreground">SmartTrack Assistant</p>
+              <p className="text-[10px] text-muted-foreground">Show assistant in navigation.</p>
+            </div>
+          </div>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={smartBotEnabled}
+            aria-label="SmartTrack Assistant"
+            onClick={() => toggleSmartBot(!smartBotEnabled)}
+            className={`relative h-6 w-11 flex-shrink-0 rounded-full shadow-inner transition-colors duration-300 ease-[cubic-bezier(0.2,0.8,0.2,1)] active:scale-[0.98] motion-reduce:transition-none ${
+              smartBotEnabled ? "bg-primary shadow-[0_0_10px_rgba(99,102,241,0.22)]" : "bg-muted-foreground/30"
+            }`}
+          >
+            <span className={`absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-white shadow-sm transition-transform duration-300 ease-[cubic-bezier(0.2,0.8,0.2,1)] motion-reduce:transition-none ${
+              smartBotEnabled ? "translate-x-5" : "translate-x-0"
+            }`} />
+          </button>
+        </div>
         <button
           type="button"
           onClick={handleToggleFullScreen}
-          className="flex w-full items-center gap-2.5 rounded-lg px-2 py-2 text-left transition-colors hover:bg-muted/60"
+          className="flex w-full items-center gap-2.5 px-3.5 py-3 text-left transition-colors hover:bg-muted/35 active:scale-[0.98]"
         >
-          <Maximize2 size={14} className="text-primary" />
-          <span className="flex-1 text-xs font-semibold text-foreground">Toggle Full Screen</span>
-          <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-mono font-medium text-muted-foreground border border-border/70">
+          <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg bg-blue-500/15 text-blue-500 shadow-2xs">
+            <Maximize2 size={14} />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-xs font-medium text-foreground">Full Screen</span>
+            <span className="block text-[10px] text-muted-foreground">Expand SmartTrack to fill your display.</span>
+          </span>
+          <span className="rounded-md border border-border/70 bg-background/70 px-2 py-1 text-[10px] font-mono font-medium text-muted-foreground">
             {isMac ? "⌃⌘F" : "F11"}
           </span>
         </button>
-        <p className="px-2 text-[10px] text-muted-foreground">Expand SmartTrack to fill your display.</p>
-      </div>
 
-      {/* Cloudflare Share if Electron */}
-      {window.smarttrack?.isElectron && (
-        <div className="border-b border-border/60 pb-3 space-y-2">
-          <div className="flex items-center gap-2 text-foreground">
-            <Cloud size={13} className="text-sky-400" />
-            <span className="text-xs font-semibold">Share SmartTrack</span>
-          </div>
-          {shareStatus.url && (
-            <div className="flex items-center gap-1.5">
-              <span className="min-w-0 flex-1 truncate text-[10px] text-teal-400 font-mono" title={shareStatus.url}>{shareStatus.url}</span>
-              <button type="button" onClick={handleCopyShareLink} title="Copy share link" className="flex-shrink-0 rounded-md p-1 text-muted-foreground hover:text-foreground"><Copy size={12} /></button>
+        {window.smarttrack?.isElectron && (
+          <div className="space-y-2.5 px-3.5 py-3">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex min-w-0 items-center gap-2.5">
+                <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg bg-sky-500/15 text-sky-500 shadow-2xs">
+                  <Cloud size={14} />
+                </span>
+                <div>
+                  <p className="text-xs font-medium text-foreground">Share SmartTrack</p>
+                  <p className="text-[10px] text-muted-foreground">Create a temporary Cloudflare Tunnel link.</p>
+                </div>
+              </div>
+              <InfoTip
+                title="Cloudflare sharing"
+                lines={[
+                  "This creates a temporary Cloudflare Tunnel URL to reach SmartTrack; it is not peer-to-peer sharing.",
+                  "Anyone with the link can reach the login page. Share it only with trusted people and stop the tunnel when finished.",
+                  "Keep your account credentials private and do not post the link publicly.",
+                ]}
+              />
             </div>
-          )}
-          {shareStatus.state === "running" ? (
-            <button type="button" onClick={handleStopShare} className="w-full rounded-lg bg-red-500/20 px-2 py-1.5 text-[11px] font-semibold text-red-400 hover:bg-red-500/30">Stop sharing</button>
-          ) : (
-            <button type="button" onClick={handleStartShare} disabled={shareStatus.state === "starting" || shareStatus.state === "downloading"}
-              className="w-full rounded-lg bg-primary/20 px-2 py-1.5 text-[11px] font-semibold text-primary hover:bg-primary/30 disabled:cursor-wait disabled:opacity-60">
-              {shareStatus.state === "downloading" ? "Downloading Cloudflare..." : shareStatus.state === "starting" ? "Starting tunnel..." : "Create share link"}
-            </button>
-          )}
-          <p className="text-[9px] leading-relaxed text-amber-800 dark:text-amber-300">Anyone with the link can reach your login page. Share only with trusted people; stop sharing when finished.</p>
-          {(shareMessage || shareStatus.error) && (
-            <p role="status" className={`text-[10px] leading-relaxed ${shareMessage === "Link copied to clipboard." ? "text-emerald-200" : "text-red-300"}`}>{shareMessage || shareStatus.error}</p>
-          )}
-        </div>
-      )}
-
-      {/* Navigation Style Toggle */}
-      <div>
-        <p className="text-xs font-semibold text-foreground mb-1">Navigation Style</p>
-        <p className="text-[10px] text-muted-foreground mb-2">Switch between TrackHub and the classic sidebar.</p>
-        <div className="grid grid-cols-2 gap-1.5 p-1 bg-muted/60 rounded-xl border border-border/60">
-          <button onClick={() => { setNavMode("island"); setShowTrackHubSettings(false); }}
-            className={`py-1.5 px-2 rounded-lg text-xs font-bold transition-all ${navMode === "island" ? "bg-primary text-primary-foreground shadow-xs" : "text-muted-foreground hover:text-foreground"}`}>
-            TrackHub
-          </button>
-          <button onClick={() => { setNavMode("sidebar"); setShowTrackHubSettings(false); }}
-            className={`py-1.5 px-2 rounded-lg text-xs font-bold transition-all ${navMode === "sidebar" ? "bg-primary text-primary-foreground shadow-xs" : "text-muted-foreground hover:text-foreground"}`}>
-            Classic Sidebar
-          </button>
-        </div>
-      </div>
-
-      {/* Dark Mode */}
-      <div className="flex items-center justify-between border-t border-border/60 pt-2">
-        <div className="flex items-center gap-2">
-          {darkMode ? <Moon size={13} className="text-teal-400" /> : <Sun size={13} className="text-amber-500" />}
-          <span className="text-xs font-medium text-foreground">Dark Mode</span>
-        </div>
-        <button
-          onClick={() => {
-            const nextMode = !darkMode;
-            setDarkMode(nextMode);
-            showHubToast(nextMode ? "Dark mode enabled" : "Light mode enabled", "info");
-          }}
-          className={`relative w-9 h-5 rounded-full transition-colors duration-200 cursor-pointer ${darkMode ? "bg-primary" : "bg-muted"}`}
-        >
-          <span className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow-xs transition-transform duration-200 ${darkMode ? "translate-x-4" : "translate-x-0"}`} />
-        </button>
-      </div>
-
-      {/* SmartTrack Assistant navigation trigger visibility */}
-      <div className="flex items-center justify-between border-t border-border/60 pt-2">
-        <div className="flex items-center gap-2">
-          <Bot size={13} className="text-primary" />
-          <div>
-            <span className="text-xs font-medium text-foreground block">SmartTrack Assistant</span>
-            <span className="text-[10px] text-muted-foreground block -mt-0.5">Show assistant in navigation</span>
+            {shareStatus.url && (
+              <div className="flex min-w-0 items-center gap-1.5 rounded-xl border border-border/60 bg-background/60 px-2.5 py-2">
+                <span className="min-w-0 flex-1 truncate text-[10px] text-sky-600 font-mono dark:text-sky-400" title={shareStatus.url}>{shareStatus.url}</span>
+                <button
+                  type="button"
+                  onClick={handleCopyShareLink}
+                  title="Copy share link"
+                  aria-label="Copy share link"
+                  className="flex-shrink-0 rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground active:scale-[0.98]"
+                >
+                  <Copy size={13} />
+                </button>
+              </div>
+            )}
+            {shareStatus.state === "running" ? (
+              <button
+                type="button"
+                onClick={handleStopShare}
+                className="w-full rounded-xl border border-rose-500/20 bg-rose-500/10 px-3 py-2 text-xs font-semibold text-rose-600 transition-colors hover:bg-rose-500/15 active:scale-[0.98] dark:text-rose-400"
+              >
+                Stop sharing
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={handleStartShare}
+                disabled={shareStatus.state === "starting" || shareStatus.state === "downloading"}
+                className="w-full rounded-xl border border-primary/20 bg-primary/10 px-3 py-2 text-xs font-semibold text-primary transition-colors hover:bg-primary/15 active:scale-[0.98] disabled:cursor-wait disabled:opacity-60 motion-reduce:transition-none"
+              >
+                {shareStatus.state === "downloading" ? "Downloading Cloudflare…" : shareStatus.state === "starting" ? "Starting tunnel…" : "Create share link"}
+              </button>
+            )}
+            <p className="text-[10px] leading-relaxed text-muted-foreground">Anyone with the link can reach your login page. Share only with trusted people; stop sharing when finished.</p>
+            {(shareMessage || shareStatus.error) && (
+              <p role="status" className={`text-[10px] leading-relaxed ${shareMessage === "Link copied to clipboard." ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}`}>
+                {shareMessage || shareStatus.error}
+              </p>
+            )}
           </div>
-        </div>
-        <button onClick={() => toggleSmartBot(!smartBotEnabled)}
-          className={`relative w-9 h-5 rounded-full transition-colors duration-200 ${smartBotEnabled ? "bg-primary" : "bg-muted"}`}>
-          <span className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow-xs transition-transform duration-200 ${smartBotEnabled ? "translate-x-4" : "translate-x-0"}`} />
-        </button>
-      </div>
+        )}
+      </section>
 
-      {/* Management Section (Activity Log & Recycle Bin) */}
-      <div className="border-t border-border/60 pt-2 space-y-1.5">
-        <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-2">Management</p>
+      <section className="overflow-hidden rounded-2xl border border-border/60 bg-muted/20 divide-y divide-border/40">
+        <div className="flex items-center justify-between gap-3 px-3.5 py-3">
+          <div>
+            <p className="text-xs font-semibold text-foreground">System Management</p>
+            <p className="text-[10px] text-muted-foreground">Review activity and deleted items.</p>
+          </div>
+          <InfoTip title="System management" lines={["Open system activity records or, when permitted, restore and manage deleted inventory and accounts."]} />
+        </div>
         <button
           type="button"
           onClick={() => { setPage("activity-log"); setShowTrackHubSettings(false); }}
-          className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg hover:bg-muted/60 transition-colors text-left group"
+          className="group flex w-full items-center gap-2.5 px-3.5 py-3 text-left transition-colors hover:bg-muted/35 active:scale-[0.98]"
         >
-          <div className="w-7 h-7 rounded-lg bg-blue-500/10 flex items-center justify-center flex-shrink-0">
-            <Activity size={13} className="text-blue-500" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-xs font-semibold text-foreground truncate">{isAdmin ? "Activity Log" : "My Activity Log"}</p>
-            <p className="text-[10px] text-muted-foreground truncate">Audit trail of actions and system events</p>
-          </div>
-          <ChevronRight size={12} className="ml-auto text-muted-foreground group-hover:translate-x-0.5 transition-transform" />
+          <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg bg-emerald-500/15 text-emerald-500 shadow-2xs">
+            <Activity size={14} />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-xs font-medium text-foreground">{isAdmin ? "Activity Log" : "My Activity Log"}</span>
+            <span className="block truncate text-[10px] text-muted-foreground">Audit trail of actions and system events</span>
+          </span>
+          <ChevronRight size={14} className="text-muted-foreground transition-transform group-hover:translate-x-0.5" />
         </button>
 
         {(isAdmin || isInventoryManager) && (
           <button
             type="button"
             onClick={() => { setPage("recycle-bin"); setShowTrackHubSettings(false); }}
-            className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg hover:bg-muted/60 transition-colors text-left group"
+            className="group flex w-full items-center gap-2.5 px-3.5 py-3 text-left transition-colors hover:bg-muted/35 active:scale-[0.98]"
           >
-            <div className="w-7 h-7 rounded-lg bg-red-500/10 flex items-center justify-center flex-shrink-0">
-              <Trash2 size={13} className="text-red-500" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-xs font-semibold text-foreground">Recycle Bin</p>
-              <p className="text-[10px] text-muted-foreground">Restore or purge deleted items</p>
-            </div>
-            <ChevronRight size={12} className="ml-auto text-muted-foreground group-hover:translate-x-0.5 transition-transform" />
+            <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg bg-rose-500/15 text-rose-500 shadow-2xs">
+              <Trash2 size={14} />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block text-xs font-medium text-foreground">Recycle Bin</span>
+              <span className="block text-[10px] text-muted-foreground">Restore or permanently remove deleted items</span>
+            </span>
+            <ChevronRight size={14} className="text-muted-foreground transition-transform group-hover:translate-x-0.5" />
           </button>
         )}
-      </div>
-
+      </section>
     </div>
   );
 
@@ -1498,19 +1796,26 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
         />
       )}
 
-      <div className="border-t border-white/[0.07] p-3">
-        <button
-          type="button"
-          onClick={() => setShowUserProfile(true)}
-          className={`w-full flex items-center gap-2.5 rounded-xl px-2 py-1.5 border border-transparent hover:border-white/20 hover:bg-white/[0.06] transition-all ${sidebarExpanded ? "" : "justify-center"}`}
-          title={sidebarExpanded ? undefined : user.name}
-        >
-          <div className="w-8 h-8 rounded-full bg-teal-400/20 border border-teal-400/30 flex items-center justify-center text-[11px] font-bold text-teal-300 flex-shrink-0">{user.initials}</div>
-          {sidebarExpanded && <div className="flex-1 overflow-hidden text-left">
-            <p className="text-xs font-bold text-white truncate">{user.name}</p>
-            <p className="text-[10px] text-white/40 truncate">{user.position}</p>
-          </div>}
-        </button>
+      <div className={`border-t border-white/[0.07] ${sidebarExpanded ? "px-3.5 py-3" : "p-3 flex justify-center"}`}>
+        {sidebarExpanded ? (
+          <div className="flex items-center gap-2.5 rounded-xl px-2.5 py-2 bg-white/[0.04] border border-white/[0.06]">
+            <span className="relative flex h-2 w-2 shrink-0">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
+            </span>
+            <div className="flex-1 min-w-0 text-left">
+              <p className="text-[11px] font-semibold text-white/90 truncate tracking-tight">Active Station</p>
+              <p className="text-[10px] text-emerald-400/80 font-medium truncate">Online · Tangub Pharmacy</p>
+            </div>
+          </div>
+        ) : (
+          <div className="w-8 h-8 rounded-xl bg-white/[0.04] border border-white/[0.06] flex items-center justify-center" title="Active Station · Online">
+            <span className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
+            </span>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -1744,13 +2049,13 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
                       <Settings size={16} />
                     </button>
                     {showTrackHubSettings && (
-                      <div className="absolute right-0 top-full mt-2 w-80 max-h-[calc(100dvh-5rem)] overflow-y-auto rounded-2xl bg-card/95 backdrop-blur-xl border border-border shadow-[0_16px_40px_rgba(0,0,0,0.25)] p-3.5 z-50 st-dropdown-in">
+                      <div className="absolute right-0 top-full mt-2 w-[min(24rem,calc(100vw_-_1.5rem))] max-h-[calc(100dvh_-_5rem)] overflow-y-auto scrollbar-thin rounded-3xl border border-border/80 bg-card/95 p-3.5 shadow-[0_20px_50px_rgba(0,0,0,0.25)] backdrop-blur-2xl z-50 st-dropdown-in">
                         <div className="flex items-center justify-between border-b border-border/60 pb-2 mb-3">
                           <div className="flex items-center gap-2">
                             <Settings size={14} className="text-primary" />
-                            <span className="text-xs font-bold text-foreground">Preferences</span>
+                            <span className="text-xs font-bold text-foreground">Settings</span>
                           </div>
-                          <button onClick={() => setShowTrackHubSettings(false)} className="text-muted-foreground hover:text-foreground"><X size={13} /></button>
+                          <button type="button" onClick={() => setShowTrackHubSettings(false)} aria-label="Close settings" className="rounded-lg p-1 text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"><X size={13} /></button>
                         </div>
                         {settingsPanelContent}
                       </div>
@@ -1760,16 +2065,23 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
                     <button
                       type="button"
                       onClick={() => setShowUserProfile(true)}
-                      className="w-7 h-7 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center text-[11px] font-bold text-primary hover:bg-primary/20 transition-colors"
-                      title={user.name}
-                    >{user.initials}</button>
-                    <div className="hidden sm:flex items-center gap-3">
-                      <span className="text-xs font-bold text-foreground">{user.name.split(" ")[0]}</span>
-                      <button onClick={() => setShowLogoutConfirm(true)}
-                        className="inline-flex items-center justify-center rounded-full border border-border bg-background/90 px-3 py-1 text-[11px] font-semibold text-foreground hover:bg-background hover:border-primary hover:text-primary transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-primary/30">
-                        Logout
-                      </button>
-                    </div>
+                      className="flex items-center gap-2 rounded-full py-0.5 px-1.5 hover:bg-muted/70 border border-transparent hover:border-border transition-all cursor-pointer group"
+                      title="Manage Account Profile"
+                    >
+                      <div className="w-7 h-7 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center text-[11px] font-bold text-primary group-hover:scale-105 group-hover:bg-primary/20 transition-all">
+                        {user.initials}
+                      </div>
+                      <span className="hidden sm:inline text-xs font-semibold text-foreground group-hover:text-primary transition-colors">
+                        {user.name.split(" ")[0]}
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowLogoutConfirm(true)}
+                      className="inline-flex items-center justify-center rounded-full border border-border bg-background/90 px-3 py-1 text-[11px] font-semibold text-foreground hover:bg-background hover:border-primary hover:text-primary transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-primary/30"
+                    >
+                      Logout
+                    </button>
                   </div>
                 </div>
               </>
@@ -1921,27 +2233,39 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
                       <Settings size={16} />
                     </button>
                     {showTrackHubSettings && (
-                      <div className="absolute right-0 top-full mt-2 w-80 max-h-[calc(100dvh-5rem)] overflow-y-auto rounded-2xl bg-card/95 backdrop-blur-xl border border-border shadow-[0_16px_40px_rgba(0,0,0,0.25)] p-3.5 z-50 st-dropdown-in">
+                      <div className="absolute right-0 top-full mt-2 w-[min(24rem,calc(100vw_-_1.5rem))] max-h-[calc(100dvh_-_5rem)] overflow-y-auto scrollbar-thin rounded-3xl border border-border/80 bg-card/95 p-3.5 shadow-[0_20px_50px_rgba(0,0,0,0.25)] backdrop-blur-2xl z-50 st-dropdown-in">
                         <div className="flex items-center justify-between border-b border-border/60 pb-2 mb-3">
                           <div className="flex items-center gap-2">
                             <Settings size={14} className="text-primary" />
-                            <span className="text-xs font-bold text-foreground">Preferences</span>
+                            <span className="text-xs font-bold text-foreground">Settings</span>
                           </div>
-                          <button onClick={() => setShowTrackHubSettings(false)} className="text-muted-foreground hover:text-foreground"><X size={13} /></button>
+                          <button type="button" onClick={() => setShowTrackHubSettings(false)} aria-label="Close settings" className="rounded-lg p-1 text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"><X size={13} /></button>
                         </div>
                         {settingsPanelContent}
                       </div>
                     )}
                   </div>
                   <div className="flex items-center gap-2 pl-2 border-l border-border">
-                    <div className="w-7 h-7 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center text-[11px] font-bold text-primary">{user.initials}</div>
-                    <div className="hidden sm:flex items-center gap-3">
-                      <span className="text-xs font-bold text-foreground">{user.name.split(" ")[0]}</span>
-                      <button onClick={() => setShowLogoutConfirm(true)}
-                        className="inline-flex items-center justify-center rounded-full border border-border bg-background/90 px-3 py-1 text-[11px] font-semibold text-foreground hover:bg-background hover:border-primary hover:text-primary transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-primary/30">
-                        Logout
-                      </button>
-                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setShowUserProfile(true)}
+                      className="flex items-center gap-2 rounded-full py-0.5 px-1.5 hover:bg-muted/70 border border-transparent hover:border-border transition-all cursor-pointer group"
+                      title="Manage Account Profile"
+                    >
+                      <div className="w-7 h-7 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center text-[11px] font-bold text-primary group-hover:scale-105 group-hover:bg-primary/20 transition-all">
+                        {user.initials}
+                      </div>
+                      <span className="hidden sm:inline text-xs font-semibold text-foreground group-hover:text-primary transition-colors">
+                        {user.name.split(" ")[0]}
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowLogoutConfirm(true)}
+                      className="inline-flex items-center justify-center rounded-full border border-border bg-background/90 px-3 py-1 text-[11px] font-semibold text-foreground hover:bg-background hover:border-primary hover:text-primary transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-primary/30"
+                    >
+                      Logout
+                    </button>
                   </div>
                 </div>
               </>
