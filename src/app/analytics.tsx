@@ -181,24 +181,38 @@ function ForecastTrendChart({
   nextPeriod,
   sma3,
   sma6,
+  activeModel = "SMA-3",
+  showBothModels = false,
   periodUnit = "month",
 }: {
   history: { month: string; demand: number; sma3?: number | null; sma6?: number | null }[];
   nextPeriod: string;
   sma3: number;
   sma6: number;
+  activeModel?: "SMA-3" | "SMA-6";
+  showBothModels?: boolean;
   periodUnit?: "month" | "week";
 }) {
+  const bestNextVal = activeModel === "SMA-6" ? Math.round(sma6) : Math.round(sma3);
   const data = [
-    ...history.map(point => ({
-      month: point.month,
-      actual: point.demand,
-      sma3Forecast: point.sma3 != null ? Math.round(point.sma3) : null,
-      sma6Forecast: point.sma6 != null ? Math.round(point.sma6) : null,
-    })),
+    ...history.map((point, idx) => {
+      const s3 = point.sma3 != null ? Math.round(point.sma3) : null;
+      const s6 = point.sma6 != null ? Math.round(point.sma6) : null;
+      const bestPast = activeModel === "SMA-6" ? (s6 ?? s3) : (s3 ?? s6);
+      // Connect the last recorded actual point smoothly to next month's forecast
+      const isLast = idx === history.length - 1;
+      return {
+        month: point.month,
+        actual: point.demand,
+        smartFit: bestPast ?? (isLast ? point.demand : null),
+        sma3Forecast: s3,
+        sma6Forecast: s6,
+      };
+    }),
     {
       month: nextPeriod,
       actual: null,
+      smartFit: bestNextVal,
       sma3Forecast: Math.round(sma3),
       sma6Forecast: Math.round(sma6),
     },
@@ -215,64 +229,71 @@ function ForecastTrendChart({
               if (value == null) return [null, null];
               const label = name === "actual"
                 ? "Recorded sales"
-                : name === "sma3Forecast"
-                  ? "SMA-3 estimate"
-                  : "SMA-6 estimate";
+                : name === "smartFit"
+                  ? `SmartFit Forecast (${activeModel})`
+                  : name === "sma3Forecast"
+                    ? "SMA-3 (Fast 3-mo)"
+                    : "SMA-6 (Steady 6-mo)";
               return [`${Number(value).toLocaleString()} units`, label];
             }}
-            labelFormatter={label => `${label}${label === nextPeriod ? ` · Next ${periodUnit === "week" ? "week" : "month"} estimate` : " · Recorded sales and past estimates"}`}
+            labelFormatter={label => `${label}${label === nextPeriod ? ` · Projected ${periodUnit === "week" ? "week" : "month"}` : " · Historical performance"}`}
             contentStyle={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 10, fontSize: 11, color: "var(--foreground)" }}
           />
           <ReferenceLine x={nextPeriod} stroke="var(--border)" strokeDasharray="4 4" />
-          <Line type="monotone" dataKey="actual"           name="actual" stroke="#2563eb" strokeWidth={2.5} dot={{ r: 3.5, fill: "#2563eb" }} activeDot={{ r: 5.5 }} connectNulls={false} isAnimationActive={false} />
-          <Line
-            type="monotone"
-            dataKey="sma3Forecast"
-            name="sma3Forecast"
-            stroke="#f97316"
-            strokeWidth={2.2}
-            strokeDasharray="6 4"
-            isAnimationActive={false}
-            dot={(props: { cx?: number; cy?: number; payload?: { month?: string } }) =>
-              props.cx != null && props.cy != null ? (
-                <circle
-                  key={`sma3-dot-${props.payload?.month}`}
-                  cx={props.cx}
-                  cy={props.cy}
-                  r={props.payload?.month === nextPeriod ? 5.5 : 3}
-                  fill="#f97316"
-                  stroke="var(--card)"
-                  strokeWidth={props.payload?.month === nextPeriod ? 2 : 1}
-                />
-              ) : <g key={`sma3-empty-${props.payload?.month}`} />
-            }
-            activeDot={{ r: 6 }}
-            connectNulls={true}
-          />
-          <Line
-            type="monotone"
-            dataKey="sma6Forecast"
-            name="sma6Forecast"
-            stroke="#8b5cf6"
-            strokeWidth={2.2}
-            strokeDasharray="3 4"
-            isAnimationActive={false}
-            dot={(props: { cx?: number; cy?: number; payload?: { month?: string } }) =>
-              props.cx != null && props.cy != null ? (
-                <circle
-                  key={`sma6-dot-${props.payload?.month}`}
-                  cx={props.cx}
-                  cy={props.cy}
-                  r={props.payload?.month === nextPeriod ? 5.5 : 3}
-                  fill="#8b5cf6"
-                  stroke="var(--card)"
-                  strokeWidth={props.payload?.month === nextPeriod ? 2 : 1}
-                />
-              ) : <g key={`sma6-empty-${props.payload?.month}`} />
-            }
-            activeDot={{ r: 6 }}
-            connectNulls={true}
-          />
+          <Line type="monotone" dataKey="actual" name="actual" stroke="#2563eb" strokeWidth={2.5} dot={{ r: 3.5, fill: "#2563eb" }} activeDot={{ r: 5.5 }} connectNulls={false} isAnimationActive={false} />
+          {!showBothModels ? (
+            <Line
+              type="monotone"
+              dataKey="smartFit"
+              name="smartFit"
+              stroke="#0d9488"
+              strokeWidth={2.5}
+              strokeDasharray="6 4"
+              isAnimationActive={false}
+              dot={(props: { cx?: number; cy?: number; payload?: { month?: string } }) =>
+                props.cx != null && props.cy != null ? (
+                  <circle
+                    key={`smartfit-dot-${props.payload?.month}`}
+                    cx={props.cx}
+                    cy={props.cy}
+                    r={props.payload?.month === nextPeriod ? 6 : 3}
+                    fill="#0d9488"
+                    stroke="var(--card)"
+                    strokeWidth={props.payload?.month === nextPeriod ? 2 : 1}
+                  />
+                ) : <g key={`smartfit-empty-${props.payload?.month}`} />
+              }
+              activeDot={{ r: 6.5 }}
+              connectNulls={true}
+            />
+          ) : (
+            <>
+              <Line
+                type="monotone"
+                dataKey="sma3Forecast"
+                name="sma3Forecast"
+                stroke="#f97316"
+                strokeWidth={2}
+                strokeDasharray="6 4"
+                isAnimationActive={false}
+                dot={{ r: 3, fill: "#f97316" }}
+                activeDot={{ r: 5.5 }}
+                connectNulls={true}
+              />
+              <Line
+                type="monotone"
+                dataKey="sma6Forecast"
+                name="sma6Forecast"
+                stroke="#8b5cf6"
+                strokeWidth={2}
+                strokeDasharray="3 4"
+                isAnimationActive={false}
+                dot={{ r: 3, fill: "#8b5cf6" }}
+                activeDot={{ r: 5.5 }}
+                connectNulls={true}
+              />
+            </>
+          )}
         </LineChart>
       </ResponsiveContainer>
     </div>
@@ -701,14 +722,13 @@ function EoqBreakdownModal({
           )}
         </div>
 
-        <footer className="flex justify-end gap-2 border-t border-border px-5 py-3">
-          {onReorder && (
-            <button type="button" onClick={() => { onClose(); onReorder(product); }} className="rounded-lg border border-border px-3 py-2 text-xs font-semibold text-foreground hover:bg-muted">
+        {onReorder && (
+          <footer className="flex justify-end gap-2 border-t border-border px-5 py-3">
+            <button type="button" onClick={() => { onClose(); onReorder(product); }} className="rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground hover:opacity-90">
               Edit medicine
             </button>
-          )}
-          <button type="button" onClick={onClose} className="rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground hover:opacity-90">Done</button>
-        </footer>
+          </footer>
+        )}
       </div>
     </div>
   );
@@ -919,21 +939,12 @@ function EoqSettingsModal({
             >
               Reset to Defaults (₱120 · 20% · 7d · 20%)
             </button>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={onClose}
-                className="px-3.5 py-1.5 rounded-lg border border-border bg-muted/40 hover:bg-muted text-xs font-semibold text-foreground cursor-pointer"
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                className="px-4 py-1.5 rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-bold shadow-xs cursor-pointer"
-              >
-                Save &amp; Recalculate
-              </button>
-            </div>
+            <button
+              type="submit"
+              className="px-4 py-1.5 rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-bold shadow-xs cursor-pointer"
+            >
+              Save &amp; Recalculate
+            </button>
           </div>
         </form>
       </div>
@@ -972,6 +983,8 @@ export default function AnalyticsPage({
   }, [activeSection]);
   const [smaInspector, setSmaInspector] = useState<"sma3" | "sma6" | "eoq" | null>(null);
   const [smapeInspector, setSmapeInspector] = useState<"sma3" | "sma6" | null>(null);
+  const [showChartModelComparison, setShowChartModelComparison] = useState(false);
+  const [selectedSmaProductId, setSelectedSmaProductId] = useState<string | null>(null);
 
   const [selectedEoqProductId, setSelectedEoqProductId] = useState<string | null>(null);
 
@@ -1373,6 +1386,7 @@ export default function AnalyticsPage({
       activePeriods: number;
       totalPeriods: number;
       recent3Periods: { label: string; qty: number }[];
+      recent6Periods: { label: string; qty: number }[];
       confidenceTier: "high" | "short" | "intermittent" | "insufficient";
       confidenceLabel: string;
       trendDirection: "rising" | "steady" | "slowing" | "none";
@@ -1510,6 +1524,7 @@ export default function AnalyticsPage({
         activePeriods,
         totalPeriods,
         recent3Periods: displaySeries.slice(-3),
+        recent6Periods: displaySeries.slice(-6),
         confidenceTier,
         confidenceLabel,
         trendDirection,
@@ -1566,25 +1581,11 @@ export default function AnalyticsPage({
     return inventoryCost / unitsWithCost;
   }, [inventory]);
 
-  const [selectedModelOverride, setSelectedModelOverride] = useState<"SMA-3" | "SMA-6" | null>(null);
-  const activeForecastModel = selectedModelOverride ?? selectedForecast?.model ?? "SMA-3";
+  const activeForecastModel = selectedForecast?.model ?? "SMA-3";
   const activeForecastUnits = activeForecastModel === "SMA-3" ? forecastSMA3 : forecastSMA6;
 
-  // ── EOQ & ROP Configurable Parameters + Demand Basis (100% Flexible Decision Support) ──
-  const [demandBasis, setDemandBasis] = useState<"auto" | "sma3" | "sma6" | "historical">(() => {
-    try {
-      const saved = localStorage.getItem("smarttrack_eoq_demand_basis");
-      if (saved === "auto" || saved === "sma3" || saved === "sma6" || saved === "historical") return saved;
-    } catch { /* ignore */ }
-    return "auto";
-  });
-
-  const handleSetDemandBasis = (basis: "auto" | "sma3" | "sma6" | "historical") => {
-    setDemandBasis(basis);
-    try {
-      localStorage.setItem("smarttrack_eoq_demand_basis", basis);
-    } catch { /* ignore */ }
-  };
+  // ── EOQ & ROP Configurable Parameters + SmartFit Auto Demand Basis ──
+  const demandBasis: "auto" | "sma3" | "sma6" | "historical" = "auto";
 
   const [orderCostSetting, setOrderCostSetting] = useState<number>(() => {
     try {
@@ -1628,6 +1629,7 @@ export default function AnalyticsPage({
       } catch { /* ignore */ }
       return next;
     });
+    showToast?.(qty == null ? "Restored EOQ suggested order quantity" : `Custom order quantity (${Math.round(qty)} units) applied`, "info");
   };
 
   const handleSaveEoqSettings = (cost: number, holdPercent: number, leadDays: number, safetyBuf: number) => {
@@ -1642,6 +1644,7 @@ export default function AnalyticsPage({
       localStorage.setItem("smarttrack_eoq_lead_time", String(leadDays));
       localStorage.setItem("smarttrack_eoq_safety_buffer", String(safetyBuf));
     } catch { /* ignore */ }
+    showToast?.(`Updated EOQ & ROP parameters (₱${cost} · ${holdPercent}% · ${leadDays}d · +${safetyBuf}%)`, "success");
   };
 
   const handleResetEoqSettings = () => {
@@ -1655,6 +1658,7 @@ export default function AnalyticsPage({
       localStorage.removeItem("smarttrack_eoq_lead_time");
       localStorage.removeItem("smarttrack_eoq_safety_buffer");
     } catch { /* ignore */ }
+    showToast?.("Reset EOQ & ROP parameters to Tangub benchmark defaults", "info");
   };
 
   const annualDemand = useMemo(() => {
@@ -1723,16 +1727,14 @@ export default function AnalyticsPage({
       });
       const updatedOrders = await purchaseOrdersApi.list();
       setPurchaseOrders(updatedOrders);
-      setPoBannerMessage({
-        type: "success",
-        text: `Purchase Order created for ${qtyOrdered.toLocaleString()} units of ${poDraftModal.product.name} (${supplierName}).`,
-      });
+      const msg = `Purchase Order created for ${qtyOrdered.toLocaleString()} units of ${poDraftModal.product.name} (${supplierName}).`;
+      setPoBannerMessage({ type: "success", text: msg });
+      showToast?.(msg, "success");
       setPoDraftModal(null);
     } catch (err) {
-      setPoBannerMessage({
-        type: "error",
-        text: err instanceof Error ? err.message : "Could not create purchase order.",
-      });
+      const errMsg = err instanceof Error ? err.message : "Could not create purchase order.";
+      setPoBannerMessage({ type: "error", text: errMsg });
+      showToast?.(errMsg, "error");
     } finally {
       setPoSubmitting(false);
     }
@@ -2552,7 +2554,7 @@ export default function AnalyticsPage({
                   <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Expected Demand</span>
                   <button
                     type="button"
-                    onClick={() => setSmaInspector("sma3")}
+                    onClick={() => setSmaInspector(activeForecastModel === "SMA-6" ? "sma6" : "sma3")}
                     className="text-xs font-semibold text-primary hover:underline cursor-pointer"
                   >
                     Show Math
@@ -2575,13 +2577,21 @@ export default function AnalyticsPage({
                       {demandDeltaPct >= 0 ? `+${demandDeltaPct}%` : `${demandDeltaPct}%`} vs {latestSalesMonth?.month}
                     </span>
                   )}
-                  <span className="text-xs text-muted-foreground">({activeForecastModel})</span>
+                  <span className="rounded-full bg-teal-500/10 px-2 py-0.5 text-[11px] font-semibold text-teal-700 dark:text-teal-300">
+                    Auto: {activeForecastModel}
+                  </span>
                 </div>
               </div>
               <div className="mt-4 pt-3 border-t border-border/60 flex items-center justify-between text-xs text-muted-foreground">
-                <span>SMA-3: {Math.round(forecastSMA3).toLocaleString()}u</span>
+                <span>Best-fit forecast for {nextForecastMonth}</span>
                 <span>·</span>
-                <span>SMA-6: {Math.round(forecastSMA6).toLocaleString()}u</span>
+                <button
+                  type="button"
+                  onClick={() => setActiveSection("Forecast")}
+                  className="text-xs font-semibold text-primary hover:underline cursor-pointer"
+                >
+                  Forecast →
+                </button>
               </div>
             </div>
 
@@ -2698,13 +2708,17 @@ export default function AnalyticsPage({
               <div>
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
                   <div>
-                    <h3 className="text-sm font-semibold text-foreground">Sales History &amp; Moving Average Forecast</h3>
-                    <p className="text-xs text-muted-foreground mt-0.5">Recorded transaction demand alongside SMA-3 and SMA-6 projections.</p>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h3 className="text-sm font-semibold text-foreground">Sales History &amp; SmartFit Demand Forecast</h3>
+                      <span className="rounded-full bg-teal-500/10 px-2 py-0.5 text-[10px] font-bold text-teal-700 dark:text-teal-300">
+                        Auto-Selected: {activeForecastModel}
+                      </span>
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-0.5">Recorded actual sales with SmartTrack&apos;s best-fit projection for {nextForecastMonth}.</p>
                   </div>
                   <div className="flex items-center gap-3 text-xs font-medium flex-wrap">
-                    <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-blue-600 inline-block" />Actual</span>
-                    <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-orange-500 inline-block" />SMA-3</span>
-                    <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-violet-500 inline-block" />SMA-6</span>
+                    <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-blue-600 inline-block" />Recorded Sales</span>
+                    <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-teal-600 inline-block" />SmartFit ({activeForecastModel})</span>
                   </div>
                 </div>
 
@@ -2717,6 +2731,8 @@ export default function AnalyticsPage({
                       nextPeriod={nextForecastMonth}
                       sma3={forecastSMA3}
                       sma6={forecastSMA6}
+                      activeModel={activeForecastModel}
+                      showBothModels={false}
                       periodUnit="month"
                     />
                   </div>
@@ -2989,89 +3005,164 @@ export default function AnalyticsPage({
 
       {activeSection === "Forecast" && (
         <section className="space-y-5">
-          <section className="rounded-2xl border border-primary/15 bg-primary/[0.04] p-4 sm:p-5">
-            <div className="flex items-start gap-3">
-              <span className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full bg-primary" />
-              <div className="min-w-0">
-                <h2 className="text-sm font-semibold text-foreground">Why are there two estimates?</h2>
-                <p className="mt-1 max-w-3xl text-sm leading-relaxed text-muted-foreground">
-                  Both estimate sales for the same next month. <strong className="text-foreground">SMA-3</strong> averages the latest 3 available months and reacts faster to changes; <strong className="text-foreground">SMA-6</strong> averages up to 6 months and is steadier. Neither is a guarantee.
-                </p>
-                {selectedForecast?.comparison ? (
-                  <div className="mt-3 text-xs leading-relaxed text-muted-foreground" aria-live="polite">
-                    <strong className="text-foreground">Past comparison:</strong> Across {selectedForecast.points} shared months, SMA-3 was {selectedForecast.comparison.sma3.toFixed(1)}% away from recorded sales and SMA-6 was {selectedForecast.comparison.sma6.toFixed(1)}% away on average. A smaller gap means a closer fit to that history. SmartTrack starts with {selectedForecast.model}; you can choose either estimate below.
-                    <InfoTip title="How the past comparison works" lines={["SmartTrack compares both models only on months where both had a past estimate. The percentage is their average difference from recorded sales; it describes past performance, not a promise about next month."]} />
+          {/* SmartFit Automated Model Selection Banner */}
+          <section className="rounded-2xl border border-teal-500/25 bg-teal-500/[0.05] p-4 sm:p-5">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div className="flex items-start gap-3">
+                <span className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full bg-teal-500" />
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h2 className="text-sm font-semibold text-foreground">SmartFit Automated Model Selection</h2>
+                    <span className="rounded-full bg-teal-500/15 px-2.5 py-0.5 text-[11px] font-semibold text-teal-700 dark:text-teal-300">
+                      Auto-Selected: {activeForecastModel}
+                    </span>
                   </div>
-                ) : (
-                  <p className="mt-3 text-xs text-muted-foreground">
-                    <strong className="text-foreground">No fair comparison yet.</strong> More shared sales history is needed before SmartTrack can compare which estimate tracked past sales more closely. You can still choose either model.
+                  <p className="mt-1 max-w-3xl text-xs sm:text-sm leading-relaxed text-muted-foreground">
+                    You do not need to manually guess between models. SmartTrack automatically backtests both <strong className="text-foreground">SMA-3</strong> (fast 3-month average for sudden surges) and <strong className="text-foreground">SMA-6</strong> (steady 6-month baseline for stable medicines) against past sales and selects the model with the lowest historical error.
                   </p>
-                )}
+                  {selectedForecast?.comparison ? (
+                    <div className="mt-2.5 text-xs leading-relaxed text-muted-foreground" aria-live="polite">
+                      <strong className="text-foreground">Backtest accuracy result:</strong> Across {selectedForecast.points} shared months, <strong className="text-foreground">SMA-3</strong> had a {selectedForecast.comparison.sma3.toFixed(1)}% error gap and <strong className="text-foreground">SMA-6</strong> had a {selectedForecast.comparison.sma6.toFixed(1)}% error gap. SmartFit automatically selected <strong className="text-teal-600 dark:text-teal-400">{activeForecastModel}</strong> because it tracked recorded sales more closely.
+                    </div>
+                  ) : (
+                    <p className="mt-2.5 text-xs text-muted-foreground">
+                      <strong className="text-foreground">Building comparison history:</strong> SmartFit defaults to <strong className="text-teal-600 dark:text-teal-400">{activeForecastModel}</strong> while more monthly sales history accumulates.
+                    </p>
+                  )}
+                </div>
               </div>
+              {selectedForecast?.comparison && (
+                <button
+                  type="button"
+                  onClick={() => setSmapeInspector(activeForecastModel === "SMA-6" ? "sma6" : "sma3")}
+                  className="shrink-0 self-start rounded-xl border border-teal-500/30 bg-background/80 px-3 py-1.5 text-xs font-semibold text-teal-700 dark:text-teal-300 hover:bg-teal-500/10 cursor-pointer"
+                >
+                  View Accuracy Proof
+                </button>
+              )}
             </div>
           </section>
 
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            {([
-              { model: "SMA-3" as const, label: "Faster to react", units: forecastSMA3, months: last3.length, window: 3, color: "bg-orange-500", help: "Uses the latest available months. Best for seeing recent changes sooner." },
-              { model: "SMA-6" as const, label: "Steadier baseline", units: forecastSMA6, months: last6.length, window: 6, color: "bg-violet-500", help: "Uses a longer history when available. Recent changes have less influence." },
-            ]).map(option => (
-              <section key={option.model} className={`${ANALYTICS_CARD_CLASS} p-4 sm:p-5`}>
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className={`h-2 w-2 rounded-full ${option.color}`} />
-                      <p className="text-sm font-semibold text-foreground">{option.model}</p>
-                      <span className="text-xs text-muted-foreground">· {option.label}</span>
-                      {selectedModelOverride == null && selectedForecast?.model === option.model && (
-                        <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">SmartTrack’s starting pick</span>
-                      )}
-                    </div>
-                    <p className="mt-2 text-3xl font-semibold tracking-tight tabular-nums text-foreground">
-                      {smaMonths.length ? Math.round(option.units).toLocaleString() : "—"} <span className="text-base font-medium text-muted-foreground">{smaMonths.length ? "units" : ""}</span>
-                    </p>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      {smaLoading
-                        ? "Loading sales history…"
-                        : smaMonths.length
-                          ? `Expected for ${nextForecastMonth} · uses ${option.months} of ${option.window} available months`
-                          : "No recorded sales history for this selection"}
-                    </p>
+          {/* 3 Clean Summary Cards: SmartFit Active + SMA-3 Reference + SMA-6 Reference */}
+          <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
+            {/* Card 1: SmartFit Active Pick */}
+            <section className={`${ANALYTICS_CARD_CLASS} border-teal-500/30 bg-teal-500/[0.03] p-4 sm:p-5 flex flex-col justify-between`}>
+              <div>
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="h-2.5 w-2.5 rounded-full bg-teal-500" />
+                    <p className="text-sm font-semibold text-foreground">SmartFit Forecast</p>
+                    <span className="rounded-full bg-teal-500/15 px-2 py-0.5 text-[10px] font-semibold text-teal-700 dark:text-teal-300">
+                      Active · {activeForecastModel}
+                    </span>
                   </div>
                   <button
                     type="button"
-                    onClick={() => setSmaInspector(option.model === "SMA-3" ? "sma3" : "sma6")}
-                    className="shrink-0 rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-primary hover:bg-primary/5"
+                    onClick={() => setSmaInspector(activeForecastModel === "SMA-6" ? "sma6" : "sma3")}
+                    className="shrink-0 rounded-lg border border-border px-2.5 py-1 text-xs font-semibold text-primary hover:bg-primary/5 cursor-pointer"
                   >
                     Show Math
                   </button>
                 </div>
-                <p className="mt-4 border-t border-border/60 pt-3 text-xs text-muted-foreground">
-                  {option.help}
-                  {option.months > 0 && option.months < option.window && (
-                    <span className="mt-1 block">Short history: this estimate uses {option.months} available {option.months === 1 ? "month" : "months"}, not a full {option.window}.</span>
-                  )}
+                <p className="mt-3 text-3xl font-bold tracking-tight tabular-nums text-foreground">
+                  {smaMonths.length ? Math.round(activeForecastUnits).toLocaleString() : "—"}{" "}
+                  <span className="text-base font-medium text-muted-foreground">{smaMonths.length ? "units" : ""}</span>
                 </p>
-                <button
-                  type="button"
-                  aria-pressed={activeForecastModel === option.model}
-                  onClick={() => setSelectedModelOverride(option.model)}
-                  className={`mt-3 rounded-lg px-3 py-1.5 text-xs font-semibold ${
-                    activeForecastModel === option.model
-                      ? "bg-primary/10 text-primary"
-                      : "text-muted-foreground hover:bg-muted hover:text-foreground"
-                  }`}
-                >
-                  {activeForecastModel === option.model ? "Currently selected" : `Use ${option.model}`}
-                </button>
-              </section>
-            ))}
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {smaLoading
+                    ? "Loading sales history…"
+                    : smaMonths.length
+                      ? `Expected for ${nextForecastMonth} · drives ROP & EOQ restocking`
+                      : "No recorded sales history for this selection"}
+                </p>
+              </div>
+              <p className="mt-4 border-t border-border/60 pt-3 text-xs text-muted-foreground">
+                Automatically chosen as the best-fit estimate for this scope. Feeds directly into Reorder Point (ROP) and EOQ calculations.
+              </p>
+            </section>
+
+            {/* Card 2 & 3: SMA-3 and SMA-6 Reference Benchmarks */}
+            {([
+              {
+                model: "SMA-3" as const,
+                label: "Fast-Reacting (3-Mo Avg)",
+                units: forecastSMA3,
+                months: last3.length,
+                window: 3,
+                color: "bg-orange-500",
+                help: "Averages the latest 3 completed months. Best for catching sudden demand surges (e.g., flu or dengue season).",
+              },
+              {
+                model: "SMA-6" as const,
+                label: "Steady Baseline (6-Mo Avg)",
+                units: forecastSMA6,
+                months: last6.length,
+                window: 6,
+                color: "bg-violet-500",
+                help: "Averages up to 6 completed months. Smooths out temporary one-month spikes for maintenance medicines.",
+              },
+            ]).map(option => {
+              const isWinner = activeForecastModel === option.model;
+              return (
+                <section key={option.model} className={`${ANALYTICS_CARD_CLASS} p-4 sm:p-5 flex flex-col justify-between`}>
+                  <div>
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className={`h-2 w-2 rounded-full ${option.color}`} />
+                        <p className="text-sm font-semibold text-foreground">{option.model}</p>
+                        <span className="text-xs text-muted-foreground">· {option.label}</span>
+                        {isWinner && (
+                          <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 dark:text-emerald-300">
+                            Best Fit
+                          </span>
+                        )}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setSmaInspector(option.model === "SMA-3" ? "sma3" : "sma6")}
+                        className="shrink-0 rounded-lg border border-border px-2.5 py-1 text-xs font-semibold text-primary hover:bg-primary/5 cursor-pointer"
+                      >
+                        Show Math
+                      </button>
+                    </div>
+                    <p className="mt-3 text-2xl font-semibold tracking-tight tabular-nums text-foreground">
+                      {smaMonths.length ? Math.round(option.units).toLocaleString() : "—"}{" "}
+                      <span className="text-sm font-medium text-muted-foreground">{smaMonths.length ? "units" : ""}</span>
+                    </p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {smaMonths.length
+                        ? `Uses ${option.months} of ${option.window} available months`
+                        : "No recorded sales history"}
+                    </p>
+                  </div>
+                  <p className="mt-4 border-t border-border/60 pt-3 text-xs text-muted-foreground">
+                    {option.help}
+                  </p>
+                </section>
+              );
+            })}
           </div>
 
+          {/* Monthly Sales History & SmartFit Trajectory Chart */}
           <section className={`${ANALYTICS_CARD_CLASS} min-w-0 p-4 sm:p-5`}>
-            <div className="mb-4">
-              <h3 className="text-sm font-semibold text-foreground">Monthly sales history</h3>
-              <p className="mt-1 text-xs text-muted-foreground">Solid line = recorded sales. Dashed lines = each model’s past estimates; their final points show next month.</p>
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h3 className="text-sm font-semibold text-foreground">Monthly sales history &amp; SmartFit forecast</h3>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Solid blue line = actual recorded sales. Dashed line = {showChartModelComparison ? "SMA-3 and SMA-6 comparison" : `SmartFit (${activeForecastModel}) trajectory into ${nextForecastMonth}`}.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowChartModelComparison(prev => !prev)}
+                className={`rounded-xl border px-3 py-1.5 text-xs font-semibold transition-colors cursor-pointer ${
+                  showChartModelComparison
+                    ? "border-primary/40 bg-primary/10 text-primary"
+                    : "border-border bg-background text-muted-foreground hover:bg-muted hover:text-foreground"
+                }`}
+              >
+                {showChartModelComparison ? "Showing Both Models (Click for SmartFit Only)" : "Compare Both Models on Chart"}
+              </button>
             </div>
             {smaLoading ? (
               <p className="py-12 text-center text-sm text-muted-foreground">Loading sales history…</p>
@@ -3084,13 +3175,21 @@ export default function AnalyticsPage({
                     sma3={forecastSMA3}
                     sma6={forecastSMA6}
                     periodUnit="month"
+                    activeModel={activeForecastModel}
+                    showBothModels={showChartModelComparison}
                   />
                 </div>
                 <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-border/50 pt-3 text-[11px] text-muted-foreground">
                   <span className="inline-flex items-center gap-2"><span className="h-0.5 w-4 bg-blue-600" /> Recorded sales</span>
-                  <span className="inline-flex items-center gap-2"><span className="w-4 border-t-2 border-dashed border-orange-500" /> SMA-3 estimate</span>
-                  <span className="inline-flex items-center gap-2"><span className="w-4 border-t-2 border-dashed border-violet-500" /> SMA-6 estimate</span>
-                  <span className="ml-auto">Final points = next month</span>
+                  {showChartModelComparison ? (
+                    <>
+                      <span className="inline-flex items-center gap-2"><span className="w-4 border-t-2 border-dashed border-orange-500" /> SMA-3 (Fast 3-mo)</span>
+                      <span className="inline-flex items-center gap-2"><span className="w-4 border-t-2 border-dashed border-violet-500" /> SMA-6 (Steady 6-mo)</span>
+                    </>
+                  ) : (
+                    <span className="inline-flex items-center gap-2"><span className="w-4 border-t-2 border-dashed border-teal-600" /> SmartFit forecast ({activeForecastModel})</span>
+                  )}
+                  <span className="ml-auto">Final point = {nextForecastMonth} forecast</span>
                 </div>
               </>
             ) : (
@@ -3098,11 +3197,14 @@ export default function AnalyticsPage({
             )}
           </section>
 
+          {/* Per-Medicine Automated Forecasts Table */}
           <section className={`${ANALYTICS_CARD_CLASS} overflow-hidden`}>
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/60 p-4">
               <div>
-                <h3 className="text-sm font-semibold text-foreground">Expected sales by medicine</h3>
-                <p className="mt-1 text-xs text-muted-foreground">{productForecastList.length} medicines · using {activeForecastModel}</p>
+                <h3 className="text-sm font-semibold text-foreground">Expected sales by medicine (Auto-Selected per Medicine)</h3>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {productForecastList.length} medicines · SmartFit automatically picks SMA-3 or SMA-6 for each medicine based on its sales history
+                </p>
               </div>
               <div className="relative w-full sm:w-64">
                 <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
@@ -3121,18 +3223,21 @@ export default function AnalyticsPage({
                   <tr>
                     <th className="px-4 py-3 font-medium">Medicine</th>
                     <th className="px-4 py-3 font-medium">Recent monthly sales</th>
-                    <th className="px-4 py-3 text-right font-medium">
-                      <div className="inline-flex items-center justify-end gap-1.5">
-                        Expected next month
-                        <InfoTip title="Expected next month" lines={[`This is the selected ${activeForecastModel} average for each medicine. It uses up to ${activeForecastModel === "SMA-3" ? "3" : "6"} of that medicine’s most recent available sales months.`]} />
+                    <th className="px-4 py-3 font-medium">
+                      <div className="inline-flex items-center gap-1.5">
+                        Auto-Selected Model
+                        <InfoTip title="Per-Medicine SmartFit Model" lines={["SmartTrack tests both SMA-3 and SMA-6 on each medicine's own monthly sales history and automatically picks the model with the lower error."]} />
                       </div>
                     </th>
+                    <th className="px-4 py-3 text-right font-medium">Expected next month</th>
                     <th className="px-4 py-3 text-right font-medium">In stock</th>
+                    <th className="px-4 py-3 text-right font-medium">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border/50">
                   {paginatedProductForecasts.map(row => {
-                    const forecast = activeForecastModel === "SMA-3" ? row.monthlySma3 : row.monthlySma6;
+                    const forecast = row.monthlyEquivalentForecast;
+                    const isSma6 = row.recommendedModel === "SMA-6";
                     return (
                       <tr key={row.product.id} className="hover:bg-muted/20">
                         <td className="px-4 py-3">
@@ -3144,15 +3249,38 @@ export default function AnalyticsPage({
                             ? row.recent3Periods.map(period => `${period.label}: ${period.qty}`).join(" · ")
                             : "No recorded sales"}
                         </td>
-                        <td className="px-4 py-3 text-right font-medium tabular-nums text-foreground">
+                        <td className="px-4 py-3">
+                          {row.totalSold > 0 ? (
+                            <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${
+                              isSma6
+                                ? "bg-violet-500/10 text-violet-700 dark:text-violet-300"
+                                : "bg-orange-500/10 text-orange-700 dark:text-orange-300"
+                            }`}>
+                              <span className={`h-1.5 w-1.5 rounded-full ${isSma6 ? "bg-violet-500" : "bg-orange-500"}`} />
+                              Auto: {row.recommendedModel} · {isSma6 ? "Steady" : "Fast"}
+                            </span>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">—</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-right font-semibold tabular-nums text-foreground">
                           {row.totalSold > 0 ? `${Math.round(forecast).toLocaleString()} units` : <span className="font-normal text-muted-foreground">No sales history</span>}
                         </td>
                         <td className="px-4 py-3 text-right tabular-nums text-foreground">{row.product.stock.toLocaleString()}</td>
+                        <td className="px-4 py-3 text-right">
+                          <button
+                            type="button"
+                            onClick={() => setSelectedSmaProductId(row.product.id)}
+                            className="rounded-lg border border-border px-2.5 py-1 text-xs font-semibold text-primary hover:bg-primary/5 cursor-pointer"
+                          >
+                            Show Math
+                          </button>
+                        </td>
                       </tr>
                     );
                   })}
                   {paginatedProductForecasts.length === 0 && (
-                    <tr><td colSpan={4} className="px-4 py-10 text-center text-sm text-muted-foreground">No medicines match your search.</td></tr>
+                    <tr><td colSpan={6} className="px-4 py-10 text-center text-sm text-muted-foreground">No medicines match your search.</td></tr>
                   )}
                 </tbody>
               </table>
@@ -3175,83 +3303,75 @@ export default function AnalyticsPage({
             </div>
           )}
 
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <SummaryCard label="Medicines to Restock" value={`${reorderRecs.length}`} note="Marked out, critical, or low in current stock status" />
-            <SummaryCard
-              label="Suggested Order Budget"
-              value={fmt(estimatedRestockCost)}
-              note={reorderRecs.some(rec => rec.isCostEstimated)
-                ? "Estimate from suggested quantities; some unit costs are estimated"
-                : "Estimate from suggested quantities and recorded batch costs"}
-            />
-          </div>
-
-          <section className={`${ANALYTICS_CARD_CLASS} space-y-4 p-4`}>
+          {/* The 3-Step Golden Chain Pipeline: SMA -> ROP -> EOQ */}
+          <section className={`${ANALYTICS_CARD_CLASS} space-y-4 p-4 sm:p-5`}>
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
-                <p className="text-sm font-semibold text-foreground">From sales estimate to order plan</p>
+                <div className="flex items-center gap-2">
+                  <span className="rounded-full bg-primary/10 px-2.5 py-0.5 text-[11px] font-semibold text-primary">Automated 3-Step Pipeline</span>
+                  <h3 className="text-sm font-semibold text-foreground">How Forecast, ROP, and EOQ Work Together</h3>
+                </div>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  The demand estimate becomes yearly demand (D), which informs both when to reorder and how much to order.
+                  SmartTrack connects your sales forecast directly to your restocking plan in three simple steps:
                 </p>
               </div>
-              <div className="flex gap-2">
-                <button type="button" onClick={() => setShowEoqSettingsModal(true)} className="rounded-xl border border-border px-3 py-2 text-xs font-semibold text-foreground hover:bg-muted">
-                  Planning settings
+              <div className="flex flex-wrap gap-2">
+                <button type="button" onClick={() => setShowEoqSettingsModal(true)} className="rounded-xl border border-border px-3 py-1.5 text-xs font-semibold text-foreground hover:bg-muted cursor-pointer">
+                  Planning settings (₱{orderCostSetting} · {Math.round(holdingRateSetting * 100)}% · {leadTimeDaysSetting}d)
                 </button>
-                <button type="button" onClick={() => setSmaInspector("eoq")} className="rounded-xl border border-border px-3 py-2 text-xs font-semibold text-primary hover:bg-primary/5">
-                  EOQ formula
+                <button type="button" onClick={() => setSmaInspector("eoq")} className="rounded-xl border border-border px-3 py-1.5 text-xs font-semibold text-primary hover:bg-primary/5 cursor-pointer">
+                  Store EOQ formula
                 </button>
               </div>
             </div>
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="min-w-0">
-                <p className="text-xs font-medium text-foreground">Sales estimate used for this plan</p>
-                <p className="mt-1 max-w-3xl text-xs leading-relaxed text-muted-foreground">
-                  {demandBasis === "auto"
-                    ? "Auto picks SMA-3 or SMA-6 separately for each medicine, based on which tracked its past sales more closely. With limited history it falls back to the available sales average; medicines with no sales use a clearly labeled minimum-based estimate."
-                    : demandBasis === "sma3"
-                      ? "SMA-3 is applied across medicines where available. If a medicine lacks a usable SMA-3 estimate, its available sales average is used instead."
-                      : demandBasis === "sma6"
-                        ? "SMA-6 is applied across medicines where available. If a medicine lacks a usable SMA-6 estimate, its available sales average is used instead."
-                        : "A previously saved all-time sales average is in use. Choose SMA-3 or SMA-6 to use one of the two forecast models."}
+
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+              {/* Step 1: SMA Forecast (D) */}
+              <div className="rounded-xl border border-teal-500/25 bg-teal-500/[0.04] p-3.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-teal-700 dark:text-teal-300">Step 1 · Forecast (D)</span>
+                  <span className="rounded-md bg-teal-500/15 px-2 py-0.5 font-mono text-[10px] font-semibold text-teal-700 dark:text-teal-300">SMA-3 / SMA-6</span>
+                </div>
+                <p className="mt-1.5 text-sm font-semibold text-foreground">Predicts Expected Demand</p>
+                <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                  SmartFit automatically picks each medicine’s best SMA model to estimate monthly sales and <strong className="text-foreground">Yearly Demand (D = Monthly × 12)</strong>.
                 </p>
               </div>
-              <div className="inline-flex max-w-full flex-wrap rounded-xl bg-muted p-1" role="group" aria-label="Restocking demand model">
-                {([
-                  { id: "auto", label: "Auto · per medicine" },
-                  { id: "sma3", label: "SMA-3" },
-                  { id: "sma6", label: "SMA-6" },
-                ] as const).map(option => (
-                  <button
-                    key={option.id}
-                    type="button"
-                    aria-pressed={demandBasis === option.id}
-                    onClick={() => handleSetDemandBasis(option.id)}
-                    className={`rounded-lg px-3 py-2 text-xs font-medium ${
-                      demandBasis === option.id ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
-                    }`}
-                  >
-                    {option.label}
-                  </button>
-                ))}
+
+              {/* Step 2: Reorder Point (ROP) */}
+              <div className="rounded-xl border border-amber-500/25 bg-amber-500/[0.04] p-3.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-amber-700 dark:text-amber-300">Step 2 · WHEN to Order (ROP)</span>
+                  <span className="rounded-md bg-amber-500/15 px-2 py-0.5 font-mono text-[10px] font-semibold text-amber-700 dark:text-amber-300">{reorderRecs.length} flagged</span>
+                </div>
+                <p className="mt-1.5 text-sm font-semibold text-foreground">Safety Stock Alarm</p>
+                <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                  Uses daily demand during the <strong className="text-foreground">{leadTimeDaysSetting}-day supplier lead time</strong> plus a <strong className="text-foreground">{safetyBufferSetting}% safety buffer</strong>. Alerts you before stock runs out.
+                </p>
               </div>
-            </div>
-            <div className="flex flex-wrap items-center gap-2 border-t border-border/60 pt-3 text-[11px] text-muted-foreground" aria-label="Restocking calculation flow">
-              <span className="rounded-md bg-muted/70 px-2 py-1">SMA sales estimate</span>
-              <span aria-hidden="true">→</span>
-              <span className="rounded-md bg-muted/70 px-2 py-1">Yearly demand (D)</span>
-              <span aria-hidden="true">→</span>
-              <span className="rounded-md bg-muted/70 px-2 py-1">ROP: when to order</span>
-              <span aria-hidden="true">+</span>
-              <span className="rounded-md bg-muted/70 px-2 py-1">EOQ: how much to order</span>
+
+              {/* Step 3: Economic Order Quantity (EOQ) */}
+              <div className="rounded-xl border border-primary/25 bg-primary/[0.04] p-3.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-primary">Step 3 · HOW MUCH to Order (EOQ)</span>
+                  <span className="rounded-md bg-primary/15 px-2 py-0.5 font-mono text-[10px] font-semibold text-primary">Budget: {fmt(estimatedRestockCost)}</span>
+                </div>
+                <p className="mt-1.5 text-sm font-semibold text-foreground">Cost-Balanced Order Size</p>
+                <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                  Calculates <strong className="text-foreground">EOQ = √(2DS ÷ H)</strong> to balance delivery fee (<strong className="text-foreground">₱{orderCostSetting}</strong>) against storage &amp; expiry risk (<strong className="text-foreground">{Math.round(holdingRateSetting * 100)}%/yr</strong>).
+                </p>
+              </div>
             </div>
           </section>
 
+          {/* Medicines to Restock Table mirroring the 3 Steps */}
           <section className={`${ANALYTICS_CARD_CLASS} overflow-hidden`}>
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/60 p-4">
               <div>
-                <h3 className="text-sm font-semibold text-foreground">Medicines to restock</h3>
-                <p className="mt-1 text-xs text-muted-foreground">Review the recommendation before creating an order.</p>
+                <h3 className="text-sm font-semibold text-foreground">Medicines to restock ({reorderRecs.length})</h3>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Click <strong className="text-foreground">Show Math</strong> on any row to inspect its exact ROP and EOQ calculation, or <strong className="text-foreground">Create PO</strong> to place an order.
+                </p>
               </div>
               <div className="relative w-full sm:w-64">
                 <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
@@ -3269,17 +3389,17 @@ export default function AnalyticsPage({
                 <thead className="bg-muted/30 text-left text-xs text-muted-foreground">
                   <tr>
                     <th className="px-4 py-3 font-medium">Medicine</th>
-                    <th className="px-4 py-3 font-medium">In stock</th>
+                    <th className="px-4 py-3 font-medium">Step 1: Demand (D)</th>
                     <th className="px-4 py-3 font-medium">
                       <div className="inline-flex items-center gap-1.5">
-                        Restock when at
-                        <InfoTip title="Reorder point (ROP)" lines={["The stock threshold for reordering. It covers estimated demand during supplier lead time plus your safety buffer. When stock reaches or falls below this level, review the item."]} />
+                        Step 2: Stock vs. ROP (When)
+                        <InfoTip title="Stock vs. Reorder Point (ROP)" lines={["Compares current stock on hand against the Reorder Point threshold (lead-time demand + safety buffer). When stock drops at or below ROP, it is time to reorder."]} />
                       </div>
                     </th>
                     <th className="px-4 py-3 font-medium">
                       <div className="inline-flex items-center gap-1.5">
-                        Suggested order
-                        <InfoTip title="Suggested order size (EOQ)" lines={["A recommended quantity that balances the cost of placing orders with the cost of holding stock. It is a planning suggestion, not an automatic order; you can review or change it."]} />
+                        Step 3: Suggested Order (EOQ)
+                        <InfoTip title="Suggested Order Size (EOQ)" lines={["The cost-optimal order quantity from EOQ = √(2DS / H). Balances supplier order fees against holding and expiry risk."]} />
                       </div>
                     </th>
                     <th className="px-4 py-3 text-right font-medium">Estimated cost</th>
@@ -3290,24 +3410,42 @@ export default function AnalyticsPage({
                   {paginatedReorderRecs.map(rec => (
                     <tr key={rec.product.id} className="hover:bg-muted/20">
                       <td className="px-4 py-3">
-                        <p className="font-medium text-foreground">{rec.product.name}</p>
+                        <div className="flex items-center gap-2">
+                          <p className="font-medium text-foreground">{rec.product.name}</p>
+                          <StockBadge status={rec.product.status} />
+                        </div>
                         <p className="mt-0.5 text-xs text-muted-foreground">{rec.product.category}</p>
-                        <p className="mt-1 text-[10px] text-muted-foreground" title={rec.demandSourceLabel}>Demand source: {rec.demandSourceShort}</p>
                       </td>
-                      <td className="px-4 py-3 tabular-nums text-foreground">{rec.product.stock.toLocaleString()} units</td>
-                      <td className="px-4 py-3 tabular-nums text-foreground">{rec.suggestedRop.toLocaleString()} units</td>
-                      <td className="px-4 py-3 font-medium tabular-nums text-foreground">{rec.effectiveOrderQty.toLocaleString()} units</td>
+                      <td className="px-4 py-3">
+                        <p className="text-xs font-semibold tabular-nums text-foreground">
+                          ~{Math.max(1, Math.round(rec.annualDemand / 12)).toLocaleString()} u/mo · {rec.annualDemand.toLocaleString()} u/yr
+                        </p>
+                        <p className="mt-0.5 text-[11px] text-muted-foreground" title={rec.demandSourceLabel}>
+                          {rec.demandSourceShort}
+                        </p>
+                      </td>
+                      <td className="px-4 py-3 tabular-nums">
+                        <span className="font-semibold text-foreground">{rec.product.stock.toLocaleString()}</span>
+                        <span className="text-muted-foreground"> in stock / </span>
+                        <span className="font-medium text-amber-600 dark:text-amber-400">ROP {rec.suggestedRop.toLocaleString()}</span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className="font-semibold tabular-nums text-primary">{rec.effectiveOrderQty.toLocaleString()} units</span>
+                        {rec.overrideQty != null && (
+                          <span className="ml-1.5 rounded bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold text-primary">Custom</span>
+                        )}
+                      </td>
                       <td className="px-4 py-3 text-right tabular-nums text-foreground">{fmt(rec.effectiveOrderQty * rec.unitCost)}</td>
                       <td className="px-4 py-3">
                         <div className="flex justify-end gap-2">
-                          <button type="button" onClick={() => setSelectedEoqProductId(rec.product.id)} className="rounded-lg border border-border px-2.5 py-1.5 text-xs font-semibold text-primary hover:bg-primary/5">
+                          <button type="button" onClick={() => setSelectedEoqProductId(rec.product.id)} className="rounded-lg border border-border px-2.5 py-1.5 text-xs font-semibold text-primary hover:bg-primary/5 cursor-pointer">
                             Show Math
                           </button>
                           {canEdit && (
                             <button
                               type="button"
                               onClick={() => openPoDraftModal(rec.product, rec.eoq, rec.shortage, rec.effectiveOrderQty)}
-                              className="rounded-lg bg-primary px-2.5 py-1.5 text-xs font-semibold text-primary-foreground hover:opacity-90"
+                              className="rounded-lg bg-primary px-2.5 py-1.5 text-xs font-semibold text-primary-foreground hover:opacity-90 cursor-pointer"
                             >
                               Create PO
                             </button>
@@ -3331,8 +3469,8 @@ export default function AnalyticsPage({
         <section className={`${ANALYTICS_CARD_CLASS} overflow-hidden`}>
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/60 p-4">
             <div>
-              <h2 className="text-sm font-semibold text-foreground">Medicine sales and forecast</h2>
-              <p className="mt-1 text-xs text-muted-foreground">Recorded sales, expected next-month demand, and stock on hand.</p>
+              <h2 className="text-sm font-semibold text-foreground">Medicine sales and SmartFit forecast</h2>
+              <p className="mt-1 text-xs text-muted-foreground">Recorded sales, auto-selected forecast model, expected next-month demand, and stock status.</p>
             </div>
             <div className="relative w-full sm:w-64">
               <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
@@ -3352,27 +3490,52 @@ export default function AnalyticsPage({
                   <th className="px-4 py-3 font-medium">Medicine</th>
                   <th className="px-4 py-3 font-medium">Category</th>
                   <th className="px-4 py-3 text-right font-medium">Units sold</th>
+                  <th className="px-4 py-3 font-medium">Auto Model</th>
                   <th className="px-4 py-3 text-right font-medium">Expected next month</th>
                   <th className="px-4 py-3 text-right font-medium">In stock</th>
                   <th className="px-4 py-3 text-right font-medium">Stock status</th>
+                  <th className="px-4 py-3 text-right font-medium">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border/50">
                 {paginatedProductForecasts.map(row => {
-                  const forecast = activeForecastModel === "SMA-3" ? row.monthlySma3 : row.monthlySma6;
+                  const forecast = row.monthlyEquivalentForecast;
+                  const isSma6 = row.recommendedModel === "SMA-6";
                   return (
                     <tr key={row.product.id} className="hover:bg-muted/20">
                       <td className="px-4 py-3 font-medium text-foreground">{row.product.name}</td>
                       <td className="px-4 py-3 text-muted-foreground">{row.product.category}</td>
                       <td className="px-4 py-3 text-right tabular-nums text-foreground">{row.totalSold.toLocaleString()}</td>
+                      <td className="px-4 py-3">
+                        {row.totalSold > 0 ? (
+                          <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                            isSma6
+                              ? "bg-violet-500/10 text-violet-700 dark:text-violet-300"
+                              : "bg-orange-500/10 text-orange-700 dark:text-orange-300"
+                          }`}>
+                            {row.recommendedModel}
+                          </span>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">—</span>
+                        )}
+                      </td>
                       <td className="px-4 py-3 text-right font-medium tabular-nums text-foreground">{Math.round(forecast).toLocaleString()} units</td>
                       <td className="px-4 py-3 text-right tabular-nums text-foreground">{row.product.stock.toLocaleString()}</td>
                       <td className="px-4 py-3 text-right"><StockBadge status={row.product.status} /></td>
+                      <td className="px-4 py-3 text-right">
+                        <button
+                          type="button"
+                          onClick={() => setSelectedSmaProductId(row.product.id)}
+                          className="rounded-lg border border-border px-2.5 py-1 text-xs font-semibold text-primary hover:bg-primary/5 cursor-pointer"
+                        >
+                          Show Math
+                        </button>
+                      </td>
                     </tr>
                   );
                 })}
                 {paginatedProductForecasts.length === 0 && (
-                  <tr><td colSpan={6} className="px-4 py-10 text-center text-sm text-muted-foreground">No medicines match your search.</td></tr>
+                  <tr><td colSpan={8} className="px-4 py-10 text-center text-sm text-muted-foreground">No medicines match your search.</td></tr>
                 )}
               </tbody>
             </table>
@@ -3501,15 +3664,7 @@ export default function AnalyticsPage({
                 />
               </div>
 
-              <div className="flex items-center justify-end gap-2 pt-2 border-t border-border">
-                <button
-                  type="button"
-                  disabled={poSubmitting}
-                  onClick={() => setPoDraftModal(null)}
-                  className="px-3.5 py-1.5 rounded-lg border border-border bg-muted/40 hover:bg-muted font-semibold text-foreground cursor-pointer"
-                >
-                  Cancel
-                </button>
+              <div className="flex items-center justify-end pt-2 border-t border-border">
                 <button
                   type="submit"
                   disabled={poSubmitting}
@@ -3523,11 +3678,49 @@ export default function AnalyticsPage({
         </div>
       )}
 
+      {selectedSmaProductId && (() => {
+        const pf = productForecastMap.get(String(selectedSmaProductId));
+        if (!pf) return null;
+        const isSma6 = pf.recommendedModel === "SMA-6";
+        const periods = isSma6 ? pf.recent6Periods : pf.recent3Periods;
+        const sumQty = periods.reduce((s, p) => s + p.qty, 0);
+        const avgQty = periods.length > 0 ? sumQty / periods.length : 0;
+        const annualD = Math.round(pf.monthlyEquivalentForecast * 12);
+        return (
+          <CalcInspectorModal
+            title={`Show Math · ${pf.product.name} (${pf.recommendedModel})`}
+            formula={<SmaFormulaVisual type={isSma6 ? "sma6" : "sma3"} />}
+            explanation={`SmartFit tested both SMA-3 (fast 3-month average) and SMA-6 (steady 6-month baseline) on ${pf.product.name}’s past sales. It automatically selected ${pf.recommendedModel} (${isSma6 ? "steady baseline" : "fast-reacting"}) as the best fit.`}
+            variables={[
+              ...periods.map(p => ({ label: `Recorded sales · ${p.label}`, value: `${p.qty.toLocaleString()} units` })),
+              { label: "SMA-3 (3-month average)", value: `${Math.round(pf.monthlySma3).toLocaleString()} units/mo${pf.smape3 != null ? ` (${pf.smape3.toFixed(1)}% error)` : ""}` },
+              { label: "SMA-6 (6-month average)", value: `${Math.round(pf.monthlySma6).toLocaleString()} units/mo${pf.smape6 != null ? ` (${pf.smape6.toFixed(1)}% error)` : ""}` },
+              { label: "Auto-Selected Model", value: `${pf.recommendedModel} (${isSma6 ? "Steady 6-Mo" : "Fast 3-Mo"})` },
+            ]}
+            trail={
+              periods.length > 0
+                ? [
+                    `Step 1 (Add recent sales): ${periods.map(p => p.qty.toLocaleString()).join(" + ")} = ${sumQty.toLocaleString()} units.`,
+                    `Step 2 (Divide by ${periods.length} months): ${sumQty.toLocaleString()} ÷ ${periods.length} = ${Math.round(avgQty).toLocaleString()} units expected next month.`,
+                    `Step 3 (Connect to ROP & EOQ): ${Math.round(pf.monthlyEquivalentForecast).toLocaleString()} units/mo × 12 = ${annualD.toLocaleString()} units/year (Annual Demand D).`,
+                  ]
+                : ["No recorded sales periods yet for this medicine."]
+            }
+            result={
+              pf.totalSold > 0
+                ? `SmartFit Next-Month Forecast: ≈ ${Math.round(pf.monthlyEquivalentForecast).toLocaleString()} units (${annualD.toLocaleString()} units/yr)`
+                : "No sales history yet — record sales to generate a forecast."
+            }
+            onClose={() => setSelectedSmaProductId(null)}
+          />
+        );
+      })()}
+
       {smaInspector === "sma3" && (
         <CalcInspectorModal
-          title="Show Math · Recent 3-month average"
+          title="Show Math · Recent 3-month average (SMA-3)"
           formula={<SmaFormulaVisual type={last3.length === 3 ? "sma3" : "general"} />}
-          explanation="Add sales from the latest completed months and divide by the number of months used. This estimate responds more quickly to recent changes."
+          explanation="Add sales from the latest 3 completed months and divide by 3. Because it only looks at recent months, SMA-3 reacts quickly to sudden surges or seasonal outbreaks."
           variables={[
             ...last3.slice().reverse().map((period, index) => ({
               label: `${index === 0 ? "Most recent month" : `${index + 1} months ago`} · ${period.month}`, value: `${period.demand.toLocaleString()} units`,
@@ -3549,9 +3742,9 @@ export default function AnalyticsPage({
 
       {smaInspector === "sma6" && (
         <CalcInspectorModal
-          title="Show Math · Steadier 6-month average"
+          title="Show Math · Steadier 6-month average (SMA-6)"
           formula={<SmaFormulaVisual type={last6.length === 6 ? "sma6" : "general"} />}
-          explanation="Add sales from up to the latest six completed months and divide by the number of months available. This gives a steadier estimate."
+          explanation="Add sales from up to the latest 6 completed months and divide by 6. This smooths out one-month spikes and provides a steady baseline for maintenance medicines."
           variables={[
             ...last6.slice().reverse().map((period, index) => ({
               label: `${index === 0 ? "Most recent month" : `${index + 1} months ago`} · ${period.month}`, value: `${period.demand.toLocaleString()} units`,
@@ -3573,11 +3766,11 @@ export default function AnalyticsPage({
 
       {smaInspector === "eoq" && (
         <CalcInspectorModal
-          title="EOQ Restocking — Calculation"
+          title="EOQ Restocking — Store-Level Calculation"
           formula={<EoqFormulaVisual />}
-          explanation={`EOQ is a suggested order size that balances order-placement and stock-holding costs. This store-level illustration uses ${demandBasis === "auto" ? `the active ${activeForecastModel} estimate` : demandBasis === "historical" ? "the saved all-time sales average" : `the ${demandBasis.toUpperCase()} estimate`}; individual medicine rows show their exact demand source in Show Math. Cost settings: order placement ₱${globalOrderCost.toFixed(2)} and holding rate ${Math.round(holdingRateSetting * 100)}%.`}
+          explanation={`EOQ is a suggested order size that balances order-placement fees (S) and stock-holding costs (H). SmartTrack feeds the SmartFit ${activeForecastModel} demand forecast (D) directly into this formula. Cost settings: order placement ₱${globalOrderCost.toFixed(2)} and holding rate ${Math.round(holdingRateSetting * 100)}%.`}
           variables={[
-            { label: `Annual Demand (D · ${demandBasis.toUpperCase()})`, value: `${Math.round(annualDemand).toLocaleString()} units/yr` },
+            { label: `Annual Demand (D · Auto ${activeForecastModel})`, value: `${Math.round(annualDemand).toLocaleString()} units/yr` },
             { label: "Order Cost (S)", value: `₱${globalOrderCost.toFixed(2)} / batch` },
             { label: "Avg Unit Cost (C)", value: `₱${avgUnitCost.toFixed(2)}` },
             { label: "Carrying Rate (I)", value: `${Math.round(holdingRateSetting * 100)}%` },
