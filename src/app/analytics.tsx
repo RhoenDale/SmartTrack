@@ -2995,6 +2995,22 @@ export default function AnalyticsPage({
                       <strong className="text-foreground">Building comparison history:</strong> SmartFit defaults to <strong className="text-teal-600 dark:text-teal-400">{activeForecastModel}</strong> while more monthly sales history accumulates.
                     </p>
                   )}
+
+                  {/* Visual Data Maturity Lifecycle Pill Bar */}
+                  <div className="mt-3.5 flex flex-wrap items-center gap-2 pt-2 border-t border-teal-500/20 text-[11px]">
+                    <span className="font-semibold text-foreground">Data Lifecycle:</span>
+                    <span className="rounded-md bg-background/80 px-2 py-0.5 border border-border text-muted-foreground">
+                      Months 1–3: Baseline Gathering
+                    </span>
+                    <span className="text-muted-foreground">→</span>
+                    <span className="rounded-md bg-background/80 px-2 py-0.5 border border-border text-muted-foreground">
+                      Months 4–6: SMA-3 Active
+                    </span>
+                    <span className="text-muted-foreground">→</span>
+                    <span className="rounded-md bg-teal-500/15 px-2 py-0.5 border border-teal-500/30 font-semibold text-teal-700 dark:text-teal-300">
+                      Month 7+: Dual Model AutoML Competition (SMA-3 vs SMA-6)
+                    </span>
+                  </div>
                 </div>
               </div>
               {selectedForecast?.comparison && (
@@ -3156,6 +3172,17 @@ export default function AnalyticsPage({
                     <span className="inline-flex items-center gap-2"><span className="w-4 border-t-2 border-dashed border-teal-600" /> SmartFit forecast ({activeForecastModel})</span>
                   )}
                   <span className="ml-auto">Final point = {nextForecastMonth} forecast</span>
+                </div>
+
+                {/* Mathematical Transparency Card */}
+                <div className="mt-3 rounded-xl border border-border/70 bg-muted/20 p-3 text-xs leading-relaxed text-muted-foreground">
+                  <div className="flex items-center gap-1.5 font-semibold text-foreground">
+                    <Info size={13} className="text-primary shrink-0" />
+                    <span>Why does the forecast trajectory begin at Month 4 (July)?</span>
+                  </div>
+                  <p className="mt-1">
+                    Moving averages require completed historical data. <strong className="text-foreground">SMA-3</strong> requires 3 completed prior months (April, May, June) before it can project a forecast for July. Likewise, <strong className="text-foreground">SMA-6</strong> requires 6 completed prior months, so it begins projecting at Month 7 (October). Across shared months, SmartFit compares their accuracy to pick the optimal model.
+                  </p>
                 </div>
               </>
             ) : (

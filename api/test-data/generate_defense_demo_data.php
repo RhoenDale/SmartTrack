@@ -82,16 +82,17 @@ try {
     $seniorIds = ['OSCA-TNG-2023-1184', 'OSCA-TNG-2024-0492', 'OSCA-TNG-2022-8921', 'OSCA-TNG-2024-3419'];
     $pwdIds    = ['PWD-MIS-2023-4029', 'PWD-MIS-2024-1182', 'PWD-MIS-2023-8831'];
 
-    // 3. Define 7 Historical & Current Months (May 2026 to Nov 2026)
-    echo "3. Generating realistic monthly transactions (May 2026 – Nov 2026)...\n";
+    // 3. Define 8 Historical Months (April 2026 to November 2026)
+    echo "3. Generating realistic monthly transactions (April 2026 – November 2026)...\n";
     $months = [
-        ['year' => 2026, 'month' => 5,  'days' => 31, 'baseWeight' => 0.85],
-        ['year' => 2026, 'month' => 6,  'days' => 30, 'baseWeight' => 0.90],
-        ['year' => 2026, 'month' => 7,  'days' => 31, 'baseWeight' => 1.00],
-        ['year' => 2026, 'month' => 8,  'days' => 31, 'baseWeight' => 1.05],
-        ['year' => 2026, 'month' => 9,  'days' => 30, 'baseWeight' => 1.15],
-        ['year' => 2026, 'month' => 10, 'days' => 31, 'baseWeight' => 1.20],
-        ['year' => 2026, 'month' => 11, 'days' => 12, 'baseWeight' => 0.60], // up to Nov 12
+        ['year' => 2026, 'month' => 4,  'days' => 30, 'baseWeight' => 0.95],
+        ['year' => 2026, 'month' => 5,  'days' => 31, 'baseWeight' => 0.98],
+        ['year' => 2026, 'month' => 6,  'days' => 30, 'baseWeight' => 1.00],
+        ['year' => 2026, 'month' => 7,  'days' => 31, 'baseWeight' => 1.02],
+        ['year' => 2026, 'month' => 8,  'days' => 31, 'baseWeight' => 1.04],
+        ['year' => 2026, 'month' => 9,  'days' => 30, 'baseWeight' => 1.06],
+        ['year' => 2026, 'month' => 10, 'days' => 31, 'baseWeight' => 1.08],
+        ['year' => 2026, 'month' => 11, 'days' => 30, 'baseWeight' => 1.05],
     ];
 
     // Existing batches map
@@ -254,19 +255,20 @@ try {
     echo "4. Generating Purchase Orders & Receipts for Supply vs Demand Flow...\n";
 
     $poSuppliers = [
-        ['name' => 'Zuellig Pharma Corporation (Demo)',  'lead' => 5],
-        ['name' => 'United Laboratories (Unilab) (Demo)', 'lead' => 4],
-        ['name' => 'Metro Drug Inc. (Demo)',             'lead' => 7],
-        ['name' => 'Mercury Distributors (Demo)',        'lead' => 3],
+        ['name' => 'Zuellig Pharma Corporation',  'lead' => 5],
+        ['name' => 'United Laboratories (Unilab)', 'lead' => 4],
+        ['name' => 'Metro Drug Inc.',             'lead' => 7],
+        ['name' => 'Mercury Distributors',        'lead' => 3],
     ];
 
     $demoPOs = [
-        ['date' => '2026-05-08', 'recDate' => '2026-05-13', 'status' => 'received', 'supplierIdx' => 0],
-        ['date' => '2026-06-10', 'recDate' => '2026-06-15', 'status' => 'received', 'supplierIdx' => 1],
-        ['date' => '2026-07-06', 'recDate' => '2026-07-12', 'status' => 'received', 'supplierIdx' => 2],
+        ['date' => '2026-04-10', 'recDate' => '2026-04-15', 'status' => 'received', 'supplierIdx' => 0],
+        ['date' => '2026-05-08', 'recDate' => '2026-05-13', 'status' => 'received', 'supplierIdx' => 1],
+        ['date' => '2026-06-10', 'recDate' => '2026-06-15', 'status' => 'received', 'supplierIdx' => 2],
+        ['date' => '2026-07-06', 'recDate' => '2026-07-12', 'status' => 'received', 'supplierIdx' => 3],
         ['date' => '2026-08-11', 'recDate' => '2026-08-16', 'status' => 'received', 'supplierIdx' => 0],
-        ['date' => '2026-09-08', 'recDate' => '2026-09-13', 'status' => 'received', 'supplierIdx' => 3],
-        ['date' => '2026-10-09', 'recDate' => '2026-10-14', 'status' => 'received', 'supplierIdx' => 1],
+        ['date' => '2026-09-08', 'recDate' => '2026-09-13', 'status' => 'received', 'supplierIdx' => 1],
+        ['date' => '2026-10-09', 'recDate' => '2026-10-14', 'status' => 'received', 'supplierIdx' => 2],
         ['date' => '2026-11-04', 'recDate' => null,         'status' => 'ordered',  'supplierIdx' => 0, 'exp' => '2026-11-18'],
     ];
 
