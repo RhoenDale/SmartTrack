@@ -11,6 +11,7 @@ export default function TransactionsPage({
   onAddSale,
   onAddReturn,
   onViewInvoice,
+  showToast,
 }: {
   user: AuthUser;
   transactions: Transaction[];
@@ -19,6 +20,7 @@ export default function TransactionsPage({
   onAddSale: () => void;
   onAddReturn: (tx: Transaction) => void;
   onViewInvoice: (tx: Transaction) => void;
+  showToast?: (msg: string, type?: "success" | "error" | "info") => void;
 }) {
   const todayISO = new Date().toISOString().slice(0, 10); // "YYYY-MM-DD"
   const [typeFilter, setTypeFilter] = useState<"all" | "sale" | "return" | "adjustment">("all");
@@ -98,6 +100,7 @@ export default function TransactionsPage({
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
+    showToast?.("Transactions exported to CSV", "success");
   };
 
   return (

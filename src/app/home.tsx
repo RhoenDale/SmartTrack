@@ -153,8 +153,11 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
   const hubToastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const showHubToast = useCallback((msg: string, type: "success" | "error" | "info" = "success") => {
     if (hubToastTimer.current) clearTimeout(hubToastTimer.current);
+    setTrackHubOpen(false);
+    setTrackHubAssistantOpen(false);
+    setTrackHubAlertPeekOpen(false);
     setHubToast({ msg, type });
-    hubToastTimer.current = setTimeout(() => setHubToast(null), 3200);
+    hubToastTimer.current = setTimeout(() => setHubToast(null), 3600);
   }, []);
 
   useEffect(() => {
@@ -986,7 +989,7 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
     : trackHubAlertPeekOpen
     ? "min(440px, calc(100vw - 24px))"
     : toastOpen
-    ? "280px"
+    ? "min(360px, calc(100vw - 32px))"
     : collapsedPillWidth;
   const pillH         = confirmOpen
     ? "148px"
@@ -997,7 +1000,7 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
     : trackHubAlertPeekOpen
     ? "56px"
     : toastOpen
-    ? "56px"
+    ? "48px"
     : "42px";
 
   useEffect(() => {
@@ -1127,10 +1130,10 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
 
         {/* ── Layer 0: Toast / Notification state (shown when hubToast active) ── */}
         <div
-          className="absolute top-0 left-1/2 w-[280px] h-[56px] flex items-center gap-3 px-4"
+          className="absolute inset-0 w-full h-full flex items-center gap-2.5 px-3.5"
           style={{
             opacity:    toastOpen ? 1 : 0,
-            transform:  toastOpen ? "translateX(-50%) scale(1)" : "translateX(-50%) scale(0.94)",
+            transform:  toastOpen ? "scale(1)" : "scale(0.95)",
             transition: reduceTrackHubMotion ? "none" : toastOpen
               ? "opacity 160ms 60ms ease, transform 220ms 60ms cubic-bezier(0.16, 1, 0.3, 1)"
               : "opacity 60ms ease, transform 60ms ease",
@@ -1138,7 +1141,7 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
           }}
         >
           {/* Icon dot */}
-          <span className={`w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 text-sm ${
+          <span className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 text-xs font-bold ${
             hubToast?.type === "error"
               ? "bg-rose-500/20 text-rose-300"
               : hubToast?.type === "info"
@@ -1151,7 +1154,7 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
           }`}>
             {hubToast?.type === "error" ? "✕" : hubToast?.type === "info" ? (hubToast.msg.toLowerCase().includes("dark") ? "🌙" : hubToast.msg.toLowerCase().includes("light") ? "☀️" : "ℹ") : "✓"}
           </span>
-          <span className="text-[13px] font-semibold text-white/90 leading-tight truncate">
+          <span className="text-xs font-semibold text-white/95 leading-tight truncate">
             {hubToast?.msg}
           </span>
         </div>
@@ -2331,18 +2334,19 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
               userRoles={[user.role]} />}
             {page === "transactions" && <TransactionsPage user={user} transactions={transactions} inventory={inventory}
               selectedTransactionId={selectedTransactionId}
+              showToast={showHubToast}
               onAddSale={() => setShowAddSale(true)} onAddReturn={setReturningTx} onViewInvoice={setViewingInvoice} />}
-            {page === "analytics"    && <AnalyticsPage inventory={inventory} transactions={transactions} userRoles={[user.role]} onEditProduct={handleStockAlertEditProduct} />}
+            {page === "analytics"    && <AnalyticsPage inventory={inventory} transactions={transactions} userRoles={[user.role]} onEditProduct={handleStockAlertEditProduct} showToast={showHubToast} />}
             {page === "stock-alerts" && <StockAlertsPage inventory={inventory} transactions={transactions} onGoToInventory={() => setPage("inventory")} onEditProduct={handleStockAlertEditProduct} userRoles={[user.role]} />}
             {page === "reports"      && <ReportsPage inventory={inventory} transactions={transactions} user={user} />}
             {page === "returns" && (isAdmin || isInventoryManager) && (
               <ReturnsPage user={user} inventory={inventory} onDispositionComplete={handleReturnDispositionComplete} />
             )}
-            {page === "financial"    && isAdmin && <FinancialPage user={user} />}
+            {page === "financial"    && isAdmin && <FinancialPage user={user} showToast={showHubToast} />}
             {page === "purchases" && (isAdmin || isInventoryManager) && <PurchaseOrdersPage inventory={inventory} onInventoryChanged={() => { void loadAll(false); }} userRoles={[user.role]} />}
             {page === "users"        && isAdmin && <UsersPage staff={staff} currentUserId={user.id} currentUserRoles={[user.role]} currentUserName={user.name} roles={roles} onAddUser={() => setShowAddUser(true)} onEditUser={setEditingUser} onDeleteUser={handleDeleteUser} onToggleStatus={handleToggleStatus} onResetPassword={handleAdminResetPassword} onCreatePassword={handleAdminCreatePassword} onRolesChanged={() => { rolesApi.list().then(setRoles).catch(() => {}); }} />}
             {page === "activity-log" && <ActivityLogPanel isAdmin={isAdmin} />}
-            {page === "recycle-bin"  && (isAdmin || isInventoryManager) && <RecycleBinPanel currentUserRoles={[user.role]} currentUserName={user.name} onRestored={() => void loadAll(false)} />}
+            {page === "recycle-bin"  && (isAdmin || isInventoryManager) && <RecycleBinPanel currentUserRoles={[user.role]} currentUserName={user.name} onRestored={() => void loadAll(false)} showToast={showHubToast} />}
             </div>
           </main>
         </div>

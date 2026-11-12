@@ -208,18 +208,13 @@ export function ProductImportModal({
 
     try {
       const res = await productsApi.bulkImport(validRows as unknown as Record<string, unknown>[]);
-      setResultMsg({
-        text: `Success! Imported ${res.created} new medicines and updated ${res.updated} existing records.`,
-        type: "success",
-      });
-      showToast?.(`Imported ${res.total} products successfully.`, "success");
+      onClose();
+      showToast?.(`Imported ${res.total} medicines successfully`, "success");
       onSuccess?.();
-      setTimeout(() => {
-        onClose();
-      }, 1800);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Failed to import products.";
       setResultMsg({ text: msg, type: "error" });
+      showToast?.(msg, "error");
     } finally {
       setImporting(false);
     }

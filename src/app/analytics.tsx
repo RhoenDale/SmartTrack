@@ -88,6 +88,8 @@ export function SmaFormulaVisual({
               <>
                 A<sub>t-1</sub> + A<sub>t-2</sub> + … + A<sub>t-6</sub>
               </>
+            ) : smaLoading ? (
+              <p className="mt-3 text-xs text-muted-foreground">Loading sales history to compare the estimates…</p>
             ) : (
               <>
                 A<sub>1</sub> + A<sub>2</sub> + … + A<sub>n</sub>
@@ -187,14 +189,12 @@ function ForecastTrendChart({
   sma6: number;
   periodUnit?: "month" | "week";
 }) {
-  const lastIdx = history.length - 1;
-  const unitShort = periodUnit === "week" ? "wk" : "mo";
   const data = [
-    ...history.map((point, idx) => ({
+    ...history.map(point => ({
       month: point.month,
       actual: point.demand,
-      sma3Forecast: point.sma3 != null ? Math.round(point.sma3) : (idx === lastIdx ? point.demand : null),
-      sma6Forecast: point.sma6 != null ? Math.round(point.sma6) : (idx === lastIdx ? point.demand : null),
+      sma3Forecast: point.sma3 != null ? Math.round(point.sma3) : null,
+      sma6Forecast: point.sma6 != null ? Math.round(point.sma6) : null,
     })),
     {
       month: nextPeriod,
@@ -213,17 +213,22 @@ function ForecastTrendChart({
           <Tooltip
             formatter={(value: number, name: string) => {
               if (value == null) return [null, null];
-              return [`${Number(value).toLocaleString()} units`, name];
+              const label = name === "actual"
+                ? "Recorded sales"
+                : name === "sma3Forecast"
+                  ? "SMA-3 estimate"
+                  : "SMA-6 estimate";
+              return [`${Number(value).toLocaleString()} units`, label];
             }}
-            labelFormatter={label => `${label}${label === nextPeriod ? ` · Forecasted Next ${periodUnit === "week" ? "Week" : "Month"}` : " · Historical Back-test & Actual Sales"}`}
+            labelFormatter={label => `${label}${label === nextPeriod ? ` · Next ${periodUnit === "week" ? "week" : "month"} estimate` : " · Recorded sales and past estimates"}`}
             contentStyle={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 10, fontSize: 11, color: "var(--foreground)" }}
           />
           <ReferenceLine x={nextPeriod} stroke="var(--border)" strokeDasharray="4 4" />
-          <Line type="monotone" dataKey="actual" name="Actual sales" stroke="#2563eb" strokeWidth={2.5} dot={{ r: 3.5, fill: "#2563eb" }} activeDot={{ r: 5.5 }} connectNulls={false} isAnimationActive={false} />
+          <Line type="monotone" dataKey="actual"           name="actual" stroke="#2563eb" strokeWidth={2.5} dot={{ r: 3.5, fill: "#2563eb" }} activeDot={{ r: 5.5 }} connectNulls={false} isAnimationActive={false} />
           <Line
             type="monotone"
             dataKey="sma3Forecast"
-            name={`SMA-3 Forecast (3-${unitShort} avg)`}
+            name="sma3Forecast"
             stroke="#f97316"
             strokeWidth={2.2}
             strokeDasharray="6 4"
@@ -247,7 +252,7 @@ function ForecastTrendChart({
           <Line
             type="monotone"
             dataKey="sma6Forecast"
-            name={`SMA-6 Forecast (6-${unitShort} avg)`}
+            name="sma6Forecast"
             stroke="#8b5cf6"
             strokeWidth={2.2}
             strokeDasharray="3 4"
@@ -569,6 +574,8 @@ function EoqBreakdownModal({
     leadTimeDays: number;
     safetyBufferPercent: number;
     totalSold: number;
+    demandSourceLabel: string;
+    costSourceLabel: string;
     overrideQty?: number | null;
   };
   onClose: () => void;
@@ -586,6 +593,8 @@ function EoqBreakdownModal({
     holdingCost,
     leadTimeDays,
     safetyBufferPercent,
+    demandSourceLabel,
+    costSourceLabel,
     overrideQty,
   } = data;
   const [customQtyInput, setCustomQtyInput] = useState(
@@ -613,12 +622,15 @@ function EoqBreakdownModal({
         <div className="space-y-4 overflow-y-auto p-5 text-sm">
           <div>
             <p className="font-medium text-foreground">Economic Order Quantity (EOQ)</p>
+            <p className="mt-1 text-xs leading-relaxed text-muted-foreground">This is a suggested order size that balances order-placement and stock-holding costs. Review it before placing an order.</p>
             <p className="mt-1 rounded-lg bg-muted/50 px-3 py-2 text-center font-mono text-xs text-foreground">EOQ = √(2 × D × S ÷ H)</p>
             <div className="mt-2 grid grid-cols-1 gap-1.5 text-xs sm:grid-cols-2">
               <p className="text-muted-foreground">D · Expected yearly demand <strong className="text-foreground">{annualDemand.toLocaleString()} units</strong></p>
+              <p className="text-muted-foreground sm:col-span-2">Demand source <strong className="text-foreground">{demandSourceLabel}</strong></p>
               <p className="text-muted-foreground">S · Cost to place an order <strong className="text-foreground">{fmt(orderCost)}</strong></p>
               <p className="text-muted-foreground">H · Yearly holding cost/unit <strong className="text-foreground">{fmt(holdingCost)}</strong></p>
               <p className="text-muted-foreground">Unit cost <strong className="text-foreground">{fmt(unitCost)}</strong></p>
+              <p className="text-muted-foreground sm:col-span-2">Cost source <strong className="text-foreground">{costSourceLabel}</strong></p>
             </div>
             <ol className="mt-3 space-y-1 text-xs text-muted-foreground">
               <li>1. 2 × {annualDemand.toLocaleString()} × {fmt(orderCost)} = <strong className="text-foreground">{numerator.toLocaleString()}</strong></li>
@@ -934,11 +946,13 @@ export default function AnalyticsPage({
   transactions,
   userRoles,
   onEditProduct,
+  showToast,
 }: {
   inventory: Product[];
   transactions: Transaction[];
   userRoles: string[];
   onEditProduct?: (product: Product) => void;
+  showToast?: (msg: string, type?: "success" | "error" | "info") => void;
 }) {
   const [scope, setScope] = useState("all");
   const [activeSection, setActiveSection] = useState<"Overview" | "Forecast" | "Restocking" | "Products">(() => {
@@ -1275,19 +1289,24 @@ export default function AnalyticsPage({
 
   const selectedForecast = useMemo(() => {
     const comparable = smaChartData
-      .filter(point => point.demand > 0 && point.sma3 != null && point.sma6 != null)
+      .filter(point => point.sma3 != null && point.sma6 != null)
       .map(point => ({ actual: point.demand, sma3: point.sma3 ?? 0, sma6: point.sma6 ?? 0 }));
-    if (comparable.length < 1) {
-      if (sma3Error) return { model: "SMA-3" as const, smape: sma3Error.smape, points: sma3Error.points };
-      return null;
-    }
+    if (comparable.length < 1) return null;
     const sma3Score = computeSmape(comparable.map(point => ({ actual: point.actual, forecast: point.sma3 })));
     const sma6Score = computeSmape(comparable.map(point => ({ actual: point.actual, forecast: point.sma6 })));
     if (!sma3Score || !sma6Score) return null;
     const model = sma3Score.smape <= sma6Score.smape ? ("SMA-3" as const) : ("SMA-6" as const);
     const selected = model === "SMA-3" ? sma3Score : sma6Score;
-    return { model, smape: selected.smape, points: comparable.length };
-  }, [smaChartData, sma3Error]);
+    return {
+      model,
+      smape: selected.smape,
+      points: selected.points,
+      comparison: {
+        sma3: sma3Score.smape,
+        sma6: sma6Score.smape,
+      },
+    };
+  }, [smaChartData]);
 
   const selectedForecastUnits = selectedForecast
     ? selectedForecast.model === "SMA-3" ? forecastSMA3 : forecastSMA6
@@ -1739,34 +1758,45 @@ export default function AnalyticsPage({
         let annualProductDemand = 0;
         let isDemandFallback = false;
         let demandSourceLabel = "";
+        let demandSourceShort = "";
 
         if (totalSold === 0) {
           isDemandFallback = true;
           annualProductDemand = Math.max(10, minReorderUnits * 6);
           demandSourceLabel = `Fallback estimate (0 sales — 6× min threshold of ${minReorderUnits}u)`;
+          demandSourceShort = "No sales · fallback";
         } else if (demandBasis === "sma3") {
           const base = monthlySma3 > 0 ? monthlySma3 : histMonthly;
           annualProductDemand = base * 12;
           demandSourceLabel = monthlySma3 > 0
             ? `SMA-3 forecast (${Math.round(monthlySma3)} u/mo × 12)`
             : `All-time avg (${totalSold} sold ÷ ${storeMonths} mos × 12)`;
+          demandSourceShort = monthlySma3 > 0 ? "SMA-3" : "Available sales average";
         } else if (demandBasis === "sma6") {
           const base = monthlySma6 > 0 ? monthlySma6 : histMonthly;
           annualProductDemand = base * 12;
           demandSourceLabel = monthlySma6 > 0
             ? `SMA-6 forecast (${Math.round(monthlySma6)} u/mo × 12)`
             : `All-time avg (${totalSold} sold ÷ ${storeMonths} mos × 12)`;
+          demandSourceShort = monthlySma6 > 0 ? "SMA-6" : "Available sales average";
         } else if (demandBasis === "historical") {
           annualProductDemand = histMonthly * 12;
           demandSourceLabel = `All-time monthly avg (${totalSold} sold ÷ ${storeMonths} mos × 12)`;
+          demandSourceShort = "All-time sales average";
         } else {
           // "auto" — use product's recommended SMA model
           const recModel = pf?.recommendedModel ?? "SMA-3";
-          const chosenMonthly = recModel === "SMA-6" && monthlySma6 > 0 ? monthlySma6 : (monthlySma3 > 0 ? monthlySma3 : histMonthly);
+          const chosenModel = recModel === "SMA-6" && monthlySma6 > 0
+            ? "SMA-6"
+            : monthlySma3 > 0
+              ? "SMA-3"
+              : null;
+          const chosenMonthly = chosenModel === "SMA-6" ? monthlySma6 : chosenModel === "SMA-3" ? monthlySma3 : histMonthly;
           annualProductDemand = chosenMonthly * 12;
-          demandSourceLabel = chosenMonthly > 0 && (monthlySma3 > 0 || monthlySma6 > 0)
-            ? `Recommended ${recModel} (${Math.round(chosenMonthly)} u/mo × 12)`
+          demandSourceLabel = chosenModel
+            ? `Recommended ${chosenModel} (${Math.round(chosenMonthly)} u/mo × 12)`
             : `All-time avg (${totalSold} sold ÷ ${storeMonths} mos × 12)`;
+          demandSourceShort = chosenModel ? `Recommended ${chosenModel}` : "All-time sales average";
         }
 
         const batchesWithCost = p.batches.filter(batch => batch.unitCost != null && batch.unitCost > 0);
@@ -1812,6 +1842,7 @@ export default function AnalyticsPage({
           safetyBufferPercent: safetyBufferSetting,
           isDemandFallback,
           demandSourceLabel,
+          demandSourceShort,
           isCostEstimated,
           costSourceLabel,
         };
@@ -1979,6 +2010,7 @@ export default function AnalyticsPage({
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
+    showToast?.("Analytics dataset exported to CSV", "success");
   };
 
   const [confirmExportCsv, setConfirmExportCsv] = useState(false);
@@ -2957,19 +2989,54 @@ export default function AnalyticsPage({
 
       {activeSection === "Forecast" && (
         <section className="space-y-5">
+          <section className="rounded-2xl border border-primary/15 bg-primary/[0.04] p-4 sm:p-5">
+            <div className="flex items-start gap-3">
+              <span className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full bg-primary" />
+              <div className="min-w-0">
+                <h2 className="text-sm font-semibold text-foreground">Why are there two estimates?</h2>
+                <p className="mt-1 max-w-3xl text-sm leading-relaxed text-muted-foreground">
+                  Both estimate sales for the same next month. <strong className="text-foreground">SMA-3</strong> averages the latest 3 available months and reacts faster to changes; <strong className="text-foreground">SMA-6</strong> averages up to 6 months and is steadier. Neither is a guarantee.
+                </p>
+                {selectedForecast?.comparison ? (
+                  <div className="mt-3 text-xs leading-relaxed text-muted-foreground" aria-live="polite">
+                    <strong className="text-foreground">Past comparison:</strong> Across {selectedForecast.points} shared months, SMA-3 was {selectedForecast.comparison.sma3.toFixed(1)}% away from recorded sales and SMA-6 was {selectedForecast.comparison.sma6.toFixed(1)}% away on average. A smaller gap means a closer fit to that history. SmartTrack starts with {selectedForecast.model}; you can choose either estimate below.
+                    <InfoTip title="How the past comparison works" lines={["SmartTrack compares both models only on months where both had a past estimate. The percentage is their average difference from recorded sales; it describes past performance, not a promise about next month."]} />
+                  </div>
+                ) : (
+                  <p className="mt-3 text-xs text-muted-foreground">
+                    <strong className="text-foreground">No fair comparison yet.</strong> More shared sales history is needed before SmartTrack can compare which estimate tracked past sales more closely. You can still choose either model.
+                  </p>
+                )}
+              </div>
+            </div>
+          </section>
+
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             {([
-              { model: "SMA-3" as const, label: "Recent 3-month average", units: forecastSMA3, help: "Averages the latest three completed months. It responds more quickly to recent changes." },
-              { model: "SMA-6" as const, label: "Steadier 6-month average", units: forecastSMA6, help: "Averages up to six completed months for a steadier estimate." },
+              { model: "SMA-3" as const, label: "Faster to react", units: forecastSMA3, months: last3.length, window: 3, color: "bg-orange-500", help: "Uses the latest available months. Best for seeing recent changes sooner." },
+              { model: "SMA-6" as const, label: "Steadier baseline", units: forecastSMA6, months: last6.length, window: 6, color: "bg-violet-500", help: "Uses a longer history when available. Recent changes have less influence." },
             ]).map(option => (
-              <section key={option.model} className={`${ANALYTICS_CARD_CLASS} p-5`}>
+              <section key={option.model} className={`${ANALYTICS_CARD_CLASS} p-4 sm:p-5`}>
                 <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="text-sm font-medium text-muted-foreground">{option.label}</p>
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className={`h-2 w-2 rounded-full ${option.color}`} />
+                      <p className="text-sm font-semibold text-foreground">{option.model}</p>
+                      <span className="text-xs text-muted-foreground">· {option.label}</span>
+                      {selectedModelOverride == null && selectedForecast?.model === option.model && (
+                        <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">SmartTrack’s starting pick</span>
+                      )}
+                    </div>
                     <p className="mt-2 text-3xl font-semibold tracking-tight tabular-nums text-foreground">
-                      {Math.round(option.units).toLocaleString()} <span className="text-base font-medium text-muted-foreground">units</span>
+                      {smaMonths.length ? Math.round(option.units).toLocaleString() : "—"} <span className="text-base font-medium text-muted-foreground">{smaMonths.length ? "units" : ""}</span>
                     </p>
-                    <p className="mt-1 text-xs text-muted-foreground">Expected for {nextForecastMonth} · {option.model}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {smaLoading
+                        ? "Loading sales history…"
+                        : smaMonths.length
+                          ? `Expected for ${nextForecastMonth} · uses ${option.months} of ${option.window} available months`
+                          : "No recorded sales history for this selection"}
+                    </p>
                   </div>
                   <button
                     type="button"
@@ -2979,7 +3046,12 @@ export default function AnalyticsPage({
                     Show Math
                   </button>
                 </div>
-                <p className="mt-4 border-t border-border/60 pt-3 text-xs text-muted-foreground">{option.help}</p>
+                <p className="mt-4 border-t border-border/60 pt-3 text-xs text-muted-foreground">
+                  {option.help}
+                  {option.months > 0 && option.months < option.window && (
+                    <span className="mt-1 block">Short history: this estimate uses {option.months} available {option.months === 1 ? "month" : "months"}, not a full {option.window}.</span>
+                  )}
+                </p>
                 <button
                   type="button"
                   aria-pressed={activeForecastModel === option.model}
@@ -2990,7 +3062,7 @@ export default function AnalyticsPage({
                       : "text-muted-foreground hover:bg-muted hover:text-foreground"
                   }`}
                 >
-                  {activeForecastModel === option.model ? "Selected estimate" : "Use this estimate"}
+                  {activeForecastModel === option.model ? "Currently selected" : `Use ${option.model}`}
                 </button>
               </section>
             ))}
@@ -2999,20 +3071,28 @@ export default function AnalyticsPage({
           <section className={`${ANALYTICS_CARD_CLASS} min-w-0 p-4 sm:p-5`}>
             <div className="mb-4">
               <h3 className="text-sm font-semibold text-foreground">Monthly sales history</h3>
-              <p className="mt-1 text-xs text-muted-foreground">Compare recorded sales with SMA-3 and SMA-6.</p>
+              <p className="mt-1 text-xs text-muted-foreground">Solid line = recorded sales. Dashed lines = each model’s past estimates; their final points show next month.</p>
             </div>
             {smaLoading ? (
               <p className="py-12 text-center text-sm text-muted-foreground">Loading sales history…</p>
             ) : smaChartData.length ? (
-              <div className="h-[300px] w-full">
-                <ForecastTrendChart
-                  history={smaChartData}
-                  nextPeriod={nextForecastMonth}
-                  sma3={forecastSMA3}
-                  sma6={forecastSMA6}
-                  periodUnit="month"
-                />
-              </div>
+              <>
+                <div className="h-[300px] w-full">
+                  <ForecastTrendChart
+                    history={smaChartData}
+                    nextPeriod={nextForecastMonth}
+                    sma3={forecastSMA3}
+                    sma6={forecastSMA6}
+                    periodUnit="month"
+                  />
+                </div>
+                <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-border/50 pt-3 text-[11px] text-muted-foreground">
+                  <span className="inline-flex items-center gap-2"><span className="h-0.5 w-4 bg-blue-600" /> Recorded sales</span>
+                  <span className="inline-flex items-center gap-2"><span className="w-4 border-t-2 border-dashed border-orange-500" /> SMA-3 estimate</span>
+                  <span className="inline-flex items-center gap-2"><span className="w-4 border-t-2 border-dashed border-violet-500" /> SMA-6 estimate</span>
+                  <span className="ml-auto">Final points = next month</span>
+                </div>
+              </>
             ) : (
               <p className="py-12 text-center text-sm text-muted-foreground">No sales history available for this selection.</p>
             )}
@@ -3022,7 +3102,7 @@ export default function AnalyticsPage({
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/60 p-4">
               <div>
                 <h3 className="text-sm font-semibold text-foreground">Expected sales by medicine</h3>
-                <p className="mt-1 text-xs text-muted-foreground">{productForecastList.length} medicines · {activeForecastModel} estimates</p>
+                <p className="mt-1 text-xs text-muted-foreground">{productForecastList.length} medicines · using {activeForecastModel}</p>
               </div>
               <div className="relative w-full sm:w-64">
                 <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
@@ -3041,7 +3121,12 @@ export default function AnalyticsPage({
                   <tr>
                     <th className="px-4 py-3 font-medium">Medicine</th>
                     <th className="px-4 py-3 font-medium">Recent monthly sales</th>
-                    <th className="px-4 py-3 text-right font-medium">Expected next month</th>
+                    <th className="px-4 py-3 text-right font-medium">
+                      <div className="inline-flex items-center justify-end gap-1.5">
+                        Expected next month
+                        <InfoTip title="Expected next month" lines={[`This is the selected ${activeForecastModel} average for each medicine. It uses up to ${activeForecastModel === "SMA-3" ? "3" : "6"} of that medicine’s most recent available sales months.`]} />
+                      </div>
+                    </th>
                     <th className="px-4 py-3 text-right font-medium">In stock</th>
                   </tr>
                 </thead>
@@ -3059,7 +3144,9 @@ export default function AnalyticsPage({
                             ? row.recent3Periods.map(period => `${period.label}: ${period.qty}`).join(" · ")
                             : "No recorded sales"}
                         </td>
-                        <td className="px-4 py-3 text-right font-medium tabular-nums text-foreground">{Math.round(forecast).toLocaleString()} units</td>
+                        <td className="px-4 py-3 text-right font-medium tabular-nums text-foreground">
+                          {row.totalSold > 0 ? `${Math.round(forecast).toLocaleString()} units` : <span className="font-normal text-muted-foreground">No sales history</span>}
+                        </td>
                         <td className="px-4 py-3 text-right tabular-nums text-foreground">{row.product.stock.toLocaleString()}</td>
                       </tr>
                     );
@@ -3089,41 +3176,74 @@ export default function AnalyticsPage({
           )}
 
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <SummaryCard label="Medicines to Restock" value={`${reorderRecs.length}`} note="Currently below their restock level" />
-            <SummaryCard label="Suggested Order Budget" value={fmt(estimatedRestockCost)} note="Estimated from suggested quantities" />
+            <SummaryCard label="Medicines to Restock" value={`${reorderRecs.length}`} note="Marked out, critical, or low in current stock status" />
+            <SummaryCard
+              label="Suggested Order Budget"
+              value={fmt(estimatedRestockCost)}
+              note={reorderRecs.some(rec => rec.isCostEstimated)
+                ? "Estimate from suggested quantities; some unit costs are estimated"
+                : "Estimate from suggested quantities and recorded batch costs"}
+            />
           </div>
 
-          <section className={`${ANALYTICS_CARD_CLASS} flex flex-wrap items-center justify-between gap-3 p-4`}>
-            <div>
-              <p className="text-sm font-medium text-foreground">Demand used for the restock plan</p>
-              <p className="mt-1 text-xs text-muted-foreground">SMA-3 reacts faster; SMA-6 provides a steadier average.</p>
-            </div>
-            <div className="inline-flex rounded-xl bg-muted p-1" role="group" aria-label="Restocking demand model">
-              {([
-                { id: "auto", label: "Automatic SMA-3/6" },
-                { id: "sma3", label: "SMA-3" },
-                { id: "sma6", label: "SMA-6" },
-              ] as const).map(option => (
-                <button
-                  key={option.id}
-                  type="button"
-                  aria-pressed={demandBasis === option.id}
-                  onClick={() => handleSetDemandBasis(option.id)}
-                  className={`rounded-lg px-3 py-2 text-xs font-medium ${
-                    demandBasis === option.id ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
-                  }`}
-                >
-                  {option.label}
+          <section className={`${ANALYTICS_CARD_CLASS} space-y-4 p-4`}>
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="text-sm font-semibold text-foreground">From sales estimate to order plan</p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  The demand estimate becomes yearly demand (D), which informs both when to reorder and how much to order.
+                </p>
+              </div>
+              <div className="flex gap-2">
+                <button type="button" onClick={() => setShowEoqSettingsModal(true)} className="rounded-xl border border-border px-3 py-2 text-xs font-semibold text-foreground hover:bg-muted">
+                  Planning settings
                 </button>
-              ))}
+                <button type="button" onClick={() => setSmaInspector("eoq")} className="rounded-xl border border-border px-3 py-2 text-xs font-semibold text-primary hover:bg-primary/5">
+                  EOQ formula
+                </button>
+              </div>
             </div>
-            <div className="flex gap-2">
-              <button type="button" onClick={() => setShowEoqSettingsModal(true)} className="rounded-xl border border-border px-3 py-2 text-xs font-semibold text-foreground hover:bg-muted">
-                Planning settings
-              </button>
-              <button type="button" onClick={() => setSmaInspector("eoq")} className="rounded-xl border border-border px-3 py-2 text-xs font-semibold text-primary hover:bg-primary/5">
-                Show Math
-              </button>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-xs font-medium text-foreground">Sales estimate used for this plan</p>
+                <p className="mt-1 max-w-3xl text-xs leading-relaxed text-muted-foreground">
+                  {demandBasis === "auto"
+                    ? "Auto picks SMA-3 or SMA-6 separately for each medicine, based on which tracked its past sales more closely. With limited history it falls back to the available sales average; medicines with no sales use a clearly labeled minimum-based estimate."
+                    : demandBasis === "sma3"
+                      ? "SMA-3 is applied across medicines where available. If a medicine lacks a usable SMA-3 estimate, its available sales average is used instead."
+                      : demandBasis === "sma6"
+                        ? "SMA-6 is applied across medicines where available. If a medicine lacks a usable SMA-6 estimate, its available sales average is used instead."
+                        : "A previously saved all-time sales average is in use. Choose SMA-3 or SMA-6 to use one of the two forecast models."}
+                </p>
+              </div>
+              <div className="inline-flex max-w-full flex-wrap rounded-xl bg-muted p-1" role="group" aria-label="Restocking demand model">
+                {([
+                  { id: "auto", label: "Auto · per medicine" },
+                  { id: "sma3", label: "SMA-3" },
+                  { id: "sma6", label: "SMA-6" },
+                ] as const).map(option => (
+                  <button
+                    key={option.id}
+                    type="button"
+                    aria-pressed={demandBasis === option.id}
+                    onClick={() => handleSetDemandBasis(option.id)}
+                    className={`rounded-lg px-3 py-2 text-xs font-medium ${
+                      demandBasis === option.id ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-2 border-t border-border/60 pt-3 text-[11px] text-muted-foreground" aria-label="Restocking calculation flow">
+              <span className="rounded-md bg-muted/70 px-2 py-1">SMA sales estimate</span>
+              <span aria-hidden="true">→</span>
+              <span className="rounded-md bg-muted/70 px-2 py-1">Yearly demand (D)</span>
+              <span aria-hidden="true">→</span>
+              <span className="rounded-md bg-muted/70 px-2 py-1">ROP: when to order</span>
+              <span aria-hidden="true">+</span>
+              <span className="rounded-md bg-muted/70 px-2 py-1">EOQ: how much to order</span>
             </div>
           </section>
 
@@ -3150,8 +3270,18 @@ export default function AnalyticsPage({
                   <tr>
                     <th className="px-4 py-3 font-medium">Medicine</th>
                     <th className="px-4 py-3 font-medium">In stock</th>
-                    <th className="px-4 py-3 font-medium">Restock when at</th>
-                    <th className="px-4 py-3 font-medium">Suggested order</th>
+                    <th className="px-4 py-3 font-medium">
+                      <div className="inline-flex items-center gap-1.5">
+                        Restock when at
+                        <InfoTip title="Reorder point (ROP)" lines={["The stock threshold for reordering. It covers estimated demand during supplier lead time plus your safety buffer. When stock reaches or falls below this level, review the item."]} />
+                      </div>
+                    </th>
+                    <th className="px-4 py-3 font-medium">
+                      <div className="inline-flex items-center gap-1.5">
+                        Suggested order
+                        <InfoTip title="Suggested order size (EOQ)" lines={["A recommended quantity that balances the cost of placing orders with the cost of holding stock. It is a planning suggestion, not an automatic order; you can review or change it."]} />
+                      </div>
+                    </th>
                     <th className="px-4 py-3 text-right font-medium">Estimated cost</th>
                     <th className="px-4 py-3 text-right font-medium">Actions</th>
                   </tr>
@@ -3162,6 +3292,7 @@ export default function AnalyticsPage({
                       <td className="px-4 py-3">
                         <p className="font-medium text-foreground">{rec.product.name}</p>
                         <p className="mt-0.5 text-xs text-muted-foreground">{rec.product.category}</p>
+                        <p className="mt-1 text-[10px] text-muted-foreground" title={rec.demandSourceLabel}>Demand source: {rec.demandSourceShort}</p>
                       </td>
                       <td className="px-4 py-3 tabular-nums text-foreground">{rec.product.stock.toLocaleString()} units</td>
                       <td className="px-4 py-3 tabular-nums text-foreground">{rec.suggestedRop.toLocaleString()} units</td>
@@ -3409,7 +3540,9 @@ export default function AnalyticsPage({
               : "No recorded sales periods are available for this scope.",
             ...(last3.length ? [`Step 2: ${last3.reduce((sum, m) => sum + m.demand, 0).toLocaleString()} ÷ ${last3.length} = about ${Math.round(sma3Computed).toLocaleString()} units.`] : []),
           ]}
-          result={`Estimated demand for ${nextForecastMonth}: ≈ ${Math.round(sma3Computed).toLocaleString()} units`}
+          result={smaMonths.length
+            ? `Estimated demand for ${nextForecastMonth}: ≈ ${Math.round(sma3Computed).toLocaleString()} units`
+            : "No estimate yet — record sales to generate a forecast."}
           onClose={() => setSmaInspector(null)}
         />
       )}
@@ -3431,7 +3564,9 @@ export default function AnalyticsPage({
               : "No recorded sales periods are available for this scope.",
             ...(last6.length ? [`Step 2: ${last6.reduce((sum, m) => sum + m.demand, 0).toLocaleString()} ÷ ${last6.length} = about ${Math.round(sma6Computed).toLocaleString()} units.`] : []),
           ]}
-          result={`Estimated demand for ${nextForecastMonth}: ≈ ${Math.round(sma6Computed).toLocaleString()} units`}
+          result={smaMonths.length
+            ? `Estimated demand for ${nextForecastMonth}: ≈ ${Math.round(sma6Computed).toLocaleString()} units`
+            : "No estimate yet — record sales to generate a forecast."}
           onClose={() => setSmaInspector(null)}
         />
       )}
@@ -3440,7 +3575,7 @@ export default function AnalyticsPage({
         <CalcInspectorModal
           title="EOQ Restocking — Calculation"
           formula={<EoqFormulaVisual />}
-          explanation={`EOQ answers ‘what order size balances supplier ordering fees against the cost of holding stock?’ It connects directly to your chosen Demand Basis (${demandBasis.toUpperCase()}) and your configured cost parameters (S = ₱${globalOrderCost.toFixed(2)}, I = ${Math.round(holdingRateSetting * 100)}%).`}
+          explanation={`EOQ is a suggested order size that balances order-placement and stock-holding costs. This store-level illustration uses ${demandBasis === "auto" ? `the active ${activeForecastModel} estimate` : demandBasis === "historical" ? "the saved all-time sales average" : `the ${demandBasis.toUpperCase()} estimate`}; individual medicine rows show their exact demand source in Show Math. Cost settings: order placement ₱${globalOrderCost.toFixed(2)} and holding rate ${Math.round(holdingRateSetting * 100)}%.`}
           variables={[
             { label: `Annual Demand (D · ${demandBasis.toUpperCase()})`, value: `${Math.round(annualDemand).toLocaleString()} units/yr` },
             { label: "Order Cost (S)", value: `₱${globalOrderCost.toFixed(2)} / batch` },
@@ -3453,7 +3588,7 @@ export default function AnalyticsPage({
             `Ratio = ${Math.round(eoqNumerator).toLocaleString()} ÷ ₱${globalHoldingCost.toFixed(2)} = ${Math.round(eoqRatio).toLocaleString()}`,
             `EOQ = √(${Math.round(eoqRatio).toLocaleString()})`,
           ]}
-          result={`EOQ ≈ ${eoqOverall.toLocaleString()} units — Optimal order batch size`}
+          result={`EOQ ≈ ${eoqOverall.toLocaleString()} units — suggested balanced order size`}
           onClose={() => setSmaInspector(null)}
         />
       )}

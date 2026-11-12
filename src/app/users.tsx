@@ -386,9 +386,10 @@ type RecycleConfirmState =
 const AUTO_PURGE_DAYS = 30;
 
 export function RecycleBinPanel({
-  currentUserRoles, currentUserName, onRestored,
+  currentUserRoles, currentUserName, onRestored, showToast,
 }: {
   currentUserRoles: string[]; currentUserName: string; onRestored: () => void;
+  showToast?: (msg: string, type?: "success" | "error" | "info") => void;
 }) {
   const [deletedUsers,    setDeletedUsers]    = useState<DeletedUser[]>([]);
   const [deletedProducts, setDeletedProducts] = useState<DeletedProduct[]>([]);
@@ -435,6 +436,7 @@ export function RecycleBinPanel({
       }
       onRestored();
       await load();
+      showToast?.(`"${state.item.name}" restored successfully`, "success");
     } catch (e) { setError(e instanceof Error ? e.message : "Restore failed."); }
     finally { setBusy(null); setConfirmRestore(null); }
   };
@@ -449,6 +451,7 @@ export function RecycleBinPanel({
         await productsApi.purge(state.item.id);
       }
       await load();
+      showToast?.(`"${state.item.name}" permanently deleted`, "info");
     } catch (e) { setError(e instanceof Error ? e.message : "Purge failed."); }
     finally { setBusy(null); setConfirmPurge(null); }
   };
@@ -464,6 +467,7 @@ export function RecycleBinPanel({
       ]);
       appendLog({ actor: currentUserName, action: `purged ${expired.length} expired items`, subject: "Recycle Bin", kind: "delete" });
       await load();
+      showToast?.(`Cleared ${expired.length} expired items`, "info");
     } catch (e) { setError(e instanceof Error ? e.message : "Purge failed."); }
     finally { setBusy(null); setConfirmPurgeAll(false); }
   };

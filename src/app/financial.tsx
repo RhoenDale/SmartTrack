@@ -80,7 +80,7 @@ function KpiCard({
 }
 
 // ─── Main page ────────────────────────────────────────────────────────────────
-export default function FinancialPage({ user }: { user: AuthUser }) {
+export default function FinancialPage({ user, showToast }: { user: AuthUser; showToast?: (msg: string, type?: "success" | "error" | "info") => void }) {
   type Tab = "overview" | "ledger" | "breakdown" | "staff" | "income";
   const [tab, setTab]           = useState<Tab>("overview");
   const [dateFrom, setDateFrom] = useState("");
@@ -1182,7 +1182,11 @@ export default function FinancialPage({ user }: { user: AuthUser }) {
           confirmLabel="Export"
           cancelLabel="Cancel"
           variant="info"
-          onConfirm={() => { setConfirmExportCsv(false); financialApi.exportCsv(tab === "ledger" ? ledgerType : "all", dateFrom, dateTo); }}
+          onConfirm={() => {
+            setConfirmExportCsv(false);
+            financialApi.exportCsv(tab === "ledger" ? ledgerType : "all", dateFrom, dateTo);
+            showToast?.("Financial ledger exported to CSV", "success");
+          }}
           onCancel={() => setConfirmExportCsv(false)}
         />
       )}
