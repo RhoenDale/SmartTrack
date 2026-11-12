@@ -2468,7 +2468,7 @@ export default function AnalyticsPage({
       inputs: [
         { symbol: "SMA-3", label: "3-Month Moving Avg", value: `${row.sma3.toFixed(1)} u/mo` },
         { symbol: "SMA-6", label: "6-Month Moving Avg", value: `${row.sma6.toFixed(1)} u/mo` },
-        { symbol: "k*", label: "Champion Model", value: row.kStar },
+        { symbol: "k*", label: "Optimal Model (Best-Fit SMA)", value: row.kStar },
         { symbol: "d", label: "Daily Demand Rate", value: `${row.d.toFixed(2)} u/day` },
         { symbol: "L", label: "Supplier Lead Time", value: `${row.L} days` },
         { symbol: "SS", label: `Safety Stock (${safetyBufferSetting}% buf)`, value: `${row.ss.toFixed(1)} units` },
@@ -2479,7 +2479,7 @@ export default function AnalyticsPage({
       ],
       steps: [
         {
-          label: "Daily burn rate from champion moving average",
+          label: "Daily burn rate from optimal moving average (SMA-k*)",
           expr: `${row.champMonthly.toFixed(1)} u/mo ÷ 30.4 days`,
           result: `${row.d.toFixed(2)} units/day`,
         },
