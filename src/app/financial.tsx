@@ -271,10 +271,44 @@ export default function FinancialPage({ user, showToast }: { user: AuthUser; sho
 
   if (loading) {
     return (
-      <div className="p-6 flex items-center justify-center min-h-[60vh]">
-        <div className="text-center space-y-2">
-          <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin mx-auto" />
-          <p className="text-sm text-muted-foreground">Loading financial data…</p>
+      <div className="p-4 sm:p-6 space-y-6 w-full max-w-[1400px] mx-auto select-none">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div className="space-y-2">
+            <div className="yt-shimmer-box h-8 w-52 rounded-xl" />
+            <div className="yt-shimmer-box h-4 w-72 rounded-md" />
+          </div>
+          <div className="flex gap-2">
+            <div className="yt-shimmer-box h-9 w-28 rounded-xl" />
+            <div className="yt-shimmer-box h-9 w-32 rounded-xl" />
+          </div>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {[1, 2, 3, 4].map(i => (
+            <div key={i} className="rounded-2xl border border-border/70 bg-card p-4 space-y-3">
+              <div className="flex justify-between">
+                <div className="yt-shimmer-box h-3.5 w-24 rounded-md" />
+                <div className="yt-shimmer-box h-6 w-6 rounded-md" />
+              </div>
+              <div className="yt-shimmer-box h-8 w-32 rounded-lg" />
+              <div className="yt-shimmer-box h-2.5 w-40 rounded-md" />
+            </div>
+          ))}
+        </div>
+        <div className="rounded-2xl border border-border/70 bg-card p-5 space-y-4">
+          <div className="flex justify-between">
+            <div className="yt-shimmer-box h-5 w-44 rounded-md" />
+            <div className="yt-shimmer-box h-8 w-32 rounded-xl" />
+          </div>
+          <div className="space-y-3 pt-2">
+            {[1, 2, 3, 4, 5].map(i => (
+              <div key={i} className="flex justify-between items-center py-2.5 border-b border-border/40">
+                <div className="yt-shimmer-box h-4 w-36 rounded-md" />
+                <div className="yt-shimmer-box h-4 w-24 rounded-md" />
+                <div className="yt-shimmer-box h-4 w-20 rounded-md" />
+                <div className="yt-shimmer-box h-6 w-16 rounded-full" />
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     );
@@ -744,9 +778,15 @@ export default function FinancialPage({ user, showToast }: { user: AuthUser; sho
 
           <div className="bg-card border border-border/80 rounded-2xl shadow-[0_2px_12px_-4px_rgba(13,148,136,0.06),0_1px_3px_rgba(0,0,0,0.02)] overflow-hidden">
             {ledgerLoading ? (
-              <div className="p-10 flex items-center justify-center gap-2 text-sm text-muted-foreground">
-                <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-                Loading records…
+              <div className="p-4 space-y-3">
+                {[1, 2, 3, 4, 5].map(i => (
+                  <div key={i} className="flex items-center justify-between gap-4 py-2">
+                    <div className="yt-shimmer-box h-4 w-28 rounded-md" />
+                    <div className="yt-shimmer-box h-4 w-40 rounded-md" />
+                    <div className="yt-shimmer-box h-4 w-20 rounded-md" />
+                    <div className="yt-shimmer-box h-6 w-16 rounded-full" />
+                  </div>
+                ))}
               </div>
             ) : ledger.length === 0 ? (
               <div className="p-10 text-center text-sm text-muted-foreground">No records found for the selected filters</div>
@@ -1064,9 +1104,14 @@ export default function FinancialPage({ user, showToast }: { user: AuthUser; sho
           )}
 
           {incomeLoading ? (
-            <div className="bg-card border border-border rounded-xl p-10 flex items-center justify-center gap-2 text-sm text-muted-foreground">
-              <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-              Loading income data…
+            <div className="bg-card border border-border rounded-xl p-5 space-y-3">
+              {[1, 2, 3, 4].map(i => (
+                <div key={i} className="flex items-center justify-between gap-4 py-2">
+                  <div className="yt-shimmer-box h-4 w-36 rounded-md" />
+                  <div className="yt-shimmer-box h-4 w-24 rounded-md" />
+                  <div className="yt-shimmer-box h-4 w-16 rounded-md" />
+                </div>
+              ))}
             </div>
           ) : incomeData.length === 0 ? (
             <div className="bg-card border border-border rounded-xl p-10 text-center text-sm text-muted-foreground">

@@ -17,7 +17,7 @@ import {
   Modal, DeleteConfirmModal, ConfirmDialog, useIslandConfirm,
   NotificationPanel, ProductFormModal, NewSaleModal, ReturnModal,
   InventoryAdjustmentModal, UserFormModal, InvoiceModal, UserInfoModal, ResetPasswordModal,
-  initials, InfoTip,
+  initials, InfoTip, YouTubeTopLoader, YouTubeAppSkeleton,
 } from "./shared";
 import {
   productsApi, categoriesApi, transactionsApi, returnRequestsApi, dashboardApi,
@@ -72,6 +72,7 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
     return defaultPage();
   };
   const [page, setPage] = useState<Page>(getInitialPage);
+  const [pageNavigating, setPageNavigating] = useState(false);
 
   useEffect(() => {
     if (!allowedPages.includes(page)) return;
@@ -969,8 +970,13 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
     if (prevPageRef.current !== page) {
       prevPageRef.current = page;
       setPillSlide(true);
+      setPageNavigating(true);
       const t = setTimeout(() => setPillSlide(false), 360);
-      return () => clearTimeout(t);
+      const tNav = setTimeout(() => setPageNavigating(false), 380);
+      return () => {
+        clearTimeout(t);
+        clearTimeout(tNav);
+      };
     }
   }, [page]);
 
@@ -1870,26 +1876,15 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
     </div>
   );
 
-  // ── Loading splash ───────────────────────────────────────────────────────────
+  // ── Loading state (YouTube-style Shimmer Skeleton + Glowing Top Bar) ─────────
   if (loading) {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center select-none">
-        <div className="text-center space-y-3">
-          <img
-            data-home-logo
-            src={SMARTTRACK_LOGO_URL}
-            alt="SmartTrack"
-            className="w-16 h-16 object-contain mx-auto animate-pulse drop-shadow-[0_8px_20px_rgba(0,0,0,0.25)]"
-          />
-          <p className="text-sm font-semibold text-foreground tracking-tight">Loading SmartTrack…</p>
-        </div>
-      </div>
-    );
+    return <YouTubeAppSkeleton message="Synchronizing pharmacy operations…" />;
   }
 
   // ── Render ───────────────────────────────────────────────────────────────────
   return (
     <div className={darkMode ? "dark" : ""}>
+      <YouTubeTopLoader active={refreshing || pageNavigating} />
       {/* Floating Top Notification for Classic Sidebar Mode */}
       {navMode === "sidebar" && hubToast && (
         <div className="fixed top-3 left-1/2 -translate-x-1/2 z-[100] pointer-events-none animate-in fade-in slide-in-from-top-2 duration-200">

@@ -2874,3 +2874,143 @@ export function ProductSearchWidget({
     </div>
   );
 }
+
+// ─── YouTube-style Top Progress Bar Loader ──────────────────────────────────
+export function YouTubeTopLoader({ active }: { active: boolean }) {
+  const [visible, setVisible] = React.useState(active);
+  const [progress, setProgress] = React.useState(0);
+
+  React.useEffect(() => {
+    let t1: ReturnType<typeof setTimeout>;
+    let t2: ReturnType<typeof setTimeout>;
+    let t3: ReturnType<typeof setTimeout>;
+
+    if (active) {
+      setVisible(true);
+      setProgress(18);
+      t1 = setTimeout(() => setProgress(42), 120);
+      t2 = setTimeout(() => setProgress(76), 320);
+      t3 = setTimeout(() => setProgress(94), 700);
+    } else {
+      setProgress(100);
+      const doneTimer = setTimeout(() => {
+        setVisible(false);
+        setProgress(0);
+      }, 240);
+      return () => clearTimeout(doneTimer);
+    }
+
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+      clearTimeout(t3);
+    };
+  }, [active]);
+
+  if (!visible) return null;
+
+  return (
+    <div
+      className="fixed top-0 left-0 right-0 z-[99999] h-[3px] pointer-events-none select-none overflow-hidden"
+      aria-hidden="true"
+    >
+      <div
+        className="h-full bg-gradient-to-r from-blue-600 via-sky-400 to-teal-300 transition-all duration-200 ease-out relative"
+        style={{
+          width: `${progress}%`,
+          boxShadow: "0 0 10px #38bdf8, 0 0 5px #2563eb",
+        }}
+      >
+        <div className="absolute right-0 top-0 bottom-0 w-24 bg-gradient-to-r from-transparent to-white/90 shadow-[0_0_12px_#38bdf8]" />
+      </div>
+    </div>
+  );
+}
+
+// ─── YouTube-style Wireframe Shimmer Skeleton Loader ─────────────────────────
+export function YouTubeAppSkeleton({ message = "Synchronizing pharmacy operations…" }: { message?: string }) {
+  return (
+    <div className="min-h-screen bg-background text-foreground select-none flex flex-col">
+      <YouTubeTopLoader active={true} />
+
+      {/* Top Navbar Skeleton (YouTube/Island Header) */}
+      <header className="border-b border-border/70 bg-card/60 px-4 sm:px-8 py-3.5 flex items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <div className="yt-shimmer-box h-8 w-28 rounded-xl" />
+          <div className="hidden sm:block yt-shimmer-box h-6 w-20 rounded-full" />
+        </div>
+        <div className="hidden md:flex items-center justify-center flex-1 max-w-md">
+          <div className="yt-shimmer-box h-9 w-full rounded-full" />
+        </div>
+        <div className="flex items-center gap-2.5">
+          <div className="yt-shimmer-box h-8 w-8 rounded-full" />
+          <div className="yt-shimmer-box h-8 w-8 rounded-full" />
+          <div className="yt-shimmer-box h-8 w-24 rounded-xl" />
+        </div>
+      </header>
+
+      {/* Main Skeleton Layout */}
+      <main className="flex-1 w-full max-w-[1400px] mx-auto p-4 sm:p-6 lg:p-8 space-y-6">
+        {/* Navigation Tabs Pill Skeleton */}
+        <div className="flex flex-wrap items-center gap-2">
+          {[80, 110, 95, 120, 85, 90].map((w, i) => (
+            <div key={i} className="yt-shimmer-box h-8 rounded-xl" style={{ width: `${w}px` }} />
+          ))}
+        </div>
+
+        {/* 4 KPI Summary Cards Skeleton (YouTube Card Style) */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {[1, 2, 3, 4].map(idx => (
+            <div key={idx} className="rounded-2xl border border-border/70 bg-card p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="yt-shimmer-box h-3.5 w-24 rounded-md" />
+                <div className="yt-shimmer-box h-7 w-7 rounded-lg" />
+              </div>
+              <div className="yt-shimmer-box h-8 w-32 rounded-lg" />
+              <div className="yt-shimmer-box h-2.5 w-40 rounded-md" />
+            </div>
+          ))}
+        </div>
+
+        {/* Content Box Skeleton (Table / Chart View) */}
+        <div className="rounded-2xl border border-border/70 bg-card overflow-hidden">
+          <div className="p-4 border-b border-border/60 flex flex-wrap items-center justify-between gap-3">
+            <div className="space-y-1.5">
+              <div className="yt-shimmer-box h-4 w-44 rounded-md" />
+              <div className="yt-shimmer-box h-3 w-64 rounded-md" />
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="yt-shimmer-box h-8 w-48 rounded-xl" />
+              <div className="yt-shimmer-box h-8 w-20 rounded-xl" />
+            </div>
+          </div>
+
+          {/* Shimmer Rows */}
+          <div className="divide-y divide-border/40 p-2 sm:p-4 space-y-3">
+            {[1, 2, 3, 4, 5, 6].map(row => (
+              <div key={row} className="flex items-center justify-between gap-4 py-2.5 px-2">
+                <div className="flex items-center gap-3 min-w-0 flex-1">
+                  <div className="yt-shimmer-box h-9 w-9 rounded-xl shrink-0" />
+                  <div className="space-y-1.5 min-w-0 flex-1 max-w-sm">
+                    <div className="yt-shimmer-box h-3.5 w-3/4 rounded-md" />
+                    <div className="yt-shimmer-box h-2.5 w-1/2 rounded-md" />
+                  </div>
+                </div>
+                <div className="yt-shimmer-box h-6 w-20 rounded-full shrink-0" />
+                <div className="yt-shimmer-box h-4 w-16 rounded-md shrink-0 hidden sm:block" />
+                <div className="yt-shimmer-box h-4 w-20 rounded-md shrink-0" />
+                <div className="yt-shimmer-box h-7 w-16 rounded-lg shrink-0" />
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Bottom Status Indicator */}
+        <div className="flex items-center justify-center gap-2 pt-2 text-xs text-muted-foreground">
+          <span className="h-2 w-2 rounded-full bg-primary animate-ping" />
+          <span>{message}</span>
+        </div>
+      </main>
+    </div>
+  );
+}

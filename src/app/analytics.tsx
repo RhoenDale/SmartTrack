@@ -2841,7 +2841,18 @@ export default function AnalyticsPage({
                 </div>
 
                 {smaLoading ? (
-                  <p className="py-16 text-center text-sm text-muted-foreground">Loading sales history…</p>
+                  <div className="h-[270px] w-full flex flex-col justify-end p-4 space-y-3">
+                    <div className="flex items-end justify-between gap-3 h-48">
+                      {[40, 75, 55, 90, 65, 80, 50, 85].map((h, i) => (
+                        <div key={i} className="yt-shimmer-box flex-1 rounded-t-lg" style={{ height: `${h}%` }} />
+                      ))}
+                    </div>
+                    <div className="flex justify-between pt-2">
+                      {[1, 2, 3, 4, 5, 6, 7, 8].map(i => (
+                        <div key={i} className="yt-shimmer-box h-2.5 w-10 rounded-md" />
+                      ))}
+                    </div>
+                  </div>
                 ) : smaChartData.length ? (
                   <div className="h-[270px] w-full">
                     <ForecastTrendChart
@@ -2900,7 +2911,17 @@ export default function AnalyticsPage({
                 </div>
 
                 {categorySalesLoading ? (
-                  <p className="py-12 text-center text-sm text-muted-foreground">Loading categories…</p>
+                  <div className="space-y-4 py-2">
+                    {[1, 2, 3, 4, 5].map(i => (
+                      <div key={i} className="space-y-2">
+                        <div className="flex justify-between">
+                          <div className="yt-shimmer-box h-3 w-28 rounded-md" />
+                          <div className="yt-shimmer-box h-3 w-10 rounded-md" />
+                        </div>
+                        <div className="yt-shimmer-box h-2 w-full rounded-full" />
+                      </div>
+                    ))}
+                  </div>
                 ) : categorySalesError ? (
                   <p role="status" className="py-12 text-center text-sm text-destructive">Unable to load category sales.</p>
                 ) : chartCategoryData.length ? (
@@ -3299,7 +3320,18 @@ export default function AnalyticsPage({
               </button>
             </div>
             {smaLoading ? (
-              <p className="py-12 text-center text-sm text-muted-foreground">Loading sales history…</p>
+              <div className="h-[300px] w-full flex flex-col justify-end p-4 space-y-4">
+                <div className="flex items-end justify-between gap-3 h-52">
+                  {[35, 70, 50, 85, 60, 75, 45, 90, 65, 80].map((h, i) => (
+                    <div key={i} className="yt-shimmer-box flex-1 rounded-t-lg" style={{ height: `${h}%` }} />
+                  ))}
+                </div>
+                <div className="flex justify-between pt-2">
+                  {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(i => (
+                    <div key={i} className="yt-shimmer-box h-2.5 w-12 rounded-md" />
+                  ))}
+                </div>
+              </div>
             ) : smaChartData.length ? (
               <>
                 <div className="h-[300px] w-full">

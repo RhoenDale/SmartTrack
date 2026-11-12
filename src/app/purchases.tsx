@@ -480,7 +480,19 @@ export default function PurchaseOrdersPage({
               />
             </div>
             {loading ? (
-              <p className="p-5 text-sm text-muted-foreground">Loading orders…</p>
+              <div className="p-4 space-y-3">
+                {[1, 2, 3, 4].map(i => (
+                  <div key={i} className="flex items-center justify-between gap-4 py-2 border-b border-border/40">
+                    <div className="space-y-1">
+                      <div className="yt-shimmer-box h-4 w-32 rounded-md" />
+                      <div className="yt-shimmer-box h-3 w-48 rounded-md" />
+                    </div>
+                    <div className="yt-shimmer-box h-6 w-20 rounded-full" />
+                    <div className="yt-shimmer-box h-4 w-20 rounded-md" />
+                    <div className="yt-shimmer-box h-8 w-24 rounded-lg" />
+                  </div>
+                ))}
+              </div>
             ) : orders.length === 0 ? (
               <p className="p-5 text-sm text-muted-foreground">No purchase orders recorded yet.</p>
             ) : (
