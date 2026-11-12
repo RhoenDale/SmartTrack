@@ -648,6 +648,8 @@ function EoqBreakdownModal({
             <div className="mt-2 grid grid-cols-1 gap-1.5 text-xs sm:grid-cols-2">
               <p className="text-muted-foreground">D · Expected yearly demand <strong className="text-foreground">{annualDemand.toLocaleString()} units</strong></p>
               <p className="text-muted-foreground sm:col-span-2">Demand source <strong className="text-foreground">{demandSourceLabel}</strong></p>
+              <p className="text-muted-foreground">d · Daily demand rate <strong className="text-foreground">≈ {(annualDemand / 365).toFixed(2)} units/day</strong></p>
+              <p className="text-muted-foreground">Weekly demand rate <strong className="text-foreground">≈ {Math.max(1, Math.round((annualDemand / 365) * 7))} units/week</strong></p>
               <p className="text-muted-foreground">S · Cost to place an order <strong className="text-foreground">{fmt(orderCost)}</strong></p>
               <p className="text-muted-foreground">H · Yearly holding cost/unit <strong className="text-foreground">{fmt(holdingCost)}</strong></p>
               <p className="text-muted-foreground">Unit cost <strong className="text-foreground">{fmt(unitCost)}</strong></p>
@@ -3441,7 +3443,16 @@ export default function AnalyticsPage({
                           )}
                         </td>
                         <td className="px-4 py-3 text-right font-semibold tabular-nums text-foreground">
-                          {row.totalSold > 0 ? `${Math.round(forecast).toLocaleString()} units` : <span className="font-normal text-muted-foreground">No sales history</span>}
+                          {row.totalSold > 0 ? (
+                            <div>
+                              <span>{Math.round(forecast).toLocaleString()} units/mo</span>
+                              <span className="block text-[11px] font-normal text-muted-foreground">
+                                ≈ {(forecast / 30.4).toFixed(1)}/day · ≈ {Math.max(1, Math.round((forecast / 30.4) * 7))}/wk
+                              </span>
+                            </div>
+                          ) : (
+                            <span className="font-normal text-muted-foreground">No sales history</span>
+                          )}
                         </td>
                         <td className="px-4 py-3 text-right tabular-nums text-foreground">{row.product.stock.toLocaleString()}</td>
                         <td className="px-4 py-3 text-right">
@@ -3601,8 +3612,8 @@ export default function AnalyticsPage({
                       </td>
                       <td className="px-4 py-3">
                         <p className="text-xs font-semibold tabular-nums text-foreground">
-                          {Math.max(1, Math.round(rec.annualDemand / 12)).toLocaleString()} {Math.max(1, Math.round(rec.annualDemand / 12)) === 1 ? "unit" : "units"}/month{" "}
-                          <span className="font-normal text-muted-foreground">({rec.annualDemand.toLocaleString()}/year)</span>
+                          {Math.max(1, Math.round(rec.annualDemand / 12)).toLocaleString()} {Math.max(1, Math.round(rec.annualDemand / 12)) === 1 ? "unit" : "units"}/mo{" "}
+                          <span className="font-normal text-muted-foreground">({rec.annualDemand.toLocaleString()}/yr · ≈ {(rec.annualDemand / 365).toFixed(1)}/day)</span>
                         </p>
                         <p className="mt-1">
                           <span
@@ -3881,6 +3892,8 @@ export default function AnalyticsPage({
         const sumQty = periods.reduce((s, p) => s + p.qty, 0);
         const avgQty = periods.length > 0 ? sumQty / periods.length : 0;
         const roundedMonthly = Math.max(1, Math.round(pf.monthlyEquivalentForecast));
+        const dailyRate = roundedMonthly / 30.4;
+        const weeklyRate = dailyRate * 7;
         const annualD = roundedMonthly * 12;
         return (
           <CalcInspectorModal
@@ -3892,19 +3905,23 @@ export default function AnalyticsPage({
               { label: "SMA-3 (3-month average)", value: `${Math.round(pf.monthlySma3).toLocaleString()} units/month${pf.smape3 != null ? ` (${pf.smape3.toFixed(1)}% error)` : ""}` },
               { label: "SMA-6 (6-month average)", value: `${Math.round(pf.monthlySma6).toLocaleString()} units/month${pf.smape6 != null ? ` (${pf.smape6.toFixed(1)}% error)` : ""}` },
               { label: "Auto-Selected Model", value: `${pf.recommendedModel} (${isSma6 ? "Steady 6-Month" : "Fast 3-Month"})` },
+              { label: "d · Daily Demand Rate", value: `≈ ${dailyRate.toFixed(2)} units/day (÷ 30.4 days)` },
+              { label: "Weekly Demand Rate", value: `≈ ${Math.max(1, Math.round(weeklyRate))} units/week (× 7 days)` },
+              { label: "D · Annual Demand (for EOQ)", value: `${annualD.toLocaleString()} units/year (× 12 months)` },
             ]}
             trail={
               periods.length > 0
                 ? [
-                    `Step 1 (Add recent sales): ${periods.map(p => p.qty.toLocaleString()).join(" + ")} = ${sumQty.toLocaleString()} units.`,
-                    `Step 2 (Divide by ${periods.length} ${periods.length === 1 ? "month" : "months"}): ${sumQty.toLocaleString()} ÷ ${periods.length} = ${roundedMonthly.toLocaleString()} units/month expected next month.`,
-                    `Step 3 (Connect to ROP & EOQ): ${roundedMonthly.toLocaleString()} units/month × 12 months = ${annualD.toLocaleString()} units/year (Annual Demand D).`,
+                    `Step 1 (Sum recent sales): ${periods.map(p => p.qty.toLocaleString()).join(" + ")} = ${sumQty.toLocaleString()} units.`,
+                    `Step 2 (Monthly Average): ${sumQty.toLocaleString()} ÷ ${periods.length} = ${roundedMonthly.toLocaleString()} units/month expected next month.`,
+                    `Step 3 (Daily & Weekly Burn Rates): ${roundedMonthly.toLocaleString()} ÷ 30.4 = ≈ ${dailyRate.toFixed(2)} units/day (≈ ${Math.max(1, Math.round(weeklyRate))} units/week). Drives ROP safety alarms!`,
+                    `Step 4 (Annual Demand for EOQ): ${roundedMonthly.toLocaleString()} units/month × 12 = ${annualD.toLocaleString()} units/year (D).`,
                   ]
                 : ["No recorded sales periods yet for this medicine."]
             }
             result={
               pf.totalSold > 0
-                ? `Best-Fit Next-Month Forecast: ${roundedMonthly.toLocaleString()} units/month (${annualD.toLocaleString()} units/year)`
+                ? `Forecast: ${roundedMonthly.toLocaleString()} units/mo · ≈ ${dailyRate.toFixed(2)} units/day · ≈ ${Math.max(1, Math.round(weeklyRate))} units/wk`
                 : "No sales history yet — record sales to generate a forecast."
             }
             onClose={() => setSelectedSmaProductId(null)}
