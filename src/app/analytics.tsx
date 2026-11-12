@@ -20,12 +20,13 @@ import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, LineChart, Line, XAx
 import {
   PIE_COLORS, getReorderUnits, hasUserRole,
   getMonthlyDemand, computeSMA, estimateEOQ,
+  parseExpiry, sortBatchesByExpiry,
   type Product, type Transaction,
 } from "./data";
 import { fmt, StockBadge, InfoTip, ConfirmDialog } from "./shared";
 import { analyticsApi, purchaseOrdersApi, type PurchaseOrder, type SupplierPerformance } from "./api";
 
-const ANALYTICS_CARD_CLASS = "rounded-2xl border border-border/60 bg-card/90 shadow-sm transition-all duration-200 ease-out hover:-translate-y-0.5 hover:shadow-md motion-reduce:transition-none motion-reduce:hover:translate-y-0";
+const ANALYTICS_CARD_CLASS = "rounded-2xl border border-border/70 bg-card shadow-2xs";
 const CATEGORY_COLORS = ["#0d9488", "#06b6d4", "#8b5cf6", "#f59e0b", "#3b82f6", "#ec4899", "#64748b"];
 
 function AnalyticsColumnHeader({
@@ -208,7 +209,7 @@ function ForecastTrendChart({
             contentStyle={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 10, fontSize: 11, color: "var(--foreground)" }}
           />
           <ReferenceLine x={nextPeriod} stroke="var(--border)" strokeDasharray="4 4" />
-          <Line type="monotone" dataKey="actual" name="Actual sales" stroke="#2563eb" strokeWidth={2.5} dot={{ r: 3.5, fill: "#2563eb" }} activeDot={{ r: 5.5 }} connectNulls={false} />
+          <Line type="monotone" dataKey="actual" name="Actual sales" stroke="#2563eb" strokeWidth={2.5} dot={{ r: 3.5, fill: "#2563eb" }} activeDot={{ r: 5.5 }} connectNulls={false} isAnimationActive={false} />
           <Line
             type="monotone"
             dataKey="sma3Forecast"
@@ -216,6 +217,7 @@ function ForecastTrendChart({
             stroke="#f97316"
             strokeWidth={2.2}
             strokeDasharray="6 4"
+            isAnimationActive={false}
             dot={(props: { cx?: number; cy?: number; payload?: { month?: string } }) =>
               props.cx != null && props.cy != null ? (
                 <circle
@@ -239,6 +241,7 @@ function ForecastTrendChart({
             stroke="#8b5cf6"
             strokeWidth={2.2}
             strokeDasharray="3 4"
+            isAnimationActive={false}
             dot={(props: { cx?: number; cy?: number; payload?: { month?: string } }) =>
               props.cx != null && props.cy != null ? (
                 <circle
@@ -530,6 +533,148 @@ function CalcInspectorModal({
               </div>
             ))}
             <div className="rounded-lg border border-primary/25 bg-primary/[0.06] px-4 py-3 text-sm font-bold text-foreground">{result}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ---------- L3 Glass-Box Verification Modal (Progressive Disclosure) ---------- */
+interface GlassBoxRecord {
+  metric: string;
+  title: string;
+  display: { label: string; value: string; unit: string };
+  ownerSentence: string;
+  formula_id: string;
+  formulaDisplay: string;
+  inputs: { symbol: string; label: string; value: string }[];
+  steps: { label: string; expr: string; result: string }[];
+  citation: string;
+}
+
+function GlassBoxAuditModal({
+  record,
+  onClose,
+}: {
+  record: GlassBoxRecord;
+  onClose: () => void;
+}) {
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [onClose]);
+
+  const jsonProof = useMemo(() => JSON.stringify({
+    metric: record.metric,
+    display: record.display,
+    formula_id: record.formula_id,
+    inputs: Object.fromEntries(record.inputs.map(i => [i.symbol, i.value])),
+    steps: record.steps.map(s => ({ step: s.label, expr: s.expr, result: s.result })),
+    params_version: "2026-11-12.1",
+  }, null, 2), [record]);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="fixed inset-0 bg-black/45" onClick={onClose} />
+      <div role="dialog" aria-modal="true" className="relative z-10 bg-card border border-border rounded-2xl shadow-2xl w-full max-w-2xl max-h-[88vh] overflow-y-auto">
+        {/* Header */}
+        <div className="flex items-start justify-between gap-3 px-5 py-4 border-b border-border sticky top-0 bg-card z-10">
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="inline-flex items-center gap-1 rounded-md bg-primary/10 border border-primary/25 px-2 py-0.5 text-[10px] font-mono font-bold text-primary">
+                ƒ {record.formula_id}
+              </span>
+              <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                L3 Glass-Box Verification
+              </span>
+            </div>
+            <h3 className="text-base font-bold text-foreground mt-1">{record.title}</h3>
+          </div>
+          <button type="button" onClick={onClose} aria-label="Close audit proof" className="text-muted-foreground hover:text-foreground p-1.5 rounded-lg hover:bg-muted cursor-pointer">
+            <X size={16} />
+          </button>
+        </div>
+
+        <div className="p-5 space-y-4">
+          {/* L0 Plain-Language Binding */}
+          <div className="rounded-xl border border-primary/20 bg-primary/[0.04] p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="space-y-1">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-primary">L0 Executive Presentation (What the Owner Reads)</p>
+              <p className="text-xs font-medium text-foreground leading-relaxed">&ldquo;{record.ownerSentence}&rdquo;</p>
+            </div>
+            <div className="sm:text-right shrink-0 border-t sm:border-t-0 sm:border-l border-border/60 pt-2 sm:pt-0 sm:pl-4">
+              <span className="block text-[10px] text-muted-foreground font-medium">{record.display.label}</span>
+              <span className="text-lg font-extrabold tabular-nums text-foreground">{record.display.value}</span>
+              {record.display.unit && <span className="text-[11px] text-muted-foreground ml-1">{record.display.unit}</span>}
+            </div>
+          </div>
+
+          {/* Mathematical Formula */}
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1.5">Governing Mathematical Formula</p>
+            <div className="rounded-xl border border-border bg-muted/30 px-4 py-3 font-mono text-xs sm:text-sm font-bold text-foreground text-center overflow-x-auto">
+              {record.formulaDisplay}
+            </div>
+          </div>
+
+          {/* Substituted Inputs */}
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1.5">Substituted Variables &amp; Parameters</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {record.inputs.map((inp, idx) => (
+                <div key={idx} className="flex items-center justify-between gap-2 rounded-xl border border-border/80 bg-muted/15 px-3 py-2 text-xs">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="rounded bg-card border border-border px-1.5 py-0.5 font-mono text-[10px] font-bold text-primary shrink-0">
+                      {inp.symbol}
+                    </span>
+                    <span className="text-muted-foreground truncate text-[11px]">{inp.label}</span>
+                  </div>
+                  <span className="font-mono font-bold text-foreground text-[11px] shrink-0">{inp.value}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Step-by-step arithmetic execution */}
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1.5">Step-by-Step Arithmetic Execution</p>
+            <div className="space-y-2">
+              {record.steps.map((st, idx) => (
+                <div key={idx} className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 rounded-xl border border-border/80 bg-card px-3.5 py-2.5 text-xs">
+                  <div className="flex items-center gap-2.5">
+                    <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[10px] font-bold text-primary">
+                      {idx + 1}
+                    </span>
+                    <div>
+                      <span className="font-semibold text-foreground block text-[11px]">{st.label}</span>
+                      <span className="font-mono text-[11px] text-muted-foreground">{st.expr}</span>
+                    </div>
+                  </div>
+                  <span className="font-mono font-bold text-foreground bg-muted/40 border border-border/60 rounded-lg px-2.5 py-1 text-xs self-start sm:self-center shrink-0">
+                    = {st.result}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Collapsible Raw JSON Record */}
+          <details className="rounded-xl border border-border/80 bg-muted/15 overflow-hidden text-xs">
+            <summary className="px-3.5 py-2.5 font-semibold text-muted-foreground hover:text-foreground cursor-pointer select-none flex items-center justify-between">
+              <span>Inspect Deterministic JSON Proof Record</span>
+              <span className="font-mono text-[10px] text-primary">JSON ▼</span>
+            </summary>
+            <pre className="p-3.5 border-t border-border/60 bg-background font-mono text-[11px] text-foreground overflow-x-auto leading-relaxed">
+              {jsonProof}
+            </pre>
+          </details>
+
+          {/* Academic Citation Footer */}
+          <div className="rounded-xl border border-border/60 bg-muted/20 px-3.5 py-2.5 text-[11px] text-muted-foreground leading-relaxed">
+            <strong className="text-foreground font-semibold">Methodological &amp; UX Basis: </strong>
+            {record.citation}
           </div>
         </div>
       </div>
@@ -2105,8 +2250,374 @@ export default function AnalyticsPage({
 
   const [confirmExportCsv, setConfirmExportCsv] = useState(false);
 
+  // ── Progressive Disclosure (L0–L3) & Glass-Box Audit State ───────────────────
+  const [auditMode, setAuditMode] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem("smarttrack_analytics_audit_mode") === "true";
+    } catch { return false; }
+  });
+  const toggleAuditMode = () => {
+    setAuditMode(prev => {
+      const next = !prev;
+      try { localStorage.setItem("smarttrack_analytics_audit_mode", String(next)); } catch { /* ignore */ }
+      return next;
+    });
+  };
+  const [glassBoxRecord, setGlassBoxRecord] = useState<GlassBoxRecord | null>(null);
+  const [statusBucketFilter, setStatusBucketFilter] = useState<
+    "actionable" | "out_of_stock" | "will_run_out" | "reorder_now" | "reorder_soon" | "expiry_risk" | "overstock" | "dead_non_moving" | "healthy"
+  >("actionable");
+  const [radarSearch, setRadarSearch] = useState("");
+  const [radarPage, setRadarPage] = useState(1);
+  const RADAR_PAGE_SIZE = 6;
+
+  // ── Deterministic L0–L3 Executive Snapshot & Status Ladder Engine ────────────
+  const executiveSnapshot = useMemo(() => {
+    const L = leadTimeDaysSetting;
+    const nowMs = Date.now();
+    const recMap = new Map(reorderRecs.map(r => [String(r.product.id), r]));
+
+    const skuRows = scopedInventory.map(p => {
+      const pid = String(p.id);
+      const pf = productForecastMap.get(pid);
+      const rec = recMap.get(pid);
+      const kStar = pf?.recommendedModel ?? "SMA-3";
+      const sma3 = pf?.monthlySma3 ?? 0;
+      const sma6 = pf?.monthlySma6 ?? 0;
+      const champMonthly = kStar === "SMA-6" && sma6 > 0 ? sma6 : (sma3 > 0 ? sma3 : (pf?.monthlyEquivalentForecast ?? 0));
+      const d = champMonthly / 30.4;
+      const ltd = d * L;
+      const minThreshold = getReorderUnits(p);
+      const ss = Math.max(minThreshold * 0.25, ltd * (safetyBufferSetting / 100));
+      const rop = rec?.suggestedRop ?? Math.max(minThreshold, Math.round(ltd + ss));
+
+      const batchesWithCost = p.batches.filter(b => b.unitCost != null && b.unitCost > 0);
+      const costUnits = batchesWithCost.reduce((s, b) => s + b.qty, 0);
+      const unitCost = rec?.unitCost ?? (costUnits > 0
+        ? batchesWithCost.reduce((s, b) => s + (b.unitCost ?? 0) * b.qty, 0) / costUnits
+        : (p.price > 0 ? p.price * 0.7 : 5));
+
+      const annualD = champMonthly > 0 ? champMonthly * 12 : Math.max(10, minThreshold * 6);
+      const rawQ = estimateEOQ(Math.round(annualD), unitCost, orderCostSetting, holdingRateSetting);
+      const packSize = Math.max(1, p.unitsPerPack ?? 1);
+      const qStar = rec?.effectiveOrderQty ?? (Math.ceil(Math.max(rawQ, minThreshold) / packSize) * packSize);
+
+      const onHand = p.stock;
+      const onOrder = pf?.incomingQty ?? 0;
+      const ip = onHand + onOrder;
+      const sMax = champMonthly > 0 ? Math.round(ss + qStar) : minThreshold * 2;
+      const runway = d > 0.01 ? onHand / d : (onHand > 0 ? 999 : 0);
+      const dailyRevAtRisk = (d > 0.01 ? d : minThreshold / 30.4) * p.price;
+
+      // FEFO Batch Expiry Simulation (within 180 days)
+      const sortedBatches = sortBatchesByExpiry(p.batches);
+      let cumSold = 0;
+      let skuExpiryUnits = 0;
+      let skuExpiryValue = 0;
+      let skuExpiryBatchCount = 0;
+      let earliestDaysToExpiry: number | null = null;
+      sortedBatches.forEach(b => {
+        if (!b.expiry || b.expiry === "—" || b.qty <= 0) return;
+        const expDate = parseExpiry(b.expiry);
+        if (Number.isNaN(expDate.getTime())) return;
+        const daysLeft = Math.max(0, Math.ceil((expDate.getTime() - nowMs) / 86400000));
+        if (earliestDaysToExpiry === null || daysLeft < earliestDaysToExpiry) {
+          earliestDaysToExpiry = daysLeft;
+        }
+        if (daysLeft <= 180) {
+          const demandBeforeExp = d * daysLeft;
+          const availDemand = Math.max(0, demandBeforeExp - cumSold);
+          const soldFromBatch = Math.min(b.qty, availDemand);
+          const atRiskQty = Math.max(0, Math.round(b.qty - soldFromBatch));
+          cumSold += soldFromBatch;
+          if (atRiskQty > 0) {
+            skuExpiryUnits += atRiskQty;
+            skuExpiryValue += atRiskQty * (b.unitCost ?? unitCost);
+            skuExpiryBatchCount += 1;
+          }
+        } else {
+          cumSold += b.qty;
+        }
+      });
+
+      // Excess stock above steady-state maximum S_max = SS + Q*
+      const excessUnits = onHand > Math.round(1.2 * sMax) && sMax > 0 ? Math.max(0, onHand - sMax) : 0;
+      const excessValue = excessUnits * unitCost;
+
+      // Mutually Exclusive 8-Tier Status Ladder (Evaluated Top-Down)
+      let bucket:
+        | "out_of_stock"
+        | "will_run_out"
+        | "reorder_now"
+        | "reorder_soon"
+        | "dead_stock"
+        | "non_moving"
+        | "overstock"
+        | "healthy" = "healthy";
+      let bucketLabel = "Healthy";
+      let bucketTone = "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/25";
+      let ownerReading = `Healthy stock cover (${runway >= 900 ? "90+" : Math.round(runway)} days)`;
+      let priorityRank = 8;
+
+      if (onHand === 0 && (champMonthly > 0 || p.status === "out_of_stock")) {
+        bucket = "out_of_stock";
+        bucketLabel = "Out of Stock";
+        bucketTone = "bg-rose-500/15 text-rose-700 dark:text-rose-300 border-rose-500/30";
+        ownerReading = `Out of stock · ≈ ${fmt(dailyRevAtRisk)}/day lost — order ${qStar.toLocaleString()}u`;
+        priorityRank = 1;
+      } else if (onHand > 0 && ((d > 0.01 && runway < L && onOrder === 0) || p.status === "critical")) {
+        bucket = "will_run_out";
+        bucketLabel = "Will Run Out First";
+        bucketTone = "bg-red-500/15 text-red-700 dark:text-red-300 border-red-500/30";
+        const daysStr = runway < 90 ? `${Math.max(1, Math.round(runway))}d` : `<${L}d`;
+        ownerReading = `Empty in ~${daysStr}; supplier needs ${L}d — order ${qStar.toLocaleString()}u today`;
+        priorityRank = 2;
+      } else if (ip <= rop || p.status === "low") {
+        bucket = "reorder_now";
+        bucketLabel = "Reorder Now";
+        bucketTone = "bg-amber-500/15 text-amber-800 dark:text-amber-300 border-amber-500/30";
+        ownerReading = `Inventory position (${ip}) ≤ ROP (${rop}) — order ${qStar.toLocaleString()}u today`;
+        priorityRank = 3;
+      } else if (d > 0.01 && ip > rop && ip <= rop + Math.ceil(7 * d)) {
+        bucket = "reorder_soon";
+        bucketLabel = "Reorder Soon";
+        bucketTone = "bg-yellow-500/15 text-yellow-800 dark:text-yellow-300 border-yellow-500/30";
+        ownerReading = `Order this week (~${Math.round(runway)}d cover left vs ${L}d lead time)`;
+        priorityRank = 4;
+      } else if (onHand > 0 && sma6 === 0 && (pf?.totalSold ?? 0) === 0) {
+        bucket = "dead_stock";
+        bucketLabel = "Dead Stock";
+        bucketTone = "bg-slate-500/15 text-slate-700 dark:text-slate-300 border-slate-500/30";
+        ownerReading = `No recorded sales in 6 months (${fmt(onHand * unitCost)} tied up)`;
+        priorityRank = 5;
+      } else if (onHand > 0 && sma3 === 0) {
+        bucket = "non_moving";
+        bucketLabel = "Non-Moving";
+        bucketTone = "bg-slate-500/15 text-slate-700 dark:text-slate-300 border-slate-500/30";
+        ownerReading = `No sales in latest 3 months (${onHand.toLocaleString()}u sitting idle)`;
+        priorityRank = 6;
+      } else if (excessUnits > 0) {
+        bucket = "overstock";
+        bucketLabel = "Overstock";
+        bucketTone = "bg-purple-500/15 text-purple-700 dark:text-purple-300 border-purple-500/30";
+        ownerReading = `${fmt(excessValue)} above model ceiling (${excessUnits.toLocaleString()} excess units)`;
+        priorityRank = 7;
+      }
+
+      // Trend crossover signal (SMA-3 ÷ SMA-6)
+      const crossoverRatio = sma6 > 0 ? sma3 / sma6 : 1;
+      const trendSignal: "up" | "down" | "flat" =
+        crossoverRatio >= 1.15 ? "up" : crossoverRatio <= 0.85 ? "down" : "flat";
+      const trendPct = sma6 > 0 ? Math.round((crossoverRatio - 1) * 100) : (pf?.trendPercent ?? 0);
+
+      return {
+        product: p,
+        rec,
+        kStar,
+        sma3,
+        sma6,
+        champMonthly,
+        d,
+        L,
+        ltd,
+        ss,
+        rop,
+        annualD,
+        unitCost,
+        qStar,
+        onHand,
+        onOrder,
+        ip,
+        sMax,
+        runway,
+        dailyRevAtRisk,
+        skuExpiryUnits,
+        skuExpiryValue,
+        skuExpiryBatchCount,
+        earliestDaysToExpiry,
+        excessUnits,
+        excessValue,
+        bucket,
+        bucketLabel,
+        bucketTone,
+        ownerReading,
+        priorityRank,
+        trendSignal,
+        trendPct,
+        confidenceTier: pf?.confidenceTier ?? "insufficient",
+        confidenceLabel: pf?.confidenceLabel ?? "No Sales History",
+        totalSold: pf?.totalSold ?? 0,
+      };
+    });
+
+    // 1. Stockout Risk Card
+    const stockoutRiskSkus = skuRows.filter(r => r.bucket === "out_of_stock" || r.bucket === "will_run_out");
+    const salesAtRiskPerDay = stockoutRiskSkus.reduce((s, r) => s + r.dailyRevAtRisk, 0);
+
+    // 2. Today's Order List Card
+    const supplierCount = new Set(
+      reorderRecs.map(r => r.product.supplier?.trim() || "Primary Pharmacy Distributor")
+    ).size;
+
+    // 3. Stock Cover Card
+    const totalOnHandCost = skuRows.reduce((s, r) => s + r.onHand * r.unitCost, 0);
+    const dailyCogsBurn = skuRows.reduce(
+      (s, r) => s + (r.d > 0.01 ? r.d : getReorderUnits(r.product) / 45) * r.unitCost,
+      0
+    );
+    const stockCoverDays = dailyCogsBurn > 0 ? Math.round(totalOnHandCost / dailyCogsBurn) : 0;
+    const steadyStateTargetCost = skuRows.reduce((s, r) => s + (r.ss + r.qStar / 2) * r.unitCost, 0);
+    const targetCoverDays = dailyCogsBurn > 0 ? Math.max(14, Math.round(steadyStateTargetCost / dailyCogsBurn)) : 30;
+
+    // 4. Cash in Excess Stock Card
+    const idleExcessSkus = skuRows.filter(r => r.excessUnits > 0 || r.bucket === "dead_stock");
+    const excessCashValue = skuRows.reduce(
+      (s, r) => s + (r.bucket === "dead_stock" ? r.onHand * r.unitCost : r.excessValue),
+      0
+    );
+    const excessSharePct = totalOnHandCost > 0 ? Math.min(100, Math.round((excessCashValue / totalOnHandCost) * 100)) : 0;
+
+    // 5. Expiry Exposure Card
+    const expiryRiskSkus = skuRows.filter(r => r.skuExpiryUnits > 0);
+    const expiryExposureValue = expiryRiskSkus.reduce((s, r) => s + r.skuExpiryValue, 0);
+    const expiryExposureUnits = expiryRiskSkus.reduce((s, r) => s + r.skuExpiryUnits, 0);
+    const expiryExposureBatches = expiryRiskSkus.reduce((s, r) => s + r.skuExpiryBatchCount, 0);
+
+    // Forecast Reliability Share (Sales value from High + Medium/Short confidence SKUs)
+    const totalSalesValue = skuRows.reduce((s, r) => s + r.totalSold * r.product.price, 0);
+    const reliableSalesValue = skuRows
+      .filter(r => r.confidenceTier === "high" || r.confidenceTier === "short")
+      .reduce((s, r) => s + r.totalSold * r.product.price, 0);
+    const reliabilityPct = totalSalesValue > 0
+      ? Math.round((reliableSalesValue / totalSalesValue) * 100)
+      : (skuRows.filter(r => r.totalSold > 0).length > 0 ? 75 : 0);
+
+    return {
+      skuRows,
+      stockoutRiskSkus,
+      salesAtRiskPerDay,
+      supplierCount,
+      totalOnHandCost,
+      dailyCogsBurn,
+      stockCoverDays,
+      steadyStateTargetCost,
+      targetCoverDays,
+      idleExcessSkus,
+      excessCashValue,
+      excessSharePct,
+      expiryRiskSkus,
+      expiryExposureValue,
+      expiryExposureUnits,
+      expiryExposureBatches,
+      reliabilityPct,
+      totalSalesValue,
+      reliableSalesValue,
+    };
+  }, [
+    scopedInventory,
+    productForecastMap,
+    reorderRecs,
+    leadTimeDaysSetting,
+    safetyBufferSetting,
+    orderCostSetting,
+    holdingRateSetting,
+  ]);
+
+  const filteredRadarRows = useMemo(() => {
+    const q = radarSearch.trim().toLowerCase();
+    return executiveSnapshot.skuRows
+      .filter(row => {
+        if (statusBucketFilter === "actionable") {
+          if (row.bucket === "healthy" && row.skuExpiryUnits === 0) return false;
+        } else if (statusBucketFilter === "out_of_stock") {
+          if (row.bucket !== "out_of_stock") return false;
+        } else if (statusBucketFilter === "will_run_out") {
+          if (row.bucket !== "will_run_out") return false;
+        } else if (statusBucketFilter === "reorder_now") {
+          if (row.bucket !== "reorder_now") return false;
+        } else if (statusBucketFilter === "reorder_soon") {
+          if (row.bucket !== "reorder_soon") return false;
+        } else if (statusBucketFilter === "expiry_risk") {
+          if (row.skuExpiryUnits <= 0) return false;
+        } else if (statusBucketFilter === "overstock") {
+          if (row.bucket !== "overstock" && row.excessUnits <= 0) return false;
+        } else if (statusBucketFilter === "dead_non_moving") {
+          if (row.bucket !== "dead_stock" && row.bucket !== "non_moving") return false;
+        } else if (statusBucketFilter === "healthy") {
+          if (row.bucket !== "healthy") return false;
+        }
+        if (!q) return true;
+        return (
+          row.product.name.toLowerCase().includes(q) ||
+          row.product.id.toLowerCase().includes(q) ||
+          row.product.category.toLowerCase().includes(q)
+        );
+      })
+      .sort((a, b) => {
+        if (a.priorityRank !== b.priorityRank) return a.priorityRank - b.priorityRank;
+        return b.dailyRevAtRisk - a.dailyRevAtRisk;
+      });
+  }, [executiveSnapshot.skuRows, statusBucketFilter, radarSearch]);
+
+  const paginatedRadarRows = useMemo(() => {
+    const start = (radarPage - 1) * RADAR_PAGE_SIZE;
+    return filteredRadarRows.slice(start, start + RADAR_PAGE_SIZE);
+  }, [filteredRadarRows, radarPage]);
+
+  const openSkuGlassBox = (row: (typeof executiveSnapshot.skuRows)[number]) => {
+    setGlassBoxRecord({
+      metric: `sku_replenishment_trace:${row.product.id}`,
+      title: `${row.product.name} — Complete Replenishment & Forecast Trace`,
+      display: {
+        label: row.bucketLabel,
+        value: row.bucket === "reorder_now" || row.bucket === "will_run_out" || row.bucket === "out_of_stock"
+          ? `${row.qStar.toLocaleString()}`
+          : `${row.onHand.toLocaleString()}`,
+        unit: "units",
+      },
+      ownerSentence: `${row.product.name}: ${row.ownerReading}`,
+      formula_id: "SKU_LADDER_v1",
+      formulaDisplay: "d = SMA_k* ÷ 30.4  |  ROP = (d × L) + SS  |  Q* = √(2·D·S / H)  |  Runway = OH ÷ d",
+      inputs: [
+        { symbol: "SMA-3", label: "3-Month Moving Avg", value: `${row.sma3.toFixed(1)} u/mo` },
+        { symbol: "SMA-6", label: "6-Month Moving Avg", value: `${row.sma6.toFixed(1)} u/mo` },
+        { symbol: "k*", label: "Champion Model", value: row.kStar },
+        { symbol: "d", label: "Daily Demand Rate", value: `${row.d.toFixed(2)} u/day` },
+        { symbol: "L", label: "Supplier Lead Time", value: `${row.L} days` },
+        { symbol: "SS", label: `Safety Stock (${safetyBufferSetting}% buf)`, value: `${row.ss.toFixed(1)} units` },
+        { symbol: "ROP", label: "Reorder Point", value: `${row.rop} units` },
+        { symbol: "IP", label: "Inventory Position (OH+PO)", value: `${row.onHand} + ${row.onOrder} = ${row.ip} u` },
+        { symbol: "Q*", label: "Pack-Rounded EOQ", value: `${row.qStar} units` },
+        { symbol: "S_max", label: "Steady-State Ceiling (SS+Q*)", value: `${row.sMax} units` },
+      ],
+      steps: [
+        {
+          label: "Daily burn rate from champion moving average",
+          expr: `${row.champMonthly.toFixed(1)} u/mo ÷ 30.4 days`,
+          result: `${row.d.toFixed(2)} units/day`,
+        },
+        {
+          label: "Lead-time demand (LTD) & Safety Stock (SS)",
+          expr: `(${row.d.toFixed(2)} × ${row.L}d) + ${row.ss.toFixed(1)} safety buffer`,
+          result: `ROP = ${row.rop} units`,
+        },
+        {
+          label: "Economic Order Quantity (EOQ)",
+          expr: `√(2 × ${Math.round(row.annualD)} × ₱${orderCostSetting} ÷ ₱${(row.unitCost * holdingRateSetting).toFixed(2)})`,
+          result: `Q* = ${row.qStar} units`,
+        },
+        {
+          label: "Stock Runway vs Supplier Lead Time",
+          expr: `${row.onHand} on-hand ÷ ${Math.max(0.01, row.d).toFixed(2)}/day`,
+          result: `${row.runway >= 900 ? ">90" : row.runway.toFixed(1)} days (Bucket: ${row.bucketLabel})`,
+        },
+      ],
+      citation: "Silver, Pyke & Thomas (2017) Inventory & Production Management; Syntetos, Boylan & Croston (2005) Demand Categorization; Springer & Whittaker (2020) Progressive Disclosure.",
+    });
+  };
+
   const sectionMeta: Record<string, { icon: string; title: string; desc: string }> = {
-    "Overview":          { icon: "📊", title: "Supply & Demand Overview",   desc: "Sales, stock, and incoming orders at a glance." },
+    "Overview":          { icon: "📊", title: "Executive Operations Pulse",   desc: "Five morning questions answered in plain language, backed by one-click mathematical proofs." },
     "Forecast":          { icon: "🔮", title: "Demand Forecast",   desc: `Moving-average estimates for ${nextForecastMonth}, with historical back-testing.` },
     "Restocking":        { icon: "⚡", title: "Restock Planning", desc: "Review reorder quantities, lead-time thresholds, and planning assumptions." },
     "Products":          { icon: "🏷️", title: "Product Performance",         desc: "Sales volume, revenue, and demand by product." },
@@ -2124,7 +2635,25 @@ export default function AnalyticsPage({
             <h1 className="text-2xl font-semibold tracking-tight text-foreground">Analytics</h1>
             <p className="text-sm text-muted-foreground mt-1">Sales performance, demand forecasts, and replenishment</p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              type="button"
+              onClick={toggleAuditMode}
+              aria-pressed={auditMode}
+              className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold border transition-colors cursor-pointer flex-shrink-0 ${
+                auditMode
+                  ? "bg-primary/10 border-primary/40 text-primary shadow-2xs"
+                  : "bg-card border-border text-muted-foreground hover:text-foreground hover:bg-muted/50"
+              }`}
+              title="Toggle L3 Glass-Box Audit Mode to inspect step-by-step formulas on every metric"
+            >
+              <span className={`inline-flex items-center justify-center w-4 h-4 rounded font-mono text-[11px] font-bold ${
+                auditMode ? "bg-primary text-primary-foreground" : "bg-muted text-foreground"
+              }`}>
+                ƒ
+              </span>
+              <span>Audit Mode {auditMode ? "ON" : "OFF"}</span>
+            </button>
             <button
               type="button"
               onClick={() => setConfirmExportCsv(true)}
@@ -2244,234 +2773,734 @@ export default function AnalyticsPage({
         );
       })()}
 
-      {/* Overview: Executive Intelligence, Direct Detail Linking, and Decision Metrics */}
+      {/* Overview: L0 Glance (Morning Briefing + 5 Executive Cards) & L1 Action Radar */}
       {activeSection === "Overview" && <>
-      {/* ── 1. Executive Intelligence & Synthesis Strip ("Pharmacy Operational Pulse") ── */}
+      {/* ── L0 Morning Briefing Strip (Story-Driven Apple Health / Shopify Pulse) ── */}
       <div className={`${ANALYTICS_CARD_CLASS} p-5 sm:p-6 space-y-4`}>
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div>
-            <div className="flex items-center gap-1.5">
-              <p className="text-sm font-semibold text-foreground">Business summary</p>
-              <InfoTip title="How to read this summary" lines={["Estimated demand is based on the active forecast model. Restock counts use current stock thresholds, and estimated restock cost uses the planned order quantities. These are decision-support estimates, not automatic orders."]} />
-            </div>
-            <p className="mt-0.5 text-xs text-muted-foreground">Based on recorded sales and current inventory</p>
+          <div className="flex items-center gap-2.5 flex-wrap">
+            <span className="inline-flex h-2.5 w-2.5 rounded-full bg-emerald-500" />
+            <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+              Daily Pharmacy Briefing · {scopeLabel}
+            </p>
+            {auditMode && (
+              <span className="rounded-md bg-primary/10 border border-primary/30 px-2 py-0.5 text-[10px] font-mono font-bold text-primary">
+                ƒ Glass-Box Audit Active — Click any metric to inspect math
+              </span>
+            )}
           </div>
-          <span className="text-xs text-muted-foreground">{scopedInventory.length} products</span>
+          <button
+            type="button"
+            onClick={() => setGlassBoxRecord({
+              metric: "forecast_reliability_share",
+              title: "Forecast Reliability Share — Model Honesty Check",
+              display: { label: "Reliable Sales Value Share", value: `${executiveSnapshot.reliabilityPct}%`, unit: "of sales" },
+              ownerSentence: `Forecasts are backed by High or Medium history confidence for ${executiveSnapshot.reliabilityPct}% of recorded sales value.`,
+              formula_id: "RELIABILITY_SHARE_v1",
+              formulaDisplay: "Reliability % = (Σ Revenue of High/Medium Confidence SKUs ÷ Σ Total Recorded Sales Revenue) × 100",
+              inputs: [
+                { symbol: "Rev_rel", label: "High/Med Confidence Sales", value: fmt(executiveSnapshot.reliableSalesValue) },
+                { symbol: "Rev_tot", label: "Total Recorded Sales Value", value: fmt(executiveSnapshot.totalSalesValue) },
+                { symbol: "SKUs", label: "Scoped Products Evaluated", value: `${scopedInventory.length} items` },
+              ],
+              steps: [
+                {
+                  label: "Classify SKUs by historical sales density (≥3 active periods)",
+                  expr: `${executiveSnapshot.skuRows.filter(r => r.confidenceTier === "high" || r.confidenceTier === "short").length} of ${scopedInventory.length} SKUs qualify`,
+                  result: fmt(executiveSnapshot.reliableSalesValue),
+                },
+                {
+                  label: "Divide reliable sales value by total store sales value",
+                  expr: `${fmt(executiveSnapshot.reliableSalesValue)} ÷ ${fmt(Math.max(1, executiveSnapshot.totalSalesValue))} × 100`,
+                  result: `${executiveSnapshot.reliabilityPct}%`,
+                },
+              ],
+              citation: "Lee & See (2004) Trust in Automation: Calibrating user reliance through performance transparency.",
+            })}
+            className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 hover:bg-emerald-500/15 px-3 py-1 text-[11px] font-semibold text-emerald-700 dark:text-emerald-300 transition-colors cursor-pointer self-start sm:self-auto"
+          >
+            <CheckCircle2 size={12} />
+            <span>Forecasts reliable for {executiveSnapshot.reliabilityPct}% of sales value</span>
+            <span className="font-mono text-[10px] opacity-80 ml-0.5">ƒ</span>
+          </button>
         </div>
 
-        <p className="flex flex-wrap items-baseline gap-x-2 gap-y-1.5 text-sm text-foreground leading-relaxed">
-          {(() => {
-            const forecastVal = Math.round(activeForecastUnits);
-            const latestSales = latestSalesMonth?.demand ?? 0;
-            const diff = forecastVal - latestSales;
-            const diffPct = latestSales > 0 ? Math.round((Math.abs(diff) / latestSales) * 100) : 100;
-            const outCount = reorderRecs.filter(r => r.product.status === "out_of_stock").length;
-            const critCount = reorderRecs.filter(r => r.product.status === "critical").length;
-
-            return (
-              <>
-                <span>Estimated demand</span>
-                <strong className="font-semibold tabular-nums text-foreground">{forecastVal.toLocaleString()} units</strong>
-                <span>for {nextForecastMonth}.</span>
-                {latestSalesMonth ? (
-                  diff >= 0 ? (
-                    <span className="text-xs text-muted-foreground">↑ {diff.toLocaleString()} ({diffPct}%) vs {latestSalesMonth.month}</span>
-                  ) : (
-                    <span className="text-xs text-muted-foreground">↓ {Math.abs(diff).toLocaleString()} ({diffPct}%) vs {latestSalesMonth.month}</span>
-                  )
-                ) : null}
-                <span className="text-muted-foreground">·</span>
-                <span>{reorderRecs.length} products to review</span>
-                {(outCount > 0 || critCount > 0) && (
-                  <span className="text-xs text-muted-foreground">
-                    ({outCount} out of stock, {critCount} critical)
-                  </span>
-                )}
-                <span className="text-muted-foreground">·</span>
-                <span>Estimated restock</span>
-                <strong className="font-semibold tabular-nums text-foreground">{fmt(estimatedRestockCost)}</strong>
-                <span className="text-xs text-muted-foreground">for {totalEoqUnits.toLocaleString()} units</span>
-              </>
-            );
-          })()}
+        <p className="text-sm sm:text-[15px] text-foreground leading-relaxed">
+          {executiveSnapshot.stockoutRiskSkus.length > 0 ? (
+            <>
+              <strong className="font-bold text-rose-600 dark:text-rose-400">
+                {executiveSnapshot.stockoutRiskSkus.length} {executiveSnapshot.stockoutRiskSkus.length === 1 ? "medicine" : "medicines"}
+              </strong>{" "}
+              will run out before a supplier delivery can arrive ({" "}
+              <strong className="font-semibold tabular-nums">≈ {fmt(executiveSnapshot.salesAtRiskPerDay)}/day</strong> in sales at risk).{" "}
+            </>
+          ) : (
+            <>
+              <strong className="font-semibold text-emerald-600 dark:text-emerald-400">Zero immediate stockouts</strong> before supplier lead time ({leadTimeDaysSetting} days).{" "}
+            </>
+          )}
+          Today&apos;s recommended order list has{" "}
+          <strong className="font-bold tabular-nums">{reorderRecs.length} {reorderRecs.length === 1 ? "item" : "items"}</strong>{" "}
+          totalling <strong className="font-bold tabular-nums text-amber-600 dark:text-amber-400">≈ {fmt(estimatedRestockCost)}</strong>{" "}
+          across {executiveSnapshot.supplierCount} {executiveSnapshot.supplierCount === 1 ? "supplier" : "suppliers"}. Overall stock cover stands at{" "}
+          <strong className="font-bold tabular-nums">{executiveSnapshot.stockCoverDays} days</strong>{" "}
+          <span className="text-muted-foreground">(EOQ steady-state target: {executiveSnapshot.targetCoverDays} days)</span>, with{" "}
+          <strong className="font-semibold tabular-nums">{ Math.round(activeForecastUnits).toLocaleString()} units</strong> projected demand for {nextForecastMonth}.
         </p>
 
-        {/* Direct Action Navigation Shortcuts */}
-        <div className="flex flex-wrap items-center gap-2 pt-3 border-t border-border/60">
-          <button
-            type="button"
-            onClick={() => setActiveSection("Forecast")}
-            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 text-xs font-semibold transition-colors cursor-pointer"
-          >
-            <span>View forecast</span>
-            <ArrowRight size={13} />
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveSection("Restocking")}
-            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-border bg-background hover:bg-muted text-foreground text-xs font-medium transition-colors cursor-pointer"
-          >
-            <span>Review restocking</span>
-            <ArrowRight size={13} />
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveSection("Products")}
-            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-border bg-background hover:bg-muted text-foreground text-xs font-medium transition-colors cursor-pointer"
-          >
-            <span>Product performance</span>
-            <ArrowRight size={13} />
-          </button>
-        </div>
-      </div>
-
-      {/* ── 2. Interconnected Executive Stat Tiles ── */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-        {/* Tile 1: Projected Demand (Direct link to Forecast) */}
-        <div className={`${ANALYTICS_CARD_CLASS} p-4 sm:p-5 flex flex-col justify-between`}>
-          <div>
-            <div className="flex items-center justify-between gap-2">
-              <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Projected Demand · {nextForecastMonth}</p>
-              <InfoTip
-                title="Next-Month Demand Forecast"
-                color="sky"
-                lines={[
-                  `Customer demand projection for ${nextForecastMonth} calculated via Moving Average models.`,
-                  `SMA-3: ${Math.round(forecastSMA3).toLocaleString()} units · SMA-6: ${Math.round(forecastSMA6).toLocaleString()} units.`,
-                ]}
-              />
-            </div>
-            <p className="mt-1.5 text-2xl font-extrabold tabular-nums text-foreground">
-              {Math.round(activeForecastUnits).toLocaleString()} <span className="text-xs font-normal text-muted-foreground">units</span>
-            </p>
-          </div>
-          <div className="mt-3 border-t border-border/50 pt-2 flex items-center justify-between">
-            <span className="text-[11px] text-muted-foreground">
-              {latestSalesMonth ? `${latestSalesMonth.month}: ${latestSalesMonth.demand.toLocaleString()} sold` : "Recent sales"}
-            </span>
+        <div className="flex flex-wrap items-center justify-between gap-2 pt-3 border-t border-border/60">
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setActiveSection("Restocking")}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 text-xs font-semibold transition-colors cursor-pointer"
+            >
+              <span>Open Today&apos;s Order List ({reorderRecs.length})</span>
+              <ArrowRight size={13} />
+            </button>
             <button
               type="button"
               onClick={() => setActiveSection("Forecast")}
-              className="text-xs font-bold text-primary hover:underline cursor-pointer inline-flex items-center gap-0.5"
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-border bg-background hover:bg-muted text-foreground text-xs font-medium transition-colors cursor-pointer"
+            >
+              <span>Inspect {nextForecastMonth} Forecasts</span>
+              <ArrowRight size={13} />
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveSection("Products")}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-border bg-background hover:bg-muted text-foreground text-xs font-medium transition-colors cursor-pointer"
+            >
+              <span>Top Selling Medicines</span>
+              <ArrowRight size={13} />
+            </button>
+          </div>
+          <span className="text-[11px] text-muted-foreground">
+            Lead time L = {leadTimeDaysSetting}d · Carrying rate I = {Math.round(holdingRateSetting * 100)}%/yr · Order cost S = ₱{orderCostSetting}
+          </span>
+        </div>
+      </div>
+
+      {/* ── L0 Core Executive KPIs: 5 Morning Cards with L3 Glass-Box Proofs ── */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-3.5">
+        {/* KPI 1: Stockout Risk */}
+        <div className={`${ANALYTICS_CARD_CLASS} p-4 flex flex-col justify-between`}>
+          <div>
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-wider text-rose-600 dark:text-rose-400">1 · Stockout Risk</p>
+                <p className="text-[11px] text-muted-foreground mt-0.5">What runs out before delivery?</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setGlassBoxRecord({
+                  metric: "stockout_risk",
+                  title: "Stockout Risk — Runway vs. Supplier Lead Time",
+                  display: { label: "Items at Immediate Risk", value: `${executiveSnapshot.stockoutRiskSkus.length}`, unit: "SKUs" },
+                  ownerSentence: `${executiveSnapshot.stockoutRiskSkus.length} items will run out before a ${leadTimeDaysSetting}-day supplier delivery arrives (≈ ${fmt(executiveSnapshot.salesAtRiskPerDay)}/day at risk).`,
+                  formula_id: "RUNWAY_RISK_v1",
+                  formulaDisplay: "Runway = OH ÷ d < L   |   Daily Revenue at Risk = Σ (d × Selling Price)",
+                  inputs: [
+                    { symbol: "L", label: "Supplier Lead Time", value: `${leadTimeDaysSetting} days` },
+                    { symbol: "SKUs_risk", label: "Items with Runway < L", value: `${executiveSnapshot.stockoutRiskSkus.length} items` },
+                    { symbol: "OOS", label: "Currently Out of Stock", value: `${executiveSnapshot.skuRows.filter(r => r.bucket === "out_of_stock").length} items` },
+                    { symbol: "₱/day", label: "Daily Revenue Exposed", value: `${fmt(executiveSnapshot.salesAtRiskPerDay)}/day` },
+                  ],
+                  steps: [
+                    {
+                      label: "Compute daily burn rate per medicine",
+                      expr: "d = Champion SMA_k* ÷ 30.4 days",
+                      result: "Daily unit depletion rate",
+                    },
+                    {
+                      label: "Compare stock runway against supplier lead time L",
+                      expr: `Runway = On-Hand ÷ d < ${leadTimeDaysSetting} days (with 0 incoming PO)`,
+                      result: `${executiveSnapshot.stockoutRiskSkus.length} medicines flagged`,
+                    },
+                    {
+                      label: "Sum daily revenue at risk across exposed SKUs",
+                      expr: "Σ (d_i × Price_i) for all exposed items",
+                      result: `${fmt(executiveSnapshot.salesAtRiskPerDay)} / day`,
+                    },
+                  ],
+                  citation: "Silver, Pyke & Thomas (2017): Lead-time stockout exposure during replenishment cycle.",
+                })}
+                className={`inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[10px] font-mono font-bold border transition-colors cursor-pointer shrink-0 ${
+                  auditMode
+                    ? "bg-primary/10 border-primary/30 text-primary"
+                    : "bg-muted/50 border-border text-muted-foreground hover:text-foreground"
+                }`}
+                title="Inspect mathematical proof"
+              >
+                <span>ƒ</span>
+                {auditMode && <span>Proof</span>}
+              </button>
+            </div>
+            <p className="mt-2.5 text-2xl font-extrabold tabular-nums tracking-tight text-foreground">
+              {executiveSnapshot.stockoutRiskSkus.length}{" "}
+              <span className="text-xs font-semibold text-muted-foreground">
+                {executiveSnapshot.stockoutRiskSkus.length === 1 ? "item" : "items"}
+              </span>
+            </p>
+            <p className="mt-1 text-xs font-semibold text-rose-600 dark:text-rose-400 tabular-nums">
+              ≈ {fmt(executiveSnapshot.salesAtRiskPerDay)}/day at risk
+            </p>
+          </div>
+          <div className="mt-3 pt-2 border-t border-border/50 flex items-center justify-between text-[11px]">
+            <span className="text-muted-foreground">Runway &lt; {leadTimeDaysSetting}d lead</span>
+            <button
+              type="button"
+              onClick={() => { setStatusBucketFilter("will_run_out"); setRadarPage(1); }}
+              className="font-bold text-primary hover:underline cursor-pointer"
+            >
+              Filter list ↓
+            </button>
+          </div>
+        </div>
+
+        {/* KPI 2: Today's Order List */}
+        <div className={`${ANALYTICS_CARD_CLASS} p-4 flex flex-col justify-between`}>
+          <div>
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-wider text-amber-600 dark:text-amber-400">2 · Today&apos;s Order List</p>
+                <p className="text-[11px] text-muted-foreground mt-0.5">What do I order, and how much?</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setGlassBoxRecord({
+                  metric: "todays_order_list",
+                  title: "Today's Order List — ROP Trigger & EOQ Batch Sizing",
+                  display: { label: "Recommended Restock Budget", value: fmt(estimatedRestockCost), unit: `(${reorderRecs.length} items)` },
+                  ownerSentence: `Order ${reorderRecs.length} items today (≈ ${fmt(estimatedRestockCost)} across ${executiveSnapshot.supplierCount} suppliers) where Inventory Position ≤ ROP.`,
+                  formula_id: "EOQ_ROP_ORDER_v1",
+                  formulaDisplay: "Trigger: IP ≤ ROP   |   Q* = √(2·D·S / H)   |   Order Cost = Σ (Q*_i × C_i)",
+                  inputs: [
+                    { symbol: "Count", label: "Items with IP ≤ ROP", value: `${reorderRecs.length} SKUs` },
+                    { symbol: "Σ Q*", label: "Total EOQ Order Units", value: `${totalEoqUnits.toLocaleString()} units` },
+                    { symbol: "S", label: "Ordering Cost per Batch", value: `₱${orderCostSetting.toFixed(2)}` },
+                    { symbol: "I", label: "Annual Carrying Rate", value: `${Math.round(holdingRateSetting * 100)}%/yr` },
+                  ],
+                  steps: [
+                    {
+                      label: "Evaluate inventory position against Reorder Point (ROP)",
+                      expr: "IP = On-Hand + On-Order ≤ LTD + Safety Stock",
+                      result: `${reorderRecs.length} SKUs triggered`,
+                    },
+                    {
+                      label: "Compute optimal order quantity Q* per triggered SKU",
+                      expr: "Q* = max(MinThreshold, √(2·D·S / H)) pack-rounded",
+                      result: `${totalEoqUnits.toLocaleString()} total units`,
+                    },
+                    {
+                      label: "Aggregate total purchase capital across suppliers",
+                      expr: `Σ (Q*_i × UnitCost_i) across ${executiveSnapshot.supplierCount} suppliers`,
+                      result: fmt(estimatedRestockCost),
+                    },
+                  ],
+                  citation: "Harris (1913) & Mahatme et al. (2012): Economic Order Quantity in pharmacy inventory control.",
+                })}
+                className={`inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[10px] font-mono font-bold border transition-colors cursor-pointer shrink-0 ${
+                  auditMode
+                    ? "bg-primary/10 border-primary/30 text-primary"
+                    : "bg-muted/50 border-border text-muted-foreground hover:text-foreground"
+                }`}
+                title="Inspect mathematical proof"
+              >
+                <span>ƒ</span>
+                {auditMode && <span>Proof</span>}
+              </button>
+            </div>
+            <p className="mt-2.5 text-2xl font-extrabold tabular-nums tracking-tight text-foreground">
+              {reorderRecs.length}{" "}
+              <span className="text-xs font-semibold text-muted-foreground">
+                {reorderRecs.length === 1 ? "item" : "items"}
+              </span>
+            </p>
+            <p className="mt-1 text-xs font-semibold text-amber-600 dark:text-amber-400 tabular-nums">
+              ≈ {fmt(estimatedRestockCost)} ({executiveSnapshot.supplierCount} {executiveSnapshot.supplierCount === 1 ? "supplier" : "suppliers"})
+            </p>
+          </div>
+          <div className="mt-3 pt-2 border-t border-border/50 flex items-center justify-between text-[11px]">
+            <span className="text-muted-foreground">{totalEoqUnits.toLocaleString()} EOQ units</span>
+            <button
+              type="button"
+              onClick={() => setActiveSection("Restocking")}
+              className="font-bold text-primary hover:underline cursor-pointer"
+            >
+              Order list →
+            </button>
+          </div>
+        </div>
+
+        {/* KPI 3: Stock Cover */}
+        <div className={`${ANALYTICS_CARD_CLASS} p-4 flex flex-col justify-between`}>
+          <div>
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-wider text-sky-600 dark:text-sky-400">3 · Stock Cover</p>
+                <p className="text-[11px] text-muted-foreground mt-0.5">How long will my stock last?</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setGlassBoxRecord({
+                  metric: "stock_cover_days",
+                  title: "Stock Cover — Cost-Weighted Inventory Runway",
+                  display: { label: "Current Stock Cover", value: `${executiveSnapshot.stockCoverDays}`, unit: "days" },
+                  ownerSentence: `Current stock covers ${executiveSnapshot.stockCoverDays} days of demand (EOQ steady-state target is ${executiveSnapshot.targetCoverDays} days).`,
+                  formula_id: "STOCK_COVER_v1",
+                  formulaDisplay: "Cover = Σ(OH × C) ÷ Σ(d × C)   |   Target = Σ((SS + Q*/2) × C) ÷ Σ(d × C)",
+                  inputs: [
+                    { symbol: "Σ(OH×C)", label: "Total On-Hand Inventory Cost", value: fmt(executiveSnapshot.totalOnHandCost) },
+                    { symbol: "Σ(d×C)", label: "Daily COGS Burn Rate", value: `${fmt(executiveSnapshot.dailyCogsBurn)}/day` },
+                    { symbol: "TargetVal", label: "EOQ Steady-State Value", value: fmt(executiveSnapshot.steadyStateTargetCost) },
+                    { symbol: "TargetDays", label: "Model Benchmark Cover", value: `${executiveSnapshot.targetCoverDays} days` },
+                  ],
+                  steps: [
+                    {
+                      label: "Sum total on-hand inventory value at unit cost C",
+                      expr: `Σ (OnHand_i × UnitCost_i) across ${scopedInventory.length} items`,
+                      result: fmt(executiveSnapshot.totalOnHandCost),
+                    },
+                    {
+                      label: "Divide by cost-weighted daily demand burn Σ(d × C)",
+                      expr: `${fmt(executiveSnapshot.totalOnHandCost)} ÷ ${fmt(Math.max(1, executiveSnapshot.dailyCogsBurn))}/day`,
+                      result: `${executiveSnapshot.stockCoverDays} days`,
+                    },
+                    {
+                      label: "Compare against EOQ steady-state average inventory (SS + Q*/2)",
+                      expr: `${fmt(executiveSnapshot.steadyStateTargetCost)} ÷ ${fmt(Math.max(1, executiveSnapshot.dailyCogsBurn))}/day`,
+                      result: `Target: ${executiveSnapshot.targetCoverDays} days`,
+                    },
+                  ],
+                  citation: "Silver, Pyke & Thomas (2017): Cost-weighted days of supply against EOQ cycle stock.",
+                })}
+                className={`inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[10px] font-mono font-bold border transition-colors cursor-pointer shrink-0 ${
+                  auditMode
+                    ? "bg-primary/10 border-primary/30 text-primary"
+                    : "bg-muted/50 border-border text-muted-foreground hover:text-foreground"
+                }`}
+                title="Inspect mathematical proof"
+              >
+                <span>ƒ</span>
+                {auditMode && <span>Proof</span>}
+              </button>
+            </div>
+            <p className="mt-2.5 text-2xl font-extrabold tabular-nums tracking-tight text-foreground">
+              {executiveSnapshot.stockCoverDays}{" "}
+              <span className="text-xs font-semibold text-muted-foreground">days</span>
+            </p>
+            <p className="mt-1 text-xs font-medium text-muted-foreground tabular-nums">
+              Model target: <strong className="text-foreground">{executiveSnapshot.targetCoverDays} days</strong>
+            </p>
+          </div>
+          <div className="mt-3 pt-2 border-t border-border/50 flex items-center justify-between text-[11px]">
+            <span className="text-muted-foreground">{onHandUnits.toLocaleString()}u on hand</span>
+            <button
+              type="button"
+              onClick={() => setActiveSection("Forecast")}
+              className="font-bold text-primary hover:underline cursor-pointer"
             >
               Forecast →
             </button>
           </div>
         </div>
 
-        {/* Tile 2: Restock Capital Needed (Direct link to Restocking) */}
-        <div className={`${ANALYTICS_CARD_CLASS} p-4 sm:p-5 flex flex-col justify-between`}>
+        {/* KPI 4: Cash in Excess Stock */}
+        <div className={`${ANALYTICS_CARD_CLASS} p-4 flex flex-col justify-between`}>
           <div>
-            <div className="flex items-center justify-between gap-2">
-              <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Restock Urgency (EOQ)</p>
-              <InfoTip
-                title="Restock Capital Requirement"
-                color="amber"
-                lines={[
-                  `Estimated total budget needed to restock ${reorderRecs.length} items below minimum safety levels.`,
-                  `Total planned batch order: ${totalEoqUnits.toLocaleString()} units.`,
-                ]}
-              />
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-wider text-purple-600 dark:text-purple-400">4 · Cash in Excess Stock</p>
+                <p className="text-[11px] text-muted-foreground mt-0.5">How much money sits idle?</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setGlassBoxRecord({
+                  metric: "cash_in_excess_stock",
+                  title: "Cash in Excess Stock — Working Capital Above EOQ Ceiling",
+                  display: { label: "Idle Excess Capital", value: fmt(executiveSnapshot.excessCashValue), unit: `(${executiveSnapshot.excessSharePct}%)` },
+                  ownerSentence: `${fmt(executiveSnapshot.excessCashValue)} (${executiveSnapshot.excessSharePct}% of inventory value) sits in excess or dead stock above model ceiling S_max.`,
+                  formula_id: "EXCESS_CASH_v1",
+                  formulaDisplay: "Excess Cash = Σ max(0, OH − S_max) × C,   where S_max = SS + Q* (0 if SMA-6 = 0)",
+                  inputs: [
+                    { symbol: "S_max", label: "Steady-State Max (SS + Q*)", value: "Per-SKU ceiling" },
+                    { symbol: "θ", label: "Overstock Buffer Threshold", value: "1.2 × S_max" },
+                    { symbol: "SKUs_ex", label: "Overstocked / Dead SKUs", value: `${executiveSnapshot.idleExcessSkus.length} items` },
+                    { symbol: "Share", label: "% of Total Inventory Value", value: `${executiveSnapshot.excessSharePct}%` },
+                  ],
+                  steps: [
+                    {
+                      label: "Compute model maximum on-hand ceiling per SKU",
+                      expr: "S_max = Safety Stock (SS) + Optimal Order Batch (Q*)",
+                      result: "Steady-state peak stock",
+                    },
+                    {
+                      label: "Identify units exceeding θ·S_max (θ = 1.2) or Dead Stock (SMA-6 = 0)",
+                      expr: `Flagged across ${executiveSnapshot.idleExcessSkus.length} SKUs`,
+                      result: fmt(executiveSnapshot.excessCashValue),
+                    },
+                    {
+                      label: "Compute share of total inventory capital tied up",
+                      expr: `${fmt(executiveSnapshot.excessCashValue)} ÷ ${fmt(Math.max(1, executiveSnapshot.totalOnHandCost))} × 100`,
+                      result: `${executiveSnapshot.excessSharePct}% of inventory`,
+                    },
+                  ],
+                  citation: "Devnani et al. (2010) & Mahatme et al. (2012): Working capital optimization via EOQ ceiling control.",
+                })}
+                className={`inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[10px] font-mono font-bold border transition-colors cursor-pointer shrink-0 ${
+                  auditMode
+                    ? "bg-primary/10 border-primary/30 text-primary"
+                    : "bg-muted/50 border-border text-muted-foreground hover:text-foreground"
+                }`}
+                title="Inspect mathematical proof"
+              >
+                <span>ƒ</span>
+                {auditMode && <span>Proof</span>}
+              </button>
             </div>
-            <p className="mt-1.5 text-2xl font-extrabold tabular-nums text-amber-600 dark:text-amber-400">
-              {fmt(estimatedRestockCost)}
+            <p className="mt-2.5 text-2xl font-extrabold tabular-nums tracking-tight text-foreground">
+              {fmt(executiveSnapshot.excessCashValue)}
+            </p>
+            <p className="mt-1 text-xs font-medium text-muted-foreground tabular-nums">
+              {executiveSnapshot.excessSharePct}% of inventory · {executiveSnapshot.idleExcessSkus.length} SKUs
             </p>
           </div>
-          <div className="mt-3 border-t border-border/50 pt-2 flex items-center justify-between">
-            <span className="text-[11px] text-muted-foreground">
-              {reorderRecs.length} items ({reorderRecs.filter(r => r.product.status === "out_of_stock").length} Out · {reorderRecs.filter(r => r.product.status === "critical").length} Crit)
-            </span>
+          <div className="mt-3 pt-2 border-t border-border/50 flex items-center justify-between text-[11px]">
+            <span className="text-muted-foreground">Above S_max = SS + Q*</span>
             <button
               type="button"
-              onClick={() => setActiveSection("Restocking")}
-              className="text-xs font-bold text-amber-700 dark:text-amber-300 hover:underline cursor-pointer inline-flex items-center gap-0.5"
+              onClick={() => { setStatusBucketFilter("overstock"); setRadarPage(1); }}
+              className="font-bold text-primary hover:underline cursor-pointer"
             >
-              Restock →
+              Inspect ↓
             </button>
           </div>
         </div>
 
-        {/* Tile 3: Current Stock on Hand (Direct link to Products) */}
-        <div className={`${ANALYTICS_CARD_CLASS} p-4 sm:p-5 flex flex-col justify-between`}>
+        {/* KPI 5: Expiry Exposure */}
+        <div className={`${ANALYTICS_CARD_CLASS} p-4 flex flex-col justify-between`}>
           <div>
-            <div className="flex items-center justify-between gap-2">
-              <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Current Stock on Hand</p>
-              <InfoTip
-                title="Current Physical Inventory"
-                lines={[
-                  "Total quantity available in batches across all active pharmacy items.",
-                  "Does not include unreceived units from pending purchase orders.",
-                ]}
-              />
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-wider text-orange-600 dark:text-orange-400">5 · Expiry Exposure</p>
+                <p className="text-[11px] text-muted-foreground mt-0.5">What will I lose to expiry?</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setGlassBoxRecord({
+                  metric: "expiry_exposure_fefo",
+                  title: "Expiry Exposure — Batch-Level FEFO Depletion Simulation",
+                  display: { label: "Projected Unsold Expiry Value", value: fmt(executiveSnapshot.expiryExposureValue), unit: `(${executiveSnapshot.expiryExposureUnits}u)` },
+                  ownerSentence: `${fmt(executiveSnapshot.expiryExposureValue)} (${executiveSnapshot.expiryExposureUnits.toLocaleString()} units across ${executiveSnapshot.expiryExposureBatches} batches) projected to expire unsold at current SMA burn rate.`,
+                  formula_id: "FEFO_EXPIRY_v1",
+                  formulaDisplay: "at_risk_b = max(0, Q_b − max(0, d · T_b − Σ_{j < b} sold_j))",
+                  inputs: [
+                    { symbol: "Horizon", label: "FEFO Simulation Window", value: "180 days" },
+                    { symbol: "Batches", label: "Batches at Risk of Expiry", value: `${executiveSnapshot.expiryExposureBatches} batches` },
+                    { symbol: "Units", label: "Projected Unsold Units", value: `${executiveSnapshot.expiryExposureUnits.toLocaleString()} units` },
+                    { symbol: "Value", label: "Projected Financial Write-Off", value: fmt(executiveSnapshot.expiryExposureValue) },
+                  ],
+                  steps: [
+                    {
+                      label: "Sort each product's active batches in First-Expired, First-Out (FEFO) order",
+                      expr: "T_b = days remaining until batch b expiration date",
+                      result: "Earliest-expiring batches depleted first",
+                    },
+                    {
+                      label: "Simulate cumulative demand consumption before batch b expires",
+                      expr: "sold_b = min(Q_b, max(0, d × T_b − Σ_{j<b} sold_j))",
+                      result: "Units absorbed by projected sales",
+                    },
+                    {
+                      label: "Value remaining unsold batch quantity at batch unit cost",
+                      expr: "Σ (Q_b − sold_b) × UnitCost_b",
+                      result: fmt(executiveSnapshot.expiryExposureValue),
+                    },
+                  ],
+                  citation: "Management Sciences for Health (MDS-3): FEFO batch depletion modeling in community pharmacies.",
+                })}
+                className={`inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[10px] font-mono font-bold border transition-colors cursor-pointer shrink-0 ${
+                  auditMode
+                    ? "bg-primary/10 border-primary/30 text-primary"
+                    : "bg-muted/50 border-border text-muted-foreground hover:text-foreground"
+                }`}
+                title="Inspect mathematical proof"
+              >
+                <span>ƒ</span>
+                {auditMode && <span>Proof</span>}
+              </button>
             </div>
-            <p className="mt-1.5 text-2xl font-extrabold tabular-nums text-foreground">
-              {onHandUnits.toLocaleString()} <span className="text-xs font-normal text-muted-foreground">units</span>
+            <p className="mt-2.5 text-2xl font-extrabold tabular-nums tracking-tight text-foreground">
+              {fmt(executiveSnapshot.expiryExposureValue)}
+            </p>
+            <p className="mt-1 text-xs font-medium text-muted-foreground tabular-nums">
+              {executiveSnapshot.expiryExposureUnits.toLocaleString()}u across {executiveSnapshot.expiryExposureBatches} {executiveSnapshot.expiryExposureBatches === 1 ? "batch" : "batches"}
             </p>
           </div>
-          <div className="mt-3 border-t border-border/50 pt-2 flex items-center justify-between">
-            <span className="text-[11px] text-muted-foreground">
-              +{incomingUnits.toLocaleString()} on {openOrderCount} open PO{openOrderCount === 1 ? "" : "s"}
-            </span>
+          <div className="mt-3 pt-2 border-t border-border/50 flex items-center justify-between text-[11px]">
+            <span className="text-muted-foreground">180d FEFO simulation</span>
             <button
               type="button"
-              onClick={() => setActiveSection("Products")}
-              className="text-xs font-bold text-primary hover:underline cursor-pointer inline-flex items-center gap-0.5"
+              onClick={() => { setStatusBucketFilter("expiry_risk"); setRadarPage(1); }}
+              className="font-bold text-primary hover:underline cursor-pointer"
             >
-              Products →
-            </button>
-          </div>
-        </div>
-
-        {/* Tile 4: Top Demand Category (Direct link to Products) */}
-        <div className={`${ANALYTICS_CARD_CLASS} p-4 sm:p-5 flex flex-col justify-between`}>
-          <div>
-            <div className="flex items-center justify-between gap-2">
-              <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Top Category Volume</p>
-              <InfoTip
-                title="Top Therapeutic Category"
-                lines={[
-                  "Category generating the highest share of sales units in recorded transactions.",
-                ]}
-              />
-            </div>
-            <p className="mt-1.5 text-2xl font-extrabold tabular-nums text-foreground truncate">
-              {categoryData.length > 0 ? categoryData[0].name : "Analgesics"}
-            </p>
-          </div>
-          <div className="mt-3 border-t border-border/50 pt-2 flex items-center justify-between">
-            <span className="text-[11px] text-muted-foreground">
-              {categoryData.length > 0 ? `${categoryData[0].value}% of total sales` : "No sales data"}
-            </span>
-            <button
-              type="button"
-              onClick={() => setActiveSection("Products")}
-              className="text-xs font-bold text-primary hover:underline cursor-pointer inline-flex items-center gap-0.5"
-            >
-              Breakdown →
+              Review ↓
             </button>
           </div>
         </div>
       </div>
 
-      {scopedLowStockProducts.length > 0 && (
-        <button
-          type="button"
-          onClick={() => setActiveSection("Restocking")}
-          className="flex w-full items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-left transition-colors hover:bg-amber-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 dark:border-amber-900/60 dark:bg-amber-950/25 dark:hover:bg-amber-950/40 cursor-pointer shadow-2xs"
-        >
-          <span>
-            <span className="block text-xs font-bold text-amber-900 dark:text-amber-200">
-              {scopedLowStockProducts.length} product{scopedLowStockProducts.length === 1 ? "" : "s"} require restock attention
-            </span>
-            <span className="mt-0.5 block text-[11px] text-amber-800/80 dark:text-amber-200/70">
-              Current shelf stock is below reorder points. Click to review EOQ recommendations and create Purchase Orders.
-            </span>
-          </span>
-          <span className="shrink-0 text-xs font-bold text-amber-900 dark:text-amber-200 inline-flex items-center gap-1">
-            Review Restocking <ArrowRight size={13} />
-          </span>
-        </button>
-      )}
+      {/* ── L1 Act & L2 Understand: Interactive Status Ladder & Action Radar ── */}
+      <div className={`${ANALYTICS_CARD_CLASS} overflow-hidden`}>
+        <div className="p-5 border-b border-border/70 space-y-3.5">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="text-sm font-bold text-foreground">Action Radar &amp; Status Ladder</h3>
+                <InfoTip
+                  title="Mutually Exclusive Status Ladder"
+                  lines={[
+                    "Every product is evaluated top-down into one clear operational bucket based on its runway, reorder point (ROP), and SMA sales velocity.",
+                    "Click any bucket pill below to filter medicines, or click 'ƒ Proof' on any row to inspect its exact mathematical trace.",
+                  ]}
+                />
+              </div>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Plain-language diagnosis per medicine · Click any bucket to focus or click <strong>ƒ</strong> to verify the math
+              </p>
+            </div>
+            <div className="relative w-full sm:w-64">
+              <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+              <input
+                type="text"
+                value={radarSearch}
+                onChange={e => { setRadarSearch(e.target.value); setRadarPage(1); }}
+                placeholder="Search medicine in radar…"
+                className="w-full rounded-xl border border-border bg-background pl-8 pr-7 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
+              />
+              {radarSearch && (
+                <button
+                  type="button"
+                  onClick={() => { setRadarSearch(""); setRadarPage(1); }}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground cursor-pointer"
+                >
+                  <X size={12} />
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Bucket Filter Pills */}
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-thin">
+            {([
+              {
+                id: "actionable",
+                label: "Needs Action",
+                count: executiveSnapshot.skuRows.filter(r => r.bucket !== "healthy" || r.skuExpiryUnits > 0).length,
+              },
+              {
+                id: "out_of_stock",
+                label: "Out of Stock",
+                count: executiveSnapshot.skuRows.filter(r => r.bucket === "out_of_stock").length,
+              },
+              {
+                id: "will_run_out",
+                label: "Will Run Out First",
+                count: executiveSnapshot.skuRows.filter(r => r.bucket === "will_run_out").length,
+              },
+              {
+                id: "reorder_now",
+                label: "Reorder Now",
+                count: executiveSnapshot.skuRows.filter(r => r.bucket === "reorder_now").length,
+              },
+              {
+                id: "reorder_soon",
+                label: "Reorder Soon",
+                count: executiveSnapshot.skuRows.filter(r => r.bucket === "reorder_soon").length,
+              },
+              {
+                id: "expiry_risk",
+                label: "Expiry Risk",
+                count: executiveSnapshot.expiryRiskSkus.length,
+              },
+              {
+                id: "overstock",
+                label: "Overstock",
+                count: executiveSnapshot.skuRows.filter(r => r.bucket === "overstock" || r.excessUnits > 0).length,
+              },
+              {
+                id: "dead_non_moving",
+                label: "Dead / Non-Moving",
+                count: executiveSnapshot.skuRows.filter(r => r.bucket === "dead_stock" || r.bucket === "non_moving").length,
+              },
+              {
+                id: "healthy",
+                label: "Healthy",
+                count: executiveSnapshot.skuRows.filter(r => r.bucket === "healthy").length,
+              },
+            ] as const).map(pill => (
+              <button
+                key={pill.id}
+                type="button"
+                onClick={() => { setStatusBucketFilter(pill.id); setRadarPage(1); }}
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border transition-colors cursor-pointer shrink-0 ${
+                  statusBucketFilter === pill.id
+                    ? "bg-primary text-primary-foreground border-primary shadow-2xs"
+                    : "bg-background hover:bg-muted text-muted-foreground hover:text-foreground border-border"
+                }`}
+              >
+                <span>{pill.label}</span>
+                <span className={`rounded-full px-1.5 py-0.2 text-[10px] tabular-nums ${
+                  statusBucketFilter === pill.id ? "bg-primary-foreground/20 text-primary-foreground" : "bg-muted text-muted-foreground"
+                }`}>
+                  {pill.count}
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="overflow-x-auto" data-table-scroll="fixed">
+          <table className="w-full text-xs">
+            <thead className="bg-muted/20 border-b border-border/60 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+              <tr>
+                <th className="py-3 px-5 text-left">Medicine &amp; Trend</th>
+                <th className="py-3 px-4 text-left">Status Bucket</th>
+                <th className="py-3 px-4 text-left">What This Means (Owner Reading)</th>
+                <th className="py-3 px-4 text-left">Runway vs. Lead Time</th>
+                <th className="py-3 px-5 text-right">Action &amp; Proof</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border/40">
+              {paginatedRadarRows.map(row => {
+                const canOrderNow = row.bucket === "out_of_stock" || row.bucket === "will_run_out" || row.bucket === "reorder_now" || row.bucket === "reorder_soon";
+                const runwayPct = Math.min(100, Math.max(6, Math.round((Math.min(row.runway, 30) / 30) * 100)));
+                return (
+                  <tr key={row.product.id} className="hover:bg-muted/15 transition-colors">
+                    <td className="py-3 px-5">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-semibold text-foreground">{row.product.name}</span>
+                        {row.trendSignal === "up" && (
+                          <span className="inline-flex items-center gap-0.5 rounded bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 px-1.5 py-0.5 text-[10px] font-bold">
+                            ▲ +{ Math.abs(row.trendPct)}%
+                          </span>
+                        )}
+                        {row.trendSignal === "down" && (
+                          <span className="inline-flex items-center gap-0.5 rounded bg-amber-500/15 text-amber-700 dark:text-amber-300 px-1.5 py-0.5 text-[10px] font-bold">
+                            ▼ {row.trendPct}%
+                          </span>
+                        )}
+                        {row.skuExpiryUnits > 0 && (
+                          <span className="inline-flex items-center gap-1 rounded bg-orange-500/15 text-orange-700 dark:text-orange-300 px-1.5 py-0.5 text-[10px] font-bold">
+                            ⏳ {row.skuExpiryUnits}u expiry risk
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-[11px] text-muted-foreground mt-0.5">
+                        {row.product.category} · {row.confidenceLabel}
+                      </p>
+                    </td>
+
+                    <td className="py-3 px-4">
+                      <span className={`inline-flex items-center rounded-lg border px-2.5 py-1 text-[11px] font-bold ${row.bucketTone}`}>
+                        {row.bucketLabel}
+                      </span>
+                    </td>
+
+                    <td className="py-3 px-4">
+                      <p className="font-medium text-foreground">{row.ownerReading}</p>
+                      <p className="text-[10px] text-muted-foreground mt-0.5 font-mono">
+                        OH: {row.onHand}u{row.onOrder > 0 ? ` + PO: ${row.onOrder}u` : ""} · ROP: {row.rop}u · Champion: {row.kStar} ({row.champMonthly.toFixed(1)}/mo)
+                      </p>
+                    </td>
+
+                    <td className="py-3 px-4">
+                      <div className="w-36 space-y-1">
+                        <div className="flex items-center justify-between text-[10px]">
+                          <span className="font-semibold text-foreground tabular-nums">
+                            {row.runway >= 900 ? "90+ days" : `${Math.round(row.runway)}d cover`}
+                          </span>
+                          <span className="text-muted-foreground">L = {row.L}d</span>
+                        </div>
+                        <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
+                          <div
+                            className={`h-full rounded-full ${
+                              row.runway < row.L
+                                ? "bg-rose-500"
+                                : row.ip <= row.rop
+                                ? "bg-amber-500"
+                                : "bg-emerald-500"
+                            }`}
+                            style={{ width: `${row.onHand === 0 ? 4 : runwayPct}%` }}
+                          />
+                        </div>
+                      </div>
+                    </td>
+
+                    <td className="py-3 px-5 text-right">
+                      <div className="inline-flex items-center justify-end gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => openSkuGlassBox(row)}
+                          className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border text-[11px] font-semibold transition-colors cursor-pointer ${
+                            auditMode
+                              ? "bg-primary/10 border-primary/30 text-primary"
+                              : "bg-background hover:bg-muted border-border text-muted-foreground hover:text-foreground"
+                          }`}
+                          title="Open L3 Glass-Box calculation trace for this medicine"
+                        >
+                          <span className="font-mono font-bold">ƒ</span>
+                          <span>Proof</span>
+                        </button>
+                        {canOrderNow && canEdit ? (
+                          <button
+                            type="button"
+                            onClick={() => openPoDraftModal(
+                              row.product,
+                              row.qStar,
+                              Math.max(0, getReorderUnits(row.product) - row.onHand),
+                              row.qStar
+                            )}
+                            className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground text-[11px] font-bold transition-colors cursor-pointer"
+                          >
+                            Order {row.qStar}u
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setScope(`product:${row.product.id}`);
+                              setActiveSection("Forecast");
+                            }}
+                            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-border bg-background hover:bg-muted text-foreground text-[11px] font-medium transition-colors cursor-pointer"
+                          >
+                            Chart →
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+              {filteredRadarRows.length === 0 && (
+                <tr>
+                  <td colSpan={5} className="py-8 text-center text-xs text-muted-foreground">
+                    No medicines in this status bucket.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+        <TablePager
+          total={filteredRadarRows.length}
+          page={radarPage}
+          pageSize={RADAR_PAGE_SIZE}
+          onPage={setRadarPage}
+        />
+      </div>
+
       {/* Charts row */}
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 items-start">
         {/* Current supply and recent demand by product */}
@@ -2520,8 +3549,8 @@ export default function AnalyticsPage({
                   <XAxis type="number" allowDecimals={false} tick={{ fontSize: 10, fill: "var(--muted-foreground)" }} tickFormatter={value => Number(value) >= 1000 ? `${(Number(value) / 1000).toFixed(1)}k` : String(value)} />
                   <YAxis type="category" dataKey="name" width={132} interval={0} tick={{ fontSize: 10, fill: "var(--muted-foreground)" }} tickFormatter={value => String(value).length > 19 ? `${String(value).slice(0, 18)}…` : String(value)} />
                   <Tooltip formatter={(value, name) => [`${Number(value).toLocaleString()} units`, name]} labelStyle={{ color: "var(--foreground)", fontWeight: 700 }} contentStyle={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 10, fontSize: 11 }} />
-                  <Bar dataKey="stock" name="Stock on hand" fill="#2563eb" barSize={11} radius={[0, 4, 4, 0]} />
-                  {supplyDemandProductData.hasSales && <Bar dataKey="soldInLatestMonth" name={`Units sold · ${supplyDemandProductData.monthLabel}`} fill="#8b5cf6" barSize={11} radius={[0, 4, 4, 0]}>
+                  <Bar dataKey="stock" name="Stock on hand" fill="#2563eb" barSize={11} radius={[0, 4, 4, 0]} isAnimationActive={false} />
+                  {supplyDemandProductData.hasSales && <Bar dataKey="soldInLatestMonth" name={`Units sold · ${supplyDemandProductData.monthLabel}`} fill="#8b5cf6" barSize={11} radius={[0, 4, 4, 0]} isAnimationActive={false}>
                     <LabelList dataKey="soldInLatestMonth" position="right" formatter={value => Number(value) > 0 ? value : ""} style={{ fill: "#7c3aed", fontSize: 10, fontWeight: 600 }} />
                   </Bar>}
                 </BarChart>
@@ -4021,6 +5050,12 @@ export default function AnalyticsPage({
           onSave={handleSaveEoqSettings}
           onReset={handleResetEoqSettings}
           onClose={() => setShowEoqSettingsModal(false)}
+        />
+      )}
+      {glassBoxRecord && (
+        <GlassBoxAuditModal
+          record={glassBoxRecord}
+          onClose={() => setGlassBoxRecord(null)}
         />
       )}
       {confirmExportCsv && (
