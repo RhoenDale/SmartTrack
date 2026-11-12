@@ -289,7 +289,8 @@ switch ($method . ':' . $action) {
             $series = array_map(static fn($mk) => $prodMonthMap[$mk] ?? 0, $monthKeys);
             $prodSma3 = sma($series, 3);
             $prodSma6 = sma($series, 6);
-            $histMonthly = $totalSold / max($monthCount, 1);
+            $calendarMonths = max(count($monthKeys), 1);
+            $histMonthly = $totalSold / $calendarMonths;
 
             $reorderUnits = (int)$p['reorder'] * max(1, (int)$p['units_per_pack']);
             $demandIsFallback = ($totalSold === 0);
@@ -431,7 +432,7 @@ function sma(array $values, int $window): float {
 function estimate_eoq(int $annualDemand, float $avgUnitCost,
                       float $orderCost = 120, float $holdingRate = 0.2): int {
     if ($annualDemand <= 0 || $avgUnitCost <= 0) return 0;
-    $holdingCost = $avgUnitCost * $holdingRate;
+    $holdingCost = max(0.2, $avgUnitCost * $holdingRate);
     $qty = sqrt((2 * $annualDemand * $orderCost) / $holdingCost);
     return max(0, (int)round($qty));
 }

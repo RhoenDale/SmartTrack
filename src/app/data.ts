@@ -284,20 +284,43 @@ export function estimateEOQ(
   orderCost = 120, holdingRate = 0.2
 ): number {
   if (annualDemand <= 0 || avgUnitCost <= 0) return 0;
-  return Math.max(0, Math.round(Math.sqrt((2 * annualDemand * orderCost) / (avgUnitCost * holdingRate))));
+  const holdingCost = Math.max(0.2, avgUnitCost * holdingRate);
+  return Math.max(0, Math.round(Math.sqrt((2 * annualDemand * orderCost) / holdingCost)));
 }
 
 export function getMonthlyDemand(transactions: Transaction[]): { month: string; demand: number }[] {
+  const sales = transactions.filter(tx => tx.type === "sale");
+  if (sales.length === 0) return [];
   const map = new Map<string, number>();
-  transactions.filter(tx => tx.type === "sale").forEach(tx => {
+  let minTime = Number.POSITIVE_INFINITY;
+  let maxTime = Number.NEGATIVE_INFINITY;
+
+  sales.forEach(tx => {
     const d = new Date(tx.date);
     if (Number.isNaN(d.getTime())) return;
-    const key = d.toLocaleDateString("en-US", { month: "short", year: "numeric" });
+    const t = d.getTime();
+    if (t < minTime) minTime = t;
+    if (t > maxTime) maxTime = t;
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
     map.set(key, (map.get(key) ?? 0) + tx.qty);
   });
-  return Array.from(map.entries())
-    .sort((a, b) => new Date(a[0]).getTime() - new Date(b[0]).getTime())
-    .map(([month, demand]) => ({ month, demand }));
+
+  if (!Number.isFinite(minTime) || !Number.isFinite(maxTime)) return [];
+
+  const minD = new Date(minTime);
+  const maxD = new Date(maxTime);
+  const start = new Date(minD.getFullYear(), minD.getMonth(), 1);
+  const end = new Date(maxD.getFullYear(), maxD.getMonth(), 1);
+
+  const result: { month: string; demand: number }[] = [];
+  const cursor = new Date(start);
+  while (cursor <= end) {
+    const key = `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, "0")}`;
+    const label = cursor.toLocaleDateString("en-US", { month: "short", year: "numeric" });
+    result.push({ month: label, demand: map.get(key) ?? 0 });
+    cursor.setMonth(cursor.getMonth() + 1);
+  }
+  return result;
 }
 
 /** FIFO deduction — client-side preview only (actual deduction happens on server). */

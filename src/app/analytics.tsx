@@ -3456,6 +3456,11 @@ export default function AnalyticsPage({
                             </span>
                           )}
                         </div>
+                        {unitsPerPack > 1 && effectiveOrderQty % unitsPerPack !== 0 && (
+                          <span className="text-[10px] text-amber-600 dark:text-amber-400 font-medium block mt-0.5" title="Order quantity includes loose units beyond full supplier packs">
+                            {Math.floor(effectiveOrderQty / unitsPerPack)} pk + {effectiveOrderQty % unitsPerPack} loose
+                          </span>
+                        )}
                         {fifoSellThroughMonths != null && fifoSellThroughMonths > 9 ? (
                           <span className="text-[10px] text-amber-600 dark:text-amber-400 font-medium block mt-0.5">
                             ~{fifoSellThroughMonths.toFixed(0)}m FIFO
@@ -3742,6 +3747,18 @@ export default function AnalyticsPage({
                     </button>
                   )}
                 </div>
+                {(() => {
+                  const pk = Math.max(1, poDraftModal.product.unitsPerPack ?? 1);
+                  const q = Math.max(0, Number(poDraftModal.qty) || 0);
+                  if (pk <= 1 || q === 0 || q % pk === 0) return null;
+                  const full = Math.floor(q / pk);
+                  const loose = q % pk;
+                  return (
+                    <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-2 font-medium">
+                      ⚠️ Note: {q.toLocaleString()} units = {full} pack{full === 1 ? "" : "s"} of {pk} + {loose} loose unit{loose === 1 ? "" : "s"}. Click &ldquo;Round to Pack&rdquo; if supplier requires full boxes.
+                    </p>
+                  );
+                })()}
               </div>
 
               <div>
