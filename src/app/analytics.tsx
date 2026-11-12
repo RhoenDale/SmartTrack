@@ -26,7 +26,7 @@ import {
 import { fmt, StockBadge, InfoTip, ConfirmDialog } from "./shared";
 import { analyticsApi, purchaseOrdersApi, type PurchaseOrder, type SupplierPerformance } from "./api";
 
-const ANALYTICS_CARD_CLASS = "rounded-2xl border border-border/70 bg-card shadow-2xs";
+const ANALYTICS_CARD_CLASS = "rounded-2xl border border-border/70 bg-card shadow-sm";
 const CATEGORY_COLORS = ["#0d9488", "#06b6d4", "#8b5cf6", "#f59e0b", "#3b82f6", "#ec4899", "#64748b"];
 
 function AnalyticsColumnHeader({
@@ -45,6 +45,16 @@ function AnalyticsColumnHeader({
       <span>{label}</span>
       <InfoTip title={title} lines={[description]} />
     </span>
+  );
+}
+
+function SummaryCard({ label, value, note }: { label: string; value: string; note: string }) {
+  return (
+    <section className={`${ANALYTICS_CARD_CLASS} min-w-0 p-4 sm:p-5`}>
+      <p className="text-sm font-medium text-muted-foreground">{label}</p>
+      <p className="mt-2 truncate text-2xl font-semibold tracking-tight tabular-nums text-foreground" title={value}>{value}</p>
+      <p className="mt-1 text-xs text-muted-foreground">{note}</p>
+    </section>
   );
 }
 
@@ -484,18 +494,18 @@ function CalcInspectorModal({
 }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="fixed inset-0" onClick={onClose} />
-      <div className="relative z-10 bg-card border border-border rounded-2xl shadow-2xl w-full max-w-2xl max-h-[88vh] overflow-y-auto">
+      <button type="button" aria-label="Close math details" className="fixed inset-0 bg-black/30" onClick={onClose} />
+      <div role="dialog" aria-modal="true" aria-labelledby="calc-inspector-title" className="relative z-10 bg-card border border-border rounded-2xl shadow-2xl w-full max-w-lg max-h-[84vh] overflow-y-auto">
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-border">
-          <h3 className="text-sm font-semibold text-foreground">{title}</h3>
+          <h3 id="calc-inspector-title" className="text-sm font-semibold text-foreground">{title}</h3>
           <button type="button" onClick={onClose} className="text-muted-foreground hover:text-foreground p-1 rounded hover:bg-muted cursor-pointer">
             <X size={16} />
           </button>
         </div>
         {/* Formula */}
         <div className="px-5 pt-4 pb-2">
-          <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">Formula at a glance</p>
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">Formula</p>
           {typeof formula === "string" ? (
             <div className="bg-muted/40 border border-border rounded-lg px-4 py-3 font-mono text-sm font-semibold text-foreground text-center">
               {formula}
@@ -506,13 +516,13 @@ function CalcInspectorModal({
         </div>
         {explanation && (
           <div className="mx-5 mt-3 rounded-lg border border-primary/15 bg-primary/5 px-3 py-2.5">
-            <p className="text-[10px] font-semibold text-foreground mb-1">What this calculation is for</p>
+            <p className="text-[10px] font-semibold text-foreground mb-1">In plain language</p>
             <p className="text-[11px] leading-relaxed text-muted-foreground">{explanation}</p>
           </div>
         )}
         {/* Variables */}
         <div className="px-5 py-3">
-          <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">Recent sales used</p>
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">Values used</p>
           <div className="divide-y divide-border border border-border rounded-lg overflow-hidden">
             {variables.map((v, i) => (
               <div key={i} className={`flex items-center justify-between px-3.5 py-2 text-[11px] ${i % 2 === 0 ? "bg-muted/20" : ""}`}>
@@ -524,7 +534,7 @@ function CalcInspectorModal({
         </div>
         {/* Computation steps */}
         <div className="px-5 pb-3">
-          <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">How the estimate is worked out</p>
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">Steps</p>
           <div className="space-y-2">
             {trail.map((step, i) => (
               <div key={i} className="flex items-start gap-3 rounded-lg border border-border bg-muted/15 p-3">
@@ -540,147 +550,6 @@ function CalcInspectorModal({
   );
 }
 
-/* ---------- L3 Glass-Box Verification Modal (Progressive Disclosure) ---------- */
-interface GlassBoxRecord {
-  metric: string;
-  title: string;
-  display: { label: string; value: string; unit: string };
-  ownerSentence: string;
-  formula_id: string;
-  formulaDisplay: string;
-  inputs: { symbol: string; label: string; value: string }[];
-  steps: { label: string; expr: string; result: string }[];
-  citation: string;
-}
-
-function GlassBoxAuditModal({
-  record,
-  onClose,
-}: {
-  record: GlassBoxRecord;
-  onClose: () => void;
-}) {
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [onClose]);
-
-  const jsonProof = useMemo(() => JSON.stringify({
-    metric: record.metric,
-    display: record.display,
-    formula_id: record.formula_id,
-    inputs: Object.fromEntries(record.inputs.map(i => [i.symbol, i.value])),
-    steps: record.steps.map(s => ({ step: s.label, expr: s.expr, result: s.result })),
-    params_version: "2026-11-12.1",
-  }, null, 2), [record]);
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="fixed inset-0 bg-black/45" onClick={onClose} />
-      <div role="dialog" aria-modal="true" className="relative z-10 bg-card border border-border rounded-2xl shadow-2xl w-full max-w-2xl max-h-[88vh] overflow-y-auto">
-        {/* Header */}
-        <div className="flex items-start justify-between gap-3 px-5 py-4 border-b border-border sticky top-0 bg-card z-10">
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="inline-flex items-center gap-1 rounded-md bg-primary/10 border border-primary/25 px-2 py-0.5 text-[10px] font-mono font-bold text-primary">
-                ƒ {record.formula_id}
-              </span>
-              <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                L3 Glass-Box Verification
-              </span>
-            </div>
-            <h3 className="text-base font-bold text-foreground mt-1">{record.title}</h3>
-          </div>
-          <button type="button" onClick={onClose} aria-label="Close audit proof" className="text-muted-foreground hover:text-foreground p-1.5 rounded-lg hover:bg-muted cursor-pointer">
-            <X size={16} />
-          </button>
-        </div>
-
-        <div className="p-5 space-y-4">
-          {/* L0 Plain-Language Binding */}
-          <div className="rounded-xl border border-primary/20 bg-primary/[0.04] p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div className="space-y-1">
-              <p className="text-[10px] font-bold uppercase tracking-wider text-primary">L0 Executive Presentation (What the Owner Reads)</p>
-              <p className="text-xs font-medium text-foreground leading-relaxed">&ldquo;{record.ownerSentence}&rdquo;</p>
-            </div>
-            <div className="sm:text-right shrink-0 border-t sm:border-t-0 sm:border-l border-border/60 pt-2 sm:pt-0 sm:pl-4">
-              <span className="block text-[10px] text-muted-foreground font-medium">{record.display.label}</span>
-              <span className="text-lg font-extrabold tabular-nums text-foreground">{record.display.value}</span>
-              {record.display.unit && <span className="text-[11px] text-muted-foreground ml-1">{record.display.unit}</span>}
-            </div>
-          </div>
-
-          {/* Mathematical Formula */}
-          <div>
-            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1.5">Governing Mathematical Formula</p>
-            <div className="rounded-xl border border-border bg-muted/30 px-4 py-3 font-mono text-xs sm:text-sm font-bold text-foreground text-center overflow-x-auto">
-              {record.formulaDisplay}
-            </div>
-          </div>
-
-          {/* Substituted Inputs */}
-          <div>
-            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1.5">Substituted Variables &amp; Parameters</p>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              {record.inputs.map((inp, idx) => (
-                <div key={idx} className="flex items-center justify-between gap-2 rounded-xl border border-border/80 bg-muted/15 px-3 py-2 text-xs">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <span className="rounded bg-card border border-border px-1.5 py-0.5 font-mono text-[10px] font-bold text-primary shrink-0">
-                      {inp.symbol}
-                    </span>
-                    <span className="text-muted-foreground truncate text-[11px]">{inp.label}</span>
-                  </div>
-                  <span className="font-mono font-bold text-foreground text-[11px] shrink-0">{inp.value}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Step-by-step arithmetic execution */}
-          <div>
-            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1.5">Step-by-Step Arithmetic Execution</p>
-            <div className="space-y-2">
-              {record.steps.map((st, idx) => (
-                <div key={idx} className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 rounded-xl border border-border/80 bg-card px-3.5 py-2.5 text-xs">
-                  <div className="flex items-center gap-2.5">
-                    <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[10px] font-bold text-primary">
-                      {idx + 1}
-                    </span>
-                    <div>
-                      <span className="font-semibold text-foreground block text-[11px]">{st.label}</span>
-                      <span className="font-mono text-[11px] text-muted-foreground">{st.expr}</span>
-                    </div>
-                  </div>
-                  <span className="font-mono font-bold text-foreground bg-muted/40 border border-border/60 rounded-lg px-2.5 py-1 text-xs self-start sm:self-center shrink-0">
-                    = {st.result}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Collapsible Raw JSON Record */}
-          <details className="rounded-xl border border-border/80 bg-muted/15 overflow-hidden text-xs">
-            <summary className="px-3.5 py-2.5 font-semibold text-muted-foreground hover:text-foreground cursor-pointer select-none flex items-center justify-between">
-              <span>Inspect Deterministic JSON Proof Record</span>
-              <span className="font-mono text-[10px] text-primary">JSON ▼</span>
-            </summary>
-            <pre className="p-3.5 border-t border-border/60 bg-background font-mono text-[11px] text-foreground overflow-x-auto leading-relaxed">
-              {jsonProof}
-            </pre>
-          </details>
-
-          {/* Academic Citation Footer */}
-          <div className="rounded-xl border border-border/60 bg-muted/20 px-3.5 py-2.5 text-[11px] text-muted-foreground leading-relaxed">
-            <strong className="text-foreground font-semibold">Methodological &amp; UX Basis: </strong>
-            {record.citation}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 function EoqBreakdownModal({
   data,
@@ -697,11 +566,8 @@ function EoqBreakdownModal({
     unitCost: number;
     orderCost: number;
     holdingCost: number;
-    holdingPercent: number;
     leadTimeDays: number;
     safetyBufferPercent: number;
-    demandSourceLabel: string;
-    costSourceLabel: string;
     totalSold: number;
     overrideQty?: number | null;
   };
@@ -718,11 +584,8 @@ function EoqBreakdownModal({
     unitCost,
     orderCost,
     holdingCost,
-    holdingPercent,
     leadTimeDays,
     safetyBufferPercent,
-    demandSourceLabel,
-    costSourceLabel,
     overrideQty,
   } = data;
   const [customQtyInput, setCustomQtyInput] = useState(
@@ -731,115 +594,65 @@ function EoqBreakdownModal({
   const numerator = 2 * annualDemand * orderCost;
   const ratio = holdingCost > 0 ? numerator / holdingCost : 0;
   const effectiveQty = overrideQty != null ? overrideQty : eoq;
-  const monthlyRate = annualDemand / 12;
-  const fifoMonths = monthlyRate > 0 ? effectiveQty / monthlyRate : null;
   const unitsPerPack = Math.max(1, product.unitsPerPack ?? 1);
   const effectivePacks = unitsPerPack > 1 ? Math.ceil(effectiveQty / unitsPerPack) : null;
-  const leadTimeDemand = Math.round((annualDemand / 365) * leadTimeDays);
-  const safetyStockUnits = Math.round((annualDemand / 365) * leadTimeDays * (safetyBufferPercent / 100));
   const suggestedRop = Math.max(1, Math.round((annualDemand / 365) * leadTimeDays * (1 + safetyBufferPercent / 100)));
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="fixed inset-0" onClick={onClose} />
-      <div className="relative z-10 bg-card border border-border rounded-2xl shadow-2xl w-full sm:max-w-lg flex flex-col overflow-hidden max-h-[88vh]">
-        {/* Header */}
-        <div className="flex items-center justify-between px-5 py-3.5 border-b border-border flex-shrink-0">
-          <div className="min-w-0 pr-2">
-            <h3 className="text-sm font-semibold text-foreground truncate">EOQ &amp; ROP Calculation — {product.name}</h3>
-            <p className="text-xs text-muted-foreground mt-0.5">{product.id} · {product.category}</p>
+      <button type="button" aria-label="Close math details" onClick={onClose} className="fixed inset-0 bg-black/30" />
+      <div role="dialog" aria-modal="true" aria-labelledby="restock-math-title" className="relative z-10 flex max-h-[85vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-2xl">
+        <header className="flex items-center justify-between gap-3 border-b border-border px-5 py-4">
+          <div className="min-w-0">
+            <h3 id="restock-math-title" className="truncate text-sm font-semibold text-foreground">Show Math · {product.name}</h3>
+            <p className="mt-1 text-xs text-muted-foreground">{product.category}</p>
           </div>
-          <button type="button" onClick={onClose} className="flex-shrink-0 text-muted-foreground hover:text-foreground p-1.5 rounded hover:bg-muted cursor-pointer">
-            <X size={16} />
-          </button>
-        </div>
+          <button type="button" onClick={onClose} aria-label="Close" className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"><X size={16} /></button>
+        </header>
 
-        {/* Scrollable body */}
-        <div className="overflow-y-auto flex-1 divide-y divide-border/40">
-          {/* Formula */}
-          <div className="px-4 pt-4 pb-3">
-            <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">Mathematical Formula</p>
-            <div className="overflow-x-auto">
-              <EoqFormulaVisual />
+        <div className="space-y-4 overflow-y-auto p-5 text-sm">
+          <div>
+            <p className="font-medium text-foreground">Economic Order Quantity (EOQ)</p>
+            <p className="mt-1 rounded-lg bg-muted/50 px-3 py-2 text-center font-mono text-xs text-foreground">EOQ = √(2 × D × S ÷ H)</p>
+            <div className="mt-2 grid grid-cols-1 gap-1.5 text-xs sm:grid-cols-2">
+              <p className="text-muted-foreground">D · Expected yearly demand <strong className="text-foreground">{annualDemand.toLocaleString()} units</strong></p>
+              <p className="text-muted-foreground">S · Cost to place an order <strong className="text-foreground">{fmt(orderCost)}</strong></p>
+              <p className="text-muted-foreground">H · Yearly holding cost/unit <strong className="text-foreground">{fmt(holdingCost)}</strong></p>
+              <p className="text-muted-foreground">Unit cost <strong className="text-foreground">{fmt(unitCost)}</strong></p>
             </div>
+            <ol className="mt-3 space-y-1 text-xs text-muted-foreground">
+              <li>1. 2 × {annualDemand.toLocaleString()} × {fmt(orderCost)} = <strong className="text-foreground">{numerator.toLocaleString()}</strong></li>
+              <li>2. {numerator.toLocaleString()} ÷ {fmt(holdingCost)} = <strong className="text-foreground">{Math.round(ratio).toLocaleString()}</strong></li>
+              <li>3. √{Math.round(ratio).toLocaleString()} = <strong className="text-foreground">{rawEoq.toLocaleString()} units</strong></li>
+            </ol>
+            <p className="mt-3 rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-sm font-semibold text-foreground">
+              Suggested order: {eoq.toLocaleString()} units
+              {eoq > rawEoq && <span className="block text-xs font-normal text-muted-foreground">Raised to meet the configured minimum of {getReorderUnits(product).toLocaleString()} units.</span>}
+            </p>
           </div>
 
-          {/* Variables */}
-          <div className="px-4 py-3">
-            <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">Variables &amp; Data Sources</p>
-            <div className="divide-y divide-border border border-border rounded-lg overflow-hidden text-[11px]">
-              {[
-                { label: "Annual Demand (D)", value: `${annualDemand.toLocaleString()} units/yr`, sub: demandSourceLabel, help: "Estimated units needed in a year. This follows the selected demand basis and is used in EOQ calculations." },
-                { label: "Order Cost (S)", value: `₱${orderCost.toFixed(2)} / order`, sub: "Configurable in Cost Parameters", help: "Estimated fixed cost each time a purchase order is placed, such as delivery and administration." },
-                { label: "Unit Purchase Cost (C)", value: `₱${unitCost.toFixed(2)}`, sub: costSourceLabel, help: "Purchase cost for one base unit, taken from the displayed cost source." },
-                { label: "Annual Carrying Rate (I)", value: `${holdingPercent}%`, sub: "Configurable storage & capital rate", help: "Estimated yearly share of unit cost spent holding stock, including storage and tied-up capital." },
-                { label: "Unit Holding Cost (H = C × I)", value: `₱${holdingCost.toFixed(2)} / unit / yr`, sub: `₱${unitCost.toFixed(2)} × ${holdingPercent}%`, help: "Estimated annual cost of holding one unit. EOQ compares this with the cost of placing orders." },
-              ].map((v, i) => (
-                <div key={i} className={`flex items-start justify-between gap-3 px-3.5 py-2 ${i % 2 === 0 ? "bg-muted/20" : ""}`}>
-                  <div className="min-w-0">
-                    <span className="flex items-center gap-1.5 text-muted-foreground">
-                      {v.label}
-                      <InfoTip title={v.label} lines={[v.help]} />
-                    </span>
-                    <span className="text-[10px] text-muted-foreground/80">{v.sub}</span>
-                  </div>
-                  <span className="font-semibold text-foreground font-mono text-right shrink-0">{v.value}</span>
-                </div>
-              ))}
-            </div>
+          <div className="border-t border-border/60 pt-4">
+            <p className="font-medium text-foreground">Restock point (ROP)</p>
+            <p className="mt-1 text-xs text-muted-foreground">Restock when stock reaches the estimated demand during supplier lead time, plus the configured buffer.</p>
+            <p className="mt-2 rounded-lg bg-muted/50 px-3 py-2 text-center font-mono text-xs text-foreground">ROP = (D ÷ 365 × {leadTimeDays} days) × (1 + {safetyBufferPercent}% buffer)</p>
+            <p className="mt-2 text-xs text-muted-foreground">
+              Calculation: ({annualDemand.toLocaleString()} ÷ 365 × {leadTimeDays}) × (1 + {safetyBufferPercent}%) = <strong className="text-foreground">{suggestedRop.toLocaleString()} units</strong>
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">Current stock: {product.stock.toLocaleString()} units{shortage > 0 ? ` · ${shortage.toLocaleString()} below minimum` : ""}</p>
           </div>
 
-          {/* Step-by-step */}
-          <div className="px-4 py-3">
-            <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">Step-by-step Computation</p>
-            <div className="bg-muted/20 border border-border rounded-lg p-3 space-y-1.5">
-              <p className="font-mono text-[11px] text-muted-foreground break-words">1. Numerator = 2 × {annualDemand.toLocaleString()} × ₱{orderCost.toFixed(2)} = <strong>{numerator.toLocaleString()}</strong></p>
-              <p className="font-mono text-[11px] text-muted-foreground break-words">2. Ratio = {numerator.toLocaleString()} ÷ ₱{holdingCost.toFixed(2)} = <strong>{Math.round(ratio).toLocaleString()}</strong></p>
-              <p className="font-mono text-[11px] text-muted-foreground break-words">3. Formula EOQ = √({Math.round(ratio).toLocaleString()}) ≈ <strong>{rawEoq.toLocaleString()} units</strong></p>
-              {eoq > rawEoq && (
-                <p className="text-[11px] text-amber-700 dark:text-amber-300 font-medium">
-                  Note: Raised from {rawEoq.toLocaleString()} to {eoq.toLocaleString()} units so the order covers the configured minimum level ({getReorderUnits(product).toLocaleString()} units).
-                </p>
-              )}
-              <div className="border-t border-border mt-2 pt-2 text-xs font-semibold text-muted-foreground flex flex-wrap gap-x-3 gap-y-1">
-                <span>Stock: <span className="text-foreground">{product.stock.toLocaleString()}</span></span>
-                <span>Shortage: <span className="text-red-500">{shortage > 0 ? `-${shortage.toLocaleString()}` : "—"}</span></span>
-                <span>Recommended EOQ: <span className="text-foreground">{eoq.toLocaleString()} units</span></span>
-                {fifoMonths != null && (
-                  <span>FIFO Sell-Through: <span className="text-teal-700 dark:text-teal-300">~{fifoMonths.toFixed(1)} mos</span></span>
-                )}
-              </div>
-            </div>
-          </div>
-
-          {/* User Override Control (100% Flexible Decision Support) */}
           {onSetOverrideQty && (
-            <div className="px-4 py-3">
-              <div className="flex items-center justify-between gap-2 mb-1.5">
-                <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                  Your Planned Order Quantity (User Override)
-                </p>
-                {overrideQty != null ? (
-                  <span className="rounded bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30 px-2 py-0.5 text-[10px] font-bold">
-                    Custom Override Active
-                  </span>
-                ) : (
-                  <span className="rounded bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 px-2 py-0.5 text-[10px] font-bold">
-                    Using EOQ Recommendation
-                  </span>
-                )}
-              </div>
-              <p className="text-[11px] text-muted-foreground mb-2">
-                EOQ is a recommendation only. You can override this quantity for supplier box sizes, budget limits, or seasonal judgement.
-              </p>
+            <div className="border-t border-border/60 pt-4">
               <div className="flex flex-wrap items-center gap-2">
+                <label htmlFor="planned-order-qty" className="text-xs font-medium text-foreground">Your order quantity</label>
                 <input
+                  id="planned-order-qty"
                   type="number"
                   min="1"
                   step="1"
                   value={customQtyInput}
-                  onChange={e => setCustomQtyInput(e.target.value)}
-                  className="w-28 rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-bold text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
+                  onChange={event => setCustomQtyInput(event.target.value)}
+                  className="w-24 rounded-lg border border-border bg-background px-2.5 py-1.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
                 />
                 <button
                   type="button"
@@ -848,122 +661,42 @@ function EoqBreakdownModal({
                     setCustomQtyInput(String(parsed));
                     onSetOverrideQty(product.id, parsed === eoq ? null : parsed);
                   }}
-                  className="px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-bold hover:opacity-90 cursor-pointer"
+                  className="rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:opacity-90"
                 >
-                  Apply Qty
+                  Apply
                 </button>
                 {unitsPerPack > 1 && (
                   <button
                     type="button"
                     onClick={() => {
-                      const roundedPacks = Math.max(1, Math.ceil(effectiveQty / unitsPerPack));
-                      const roundedUnits = roundedPacks * unitsPerPack;
+                      const roundedUnits = Math.max(1, Math.ceil(effectiveQty / unitsPerPack)) * unitsPerPack;
                       setCustomQtyInput(String(roundedUnits));
                       onSetOverrideQty(product.id, roundedUnits === eoq ? null : roundedUnits);
                     }}
-                    className="px-2.5 py-1.5 rounded-lg border border-border bg-muted/50 hover:bg-muted text-[11px] font-semibold text-foreground cursor-pointer"
+                    className="rounded-lg border border-border px-2.5 py-1.5 text-xs font-medium text-foreground hover:bg-muted"
                   >
-                    Round to Pack ({unitsPerPack}u/pk)
+                    Round to {unitsPerPack}-unit pack
                   </button>
                 )}
                 {overrideQty != null && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setCustomQtyInput(String(eoq));
-                      onSetOverrideQty(product.id, null);
-                    }}
-                    className="px-2.5 py-1.5 rounded-lg text-[11px] font-semibold text-muted-foreground hover:text-foreground hover:underline cursor-pointer"
-                  >
-                    Reset to EOQ ({eoq})
+                  <button type="button" onClick={() => { setCustomQtyInput(String(eoq)); onSetOverrideQty(product.id, null); }} className="px-2 py-1.5 text-xs text-muted-foreground hover:text-foreground">
+                    Reset
                   </button>
                 )}
               </div>
-              {effectivePacks != null && (
-                <p className="text-[10px] text-muted-foreground mt-1.5">
-                  Equivalent to <strong>{effectivePacks} packs</strong> ({unitsPerPack} base units per pack) · Est. cost: <strong>{fmt(effectiveQty * unitCost)}</strong>
-                </p>
-              )}
+              {effectivePacks != null && <p className="mt-1.5 text-xs text-muted-foreground">{effectivePacks} packs · estimated cost {fmt(effectiveQty * unitCost)}. The recommendation does not place an order.</p>}
             </div>
           )}
-
-          {/* ROP */}
-          <div className="px-4 py-3">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-0.5 mb-2">
-              <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Suggested Lead-Time ROP</p>
-              <span className="text-[10px] text-muted-foreground">{leadTimeDays}-day lead time · {safetyBufferPercent}% buffer</span>
-            </div>
-            <div className="bg-muted/20 border border-border rounded-lg p-3 space-y-2 text-[11px]">
-              <div className="bg-background/80 rounded-md p-2 font-mono text-[11px] text-center text-foreground border border-border/50 text-xs">
-                ROP = (Daily Demand × Lead Time) + Safety Stock
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1 text-center">
-                <div className="bg-background/60 p-2 rounded border border-border/40">
-                  <span className="flex items-center justify-center gap-1 text-[10px] text-muted-foreground">
-                    Lead Time Demand
-                    <InfoTip title="Lead-time demand" lines={["Estimated units expected to sell while waiting for the supplier's delivery, based on annual demand and lead time."]} />
-                  </span>
-                  <span className="font-semibold text-foreground font-mono">{leadTimeDemand.toLocaleString()} units</span>
-                  <span className="text-[9px] text-muted-foreground block">({(annualDemand / 365).toFixed(1)}/day × {leadTimeDays}d)</span>
-                </div>
-                <div className="bg-background/60 p-2 rounded border border-border/40">
-                  <span className="flex items-center justify-center gap-1 text-[10px] text-muted-foreground">
-                    Safety Stock ({safetyBufferPercent}%)
-                    <InfoTip title="Safety stock" lines={["An extra reserve added to lead-time demand to help cover delays or higher-than-usual demand. The percentage is adjustable in parameters."]} />
-                  </span>
-                  <span className="font-semibold text-foreground font-mono">{safetyStockUnits.toLocaleString()} units</span>
-                  <span className="text-[9px] text-muted-foreground block">Buffer reserve</span>
-                </div>
-                <div className="bg-primary/10 p-2 rounded border border-primary/20">
-                  <span className="flex items-center justify-center gap-1 text-[10px] text-primary font-medium">
-                    Suggested ROP
-                    <InfoTip title="Suggested reorder point" lines={["The stock threshold for considering a new order: estimated demand during supplier lead time plus safety stock. It is advisory and does not place an order."]} />
-                  </span>
-                  <span className="font-bold text-primary font-mono">{suggestedRop.toLocaleString()} units</span>
-                  <span className="text-[9px] text-muted-foreground block">Configured: {product.reorder} packs ({getReorderUnits(product)} units)</span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Smart Decision Support Note */}
-          <div className="px-4 py-3">
-            <div className="p-3 bg-teal-50/70 dark:bg-teal-950/20 border border-teal-200/60 dark:border-teal-800/30 rounded-xl text-[11px] space-y-1 text-teal-900 dark:text-teal-200">
-              <p className="font-bold flex items-center gap-1.5">
-                <span>💡</span> FIFO &amp; Decision Guidance:
-              </p>
-              <p className="leading-relaxed opacity-90">
-                Suggested ROP uses a {leadTimeDays}-day supplier lead time and {safetyBufferPercent}% safety buffer. Your configured threshold ({product.reorder} packs / {getReorderUnits(product)} units) remains the active stock alert trigger until you edit the product. Ordering <strong>{effectiveQty.toLocaleString()} units</strong> balances ordering cost (₱{orderCost.toFixed(2)}) against annual holding cost ({holdingPercent}%).
-                {fifoMonths != null && (
-                  <> At current demand (~{Math.round(monthlyRate).toLocaleString()} units/month), this batch will sell through in <strong>~{fifoMonths.toFixed(1)} months under FIFO (First-In, First-Out)</strong>—ensure supplier expiry dates exceed this window.</>
-                )}
-              </p>
-            </div>
-          </div>
         </div>
 
-        {/* Footer */}
-        <div className="px-4 py-3 border-t border-border bg-muted/10 flex items-center justify-between gap-3 flex-shrink-0">
-          <span className="text-[10px] text-muted-foreground hidden sm:inline">100% flexible decision guide</span>
-          {onReorder ? (
-            <button
-              type="button"
-              onClick={() => { onClose(); onReorder(product); }}
-              className="flex items-center gap-1.5 px-4 py-1.5 bg-primary text-primary-foreground font-bold rounded-lg text-xs hover:opacity-90 transition-opacity cursor-pointer shadow-xs ml-auto"
-            >
-              <RefreshCw size={11} />
-              Edit product in Inventory
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={onClose}
-              className="ml-auto flex items-center gap-1.5 px-4 py-1.5 bg-muted text-foreground font-semibold rounded-lg text-xs hover:bg-muted/80 transition-opacity cursor-pointer"
-            >
-              Close
+        <footer className="flex justify-end gap-2 border-t border-border px-5 py-3">
+          {onReorder && (
+            <button type="button" onClick={() => { onClose(); onReorder(product); }} className="rounded-lg border border-border px-3 py-2 text-xs font-semibold text-foreground hover:bg-muted">
+              Edit medicine
             </button>
           )}
-        </div>
+          <button type="button" onClick={onClose} className="rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground hover:opacity-90">Done</button>
+        </footer>
       </div>
     </div>
   );
@@ -2263,7 +1996,7 @@ export default function AnalyticsPage({
       return next;
     });
   };
-  const [glassBoxRecord, setGlassBoxRecord] = useState<GlassBoxRecord | null>(null);
+  const [, setGlassBoxRecord] = useState<unknown>(null);
   const [statusBucketFilter, setStatusBucketFilter] = useState<
     "actionable" | "out_of_stock" | "will_run_out" | "reorder_now" | "reorder_soon" | "expiry_risk" | "overstock" | "dead_non_moving" | "healthy"
   >("actionable");
@@ -2616,13 +2349,70 @@ export default function AnalyticsPage({
     });
   };
 
-  const sectionMeta: Record<string, { icon: string; title: string; desc: string }> = {
-    "Overview":          { icon: "📊", title: "Executive Operations Pulse",   desc: "Five morning questions answered in plain language, backed by one-click mathematical proofs." },
-    "Forecast":          { icon: "🔮", title: "Demand Forecast",   desc: `Moving-average estimates for ${nextForecastMonth}, with historical back-testing.` },
-    "Restocking":        { icon: "⚡", title: "Restock Planning", desc: "Review reorder quantities, lead-time thresholds, and planning assumptions." },
-    "Products":          { icon: "🏷️", title: "Product Performance",         desc: "Sales volume, revenue, and demand by product." },
+  const sectionMeta: Record<string, { title: string; desc: string }> = {
+    "Overview":   { title: "At a glance", desc: "Sales outlook and the medicines that may need attention." },
+    "Forecast":   { title: "Expected sales", desc: `Simple moving-average estimates for ${nextForecastMonth}.` },
+    "Restocking": { title: "Restock plan", desc: "Suggested order quantities based on demand and supplier lead time." },
+    "Products":   { title: "Medicine performance", desc: "Past sales and next-month estimates by medicine." },
   };
   const sectionTabs = ["Overview", "Forecast", "Restocking", "Products"] as const;
+  const topCategory = categoryData.reduce<(typeof categoryData)[number] | null>(
+    (top, category) => !top || category.value > top.value ? category : top,
+    null
+  );
+
+  // Top 5 urgent restocking items for Overview Action Radar
+  const urgentRestocks = useMemo(() => {
+    return [...reorderRecs]
+      .sort((a, b) => {
+        const aOut = a.product.stock === 0 ? 1 : 0;
+        const bOut = b.product.stock === 0 ? 1 : 0;
+        if (aOut !== bOut) return bOut - aOut;
+        const aRatio = a.product.stock / Math.max(1, a.suggestedRop);
+        const bRatio = b.product.stock / Math.max(1, b.suggestedRop);
+        return aRatio - bRatio;
+      })
+      .slice(0, 5);
+  }, [reorderRecs]);
+
+  // Inventory velocity: Top 4 fast movers by units sold
+  const topFastMovers = useMemo(() => {
+    return [...productForecastList]
+      .filter(p => p.totalSold > 0)
+      .sort((a, b) => b.totalSold - a.totalSold)
+      .slice(0, 4);
+  }, [productForecastList]);
+
+  // Inventory velocity: 4 slow / idle items (high stock on hand, 0 recent sales)
+  const slowMovingItems = useMemo(() => {
+    return scopedInventory
+      .filter(p => p.stock > 0 && (productForecastMap.get(String(p.id))?.totalSold ?? 0) === 0)
+      .sort((a, b) => b.stock - a.stock)
+      .slice(0, 4);
+  }, [scopedInventory, productForecastMap]);
+
+  // Status breakdown counts
+  const outOfStockCount = reorderRecs.filter(r => r.product.status === "out_of_stock" || r.product.stock === 0).length;
+  const criticalCount = reorderRecs.filter(r => r.product.status === "critical" || (r.product.stock > 0 && r.product.stock <= r.suggestedRop * 0.5)).length;
+  const lowCount = Math.max(0, reorderRecs.length - outOfStockCount - criticalCount);
+
+  // Month-over-month delta for demand forecast
+  const demandDeltaPct = latestSalesMonth && latestSalesMonth.demand > 0
+    ? Math.round(((activeForecastUnits - latestSalesMonth.demand) / latestSalesMonth.demand) * 100)
+    : null;
+
+  // Peak sales month from historical data
+  const peakSalesMonth = useMemo(() => {
+    if (!smaChartData || smaChartData.length === 0) return null;
+    return smaChartData.reduce((max, item) => (item.demand > (max?.demand ?? 0) ? item : max), smaChartData[0]);
+  }, [smaChartData]);
+
+  // Average monthly sales across history
+  const avgMonthlyDemand = useMemo(() => {
+    if (!smaChartData || smaChartData.length === 0) return 0;
+    const sum = smaChartData.reduce((acc, item) => acc + item.demand, 0);
+    return Math.round(sum / smaChartData.length);
+  }, [smaChartData]);
 
   return (
     <div className="flex w-full max-w-[1480px] mx-auto flex-col font-sans" style={{ height: "calc(100dvh - 56px)", fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" }}>
@@ -2636,24 +2426,6 @@ export default function AnalyticsPage({
             <p className="text-sm text-muted-foreground mt-1">Sales performance, demand forecasts, and replenishment</p>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
-            <button
-              type="button"
-              onClick={toggleAuditMode}
-              aria-pressed={auditMode}
-              className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold border transition-colors cursor-pointer flex-shrink-0 ${
-                auditMode
-                  ? "bg-primary/10 border-primary/40 text-primary shadow-2xs"
-                  : "bg-card border-border text-muted-foreground hover:text-foreground hover:bg-muted/50"
-              }`}
-              title="Toggle L3 Glass-Box Audit Mode to inspect step-by-step formulas on every metric"
-            >
-              <span className={`inline-flex items-center justify-center w-4 h-4 rounded font-mono text-[11px] font-bold ${
-                auditMode ? "bg-primary text-primary-foreground" : "bg-muted text-foreground"
-              }`}>
-                ƒ
-              </span>
-              <span>Audit Mode {auditMode ? "ON" : "OFF"}</span>
-            </button>
             <button
               type="button"
               onClick={() => setConfirmExportCsv(true)}
@@ -2696,59 +2468,23 @@ export default function AnalyticsPage({
       {/* ── Scrollable content ── */}
       <div className="flex-1 overflow-y-auto px-4 sm:px-7 lg:px-8 py-6 space-y-6">
 
-      {/* Section banner — shows what the active tab is for */}
+      {/* Short section heading and scope control */}
       {(() => {
         const meta = sectionMeta[activeSection];
-        if (!meta) return null;
         const showScopeFilter = activeSection === "Overview" || activeSection === "Forecast";
         return (
-          <div className="flex flex-col sm:flex-row sm:items-center gap-4 border-b border-border/60 pb-4">
-            <div className="flex items-start gap-3 flex-1 min-w-0">
-              <div className="min-w-0">
-                <p className="text-base font-semibold tracking-tight text-foreground">{meta.title}</p>
-                <p className="text-xs text-muted-foreground mt-1 leading-relaxed">{meta.desc}</p>
-              </div>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <h2 className="text-lg font-semibold tracking-tight text-foreground">{meta.title}</h2>
+              <p className="mt-1 text-sm text-muted-foreground">{meta.desc}</p>
             </div>
             {showScopeFilter && (
-              <div className="flex items-center gap-2 flex-shrink-0 flex-wrap">
-                {activeSection === "Forecast" && (
-                  <div className="inline-flex items-center rounded-2xl border border-border/70 bg-muted/45 p-1 text-xs font-medium">
-                    <button
-                      type="button"
-                      onClick={() => setForecastPeriodUnit("month")}
-                      className={`px-2.5 py-1 rounded-md transition-colors cursor-pointer ${
-                        forecastPeriodUnit === "month"
-                          ? "bg-card text-foreground shadow-sm ring-1 ring-border/50"
-                          : "text-muted-foreground hover:text-foreground"
-                      }`}
-                    >
-                      Monthly (3/6 Mo)
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setForecastPeriodUnit("week")}
-                      className={`px-2.5 py-1 rounded-md transition-colors cursor-pointer ${
-                        forecastPeriodUnit === "week"
-                          ? "bg-card text-foreground shadow-sm ring-1 ring-border/50"
-                          : "text-muted-foreground hover:text-foreground"
-                      }`}
-                    >
-                      Weekly (3/6 Wk)
-                    </button>
-                  </div>
-                )}
-                <InfoTip
-                  title="Scope & Granularity"
-                  lines={[
-                    "Choose all products, one product, or one category to review its sales history and forecast.",
-                    { label: "Product Table", value: "Shows individual SMA-3 & SMA-6 forecasts for every product below." },
-                    { label: "Connected EOQ", value: "Restocking EOQ & ROP connect directly to your chosen SMA forecast or historical average." },
-                  ]}
-                />
+              <div className="flex flex-wrap items-center gap-2">
                 <select
                   value={scope}
                   onChange={event => setScope(event.target.value)}
-                  className="app-select w-full sm:w-52 rounded-lg border border-border bg-background px-3 py-1.5 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+                  aria-label="Filter analytics by product or category"
+                  className="app-select w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 sm:w-56"
                 >
                   <option value="all">All products</option>
                   <optgroup label="Products">
@@ -2762,9 +2498,9 @@ export default function AnalyticsPage({
                   <button
                     type="button"
                     onClick={() => setScope("all")}
-                    className="px-2.5 py-1.5 rounded-lg border border-border bg-muted/50 hover:bg-muted text-xs font-semibold text-foreground cursor-pointer"
+                    className="rounded-xl border border-border px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
                   >
-                    Reset Filter
+                    Clear
                   </button>
                 )}
               </div>
@@ -2773,1880 +2509,674 @@ export default function AnalyticsPage({
         );
       })()}
 
-      {/* Overview: L0 Glance (Morning Briefing + 5 Executive Cards) & L1 Action Radar */}
-      {activeSection === "Overview" && <>
-      {/* ── L0 Morning Briefing Strip (Story-Driven Apple Health / Shopify Pulse) ── */}
-      <div className={`${ANALYTICS_CARD_CLASS} p-5 sm:p-6 space-y-4`}>
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div className="flex items-center gap-2.5 flex-wrap">
-            <span className="inline-flex h-2.5 w-2.5 rounded-full bg-emerald-500" />
-            <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-              Daily Pharmacy Briefing · {scopeLabel}
-            </p>
-            {auditMode && (
-              <span className="rounded-md bg-primary/10 border border-primary/30 px-2 py-0.5 text-[10px] font-mono font-bold text-primary">
-                ƒ Glass-Box Audit Active — Click any metric to inspect math
-              </span>
-            )}
-          </div>
-          <button
-            type="button"
-            onClick={() => setGlassBoxRecord({
-              metric: "forecast_reliability_share",
-              title: "Forecast Reliability Share — Model Honesty Check",
-              display: { label: "Reliable Sales Value Share", value: `${executiveSnapshot.reliabilityPct}%`, unit: "of sales" },
-              ownerSentence: `Forecasts are backed by High or Medium history confidence for ${executiveSnapshot.reliabilityPct}% of recorded sales value.`,
-              formula_id: "RELIABILITY_SHARE_v1",
-              formulaDisplay: "Reliability % = (Σ Revenue of High/Medium Confidence SKUs ÷ Σ Total Recorded Sales Revenue) × 100",
-              inputs: [
-                { symbol: "Rev_rel", label: "High/Med Confidence Sales", value: fmt(executiveSnapshot.reliableSalesValue) },
-                { symbol: "Rev_tot", label: "Total Recorded Sales Value", value: fmt(executiveSnapshot.totalSalesValue) },
-                { symbol: "SKUs", label: "Scoped Products Evaluated", value: `${scopedInventory.length} items` },
-              ],
-              steps: [
-                {
-                  label: "Classify SKUs by historical sales density (≥3 active periods)",
-                  expr: `${executiveSnapshot.skuRows.filter(r => r.confidenceTier === "high" || r.confidenceTier === "short").length} of ${scopedInventory.length} SKUs qualify`,
-                  result: fmt(executiveSnapshot.reliableSalesValue),
-                },
-                {
-                  label: "Divide reliable sales value by total store sales value",
-                  expr: `${fmt(executiveSnapshot.reliableSalesValue)} ÷ ${fmt(Math.max(1, executiveSnapshot.totalSalesValue))} × 100`,
-                  result: `${executiveSnapshot.reliabilityPct}%`,
-                },
-              ],
-              citation: "Lee & See (2004) Trust in Automation: Calibrating user reliance through performance transparency.",
-            })}
-            className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 hover:bg-emerald-500/15 px-3 py-1 text-[11px] font-semibold text-emerald-700 dark:text-emerald-300 transition-colors cursor-pointer self-start sm:self-auto"
-          >
-            <CheckCircle2 size={12} />
-            <span>Forecasts reliable for {executiveSnapshot.reliabilityPct}% of sales value</span>
-            <span className="font-mono text-[10px] opacity-80 ml-0.5">ƒ</span>
-          </button>
-        </div>
-
-        <p className="text-sm sm:text-[15px] text-foreground leading-relaxed">
-          {executiveSnapshot.stockoutRiskSkus.length > 0 ? (
-            <>
-              <strong className="font-bold text-rose-600 dark:text-rose-400">
-                {executiveSnapshot.stockoutRiskSkus.length} {executiveSnapshot.stockoutRiskSkus.length === 1 ? "medicine" : "medicines"}
-              </strong>{" "}
-              will run out before a supplier delivery can arrive ({" "}
-              <strong className="font-semibold tabular-nums">≈ {fmt(executiveSnapshot.salesAtRiskPerDay)}/day</strong> in sales at risk).{" "}
-            </>
-          ) : (
-            <>
-              <strong className="font-semibold text-emerald-600 dark:text-emerald-400">Zero immediate stockouts</strong> before supplier lead time ({leadTimeDaysSetting} days).{" "}
-            </>
-          )}
-          Today&apos;s recommended order list has{" "}
-          <strong className="font-bold tabular-nums">{reorderRecs.length} {reorderRecs.length === 1 ? "item" : "items"}</strong>{" "}
-          totalling <strong className="font-bold tabular-nums text-amber-600 dark:text-amber-400">≈ {fmt(estimatedRestockCost)}</strong>{" "}
-          across {executiveSnapshot.supplierCount} {executiveSnapshot.supplierCount === 1 ? "supplier" : "suppliers"}. Overall stock cover stands at{" "}
-          <strong className="font-bold tabular-nums">{executiveSnapshot.stockCoverDays} days</strong>{" "}
-          <span className="text-muted-foreground">(EOQ steady-state target: {executiveSnapshot.targetCoverDays} days)</span>, with{" "}
-          <strong className="font-semibold tabular-nums">{ Math.round(activeForecastUnits).toLocaleString()} units</strong> projected demand for {nextForecastMonth}.
-        </p>
-
-        <div className="flex flex-wrap items-center justify-between gap-2 pt-3 border-t border-border/60">
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setActiveSection("Restocking")}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 text-xs font-semibold transition-colors cursor-pointer"
-            >
-              <span>Open Today&apos;s Order List ({reorderRecs.length})</span>
-              <ArrowRight size={13} />
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveSection("Forecast")}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-border bg-background hover:bg-muted text-foreground text-xs font-medium transition-colors cursor-pointer"
-            >
-              <span>Inspect {nextForecastMonth} Forecasts</span>
-              <ArrowRight size={13} />
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveSection("Products")}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-border bg-background hover:bg-muted text-foreground text-xs font-medium transition-colors cursor-pointer"
-            >
-              <span>Top Selling Medicines</span>
-              <ArrowRight size={13} />
-            </button>
-          </div>
-          <span className="text-[11px] text-muted-foreground">
-            Lead time L = {leadTimeDaysSetting}d · Carrying rate I = {Math.round(holdingRateSetting * 100)}%/yr · Order cost S = ₱{orderCostSetting}
-          </span>
-        </div>
-      </div>
-
-      {/* ── L0 Core Executive KPIs: 5 Morning Cards with L3 Glass-Box Proofs ── */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-3.5">
-        {/* KPI 1: Stockout Risk */}
-        <div className={`${ANALYTICS_CARD_CLASS} p-4 flex flex-col justify-between`}>
-          <div>
-            <div className="flex items-start justify-between gap-2">
+      {activeSection === "Overview" && (
+        <section className="space-y-6">
+          {/* ── Row 1: 4 Rich Executive KPI Cards ── */}
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            {/* Card 1: Expected Demand */}
+            <div className={`${ANALYTICS_CARD_CLASS} p-5 flex flex-col justify-between`}>
               <div>
-                <p className="text-[10px] font-bold uppercase tracking-wider text-rose-600 dark:text-rose-400">1 · Stockout Risk</p>
-                <p className="text-[11px] text-muted-foreground mt-0.5">What runs out before delivery?</p>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Expected Demand</span>
+                  <button
+                    type="button"
+                    onClick={() => setSmaInspector("sma3")}
+                    className="text-xs font-semibold text-primary hover:underline cursor-pointer"
+                  >
+                    Show Math
+                  </button>
+                </div>
+                <div className="mt-2 flex items-baseline gap-2">
+                  <span className="text-3xl font-bold tracking-tight tabular-nums text-foreground">
+                    {Math.round(activeForecastUnits).toLocaleString()}
+                  </span>
+                  <span className="text-sm font-medium text-muted-foreground">units</span>
+                </div>
+                <div className="mt-2 flex items-center gap-2 flex-wrap">
+                  {demandDeltaPct !== null && (
+                    <span className={`inline-flex items-center gap-0.5 rounded-full px-2 py-0.5 text-xs font-semibold ${
+                      demandDeltaPct >= 0
+                        ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+                        : "bg-amber-500/10 text-amber-700 dark:text-amber-300"
+                    }`}>
+                      {demandDeltaPct >= 0 ? <ArrowUpRight size={13} /> : <ArrowDownRight size={13} />}
+                      {demandDeltaPct >= 0 ? `+${demandDeltaPct}%` : `${demandDeltaPct}%`} vs {latestSalesMonth?.month}
+                    </span>
+                  )}
+                  <span className="text-xs text-muted-foreground">({activeForecastModel})</span>
+                </div>
               </div>
-              <button
-                type="button"
-                onClick={() => setGlassBoxRecord({
-                  metric: "stockout_risk",
-                  title: "Stockout Risk — Runway vs. Supplier Lead Time",
-                  display: { label: "Items at Immediate Risk", value: `${executiveSnapshot.stockoutRiskSkus.length}`, unit: "SKUs" },
-                  ownerSentence: `${executiveSnapshot.stockoutRiskSkus.length} items will run out before a ${leadTimeDaysSetting}-day supplier delivery arrives (≈ ${fmt(executiveSnapshot.salesAtRiskPerDay)}/day at risk).`,
-                  formula_id: "RUNWAY_RISK_v1",
-                  formulaDisplay: "Runway = OH ÷ d < L   |   Daily Revenue at Risk = Σ (d × Selling Price)",
-                  inputs: [
-                    { symbol: "L", label: "Supplier Lead Time", value: `${leadTimeDaysSetting} days` },
-                    { symbol: "SKUs_risk", label: "Items with Runway < L", value: `${executiveSnapshot.stockoutRiskSkus.length} items` },
-                    { symbol: "OOS", label: "Currently Out of Stock", value: `${executiveSnapshot.skuRows.filter(r => r.bucket === "out_of_stock").length} items` },
-                    { symbol: "₱/day", label: "Daily Revenue Exposed", value: `${fmt(executiveSnapshot.salesAtRiskPerDay)}/day` },
-                  ],
-                  steps: [
-                    {
-                      label: "Compute daily burn rate per medicine",
-                      expr: "d = Champion SMA_k* ÷ 30.4 days",
-                      result: "Daily unit depletion rate",
-                    },
-                    {
-                      label: "Compare stock runway against supplier lead time L",
-                      expr: `Runway = On-Hand ÷ d < ${leadTimeDaysSetting} days (with 0 incoming PO)`,
-                      result: `${executiveSnapshot.stockoutRiskSkus.length} medicines flagged`,
-                    },
-                    {
-                      label: "Sum daily revenue at risk across exposed SKUs",
-                      expr: "Σ (d_i × Price_i) for all exposed items",
-                      result: `${fmt(executiveSnapshot.salesAtRiskPerDay)} / day`,
-                    },
-                  ],
-                  citation: "Silver, Pyke & Thomas (2017): Lead-time stockout exposure during replenishment cycle.",
-                })}
-                className={`inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[10px] font-mono font-bold border transition-colors cursor-pointer shrink-0 ${
-                  auditMode
-                    ? "bg-primary/10 border-primary/30 text-primary"
-                    : "bg-muted/50 border-border text-muted-foreground hover:text-foreground"
-                }`}
-                title="Inspect mathematical proof"
-              >
-                <span>ƒ</span>
-                {auditMode && <span>Proof</span>}
-              </button>
+              <div className="mt-4 pt-3 border-t border-border/60 flex items-center justify-between text-xs text-muted-foreground">
+                <span>SMA-3: {Math.round(forecastSMA3).toLocaleString()}u</span>
+                <span>·</span>
+                <span>SMA-6: {Math.round(forecastSMA6).toLocaleString()}u</span>
+              </div>
             </div>
-            <p className="mt-2.5 text-2xl font-extrabold tabular-nums tracking-tight text-foreground">
-              {executiveSnapshot.stockoutRiskSkus.length}{" "}
-              <span className="text-xs font-semibold text-muted-foreground">
-                {executiveSnapshot.stockoutRiskSkus.length === 1 ? "item" : "items"}
-              </span>
-            </p>
-            <p className="mt-1 text-xs font-semibold text-rose-600 dark:text-rose-400 tabular-nums">
-              ≈ {fmt(executiveSnapshot.salesAtRiskPerDay)}/day at risk
-            </p>
-          </div>
-          <div className="mt-3 pt-2 border-t border-border/50 flex items-center justify-between text-[11px]">
-            <span className="text-muted-foreground">Runway &lt; {leadTimeDaysSetting}d lead</span>
-            <button
-              type="button"
-              onClick={() => { setStatusBucketFilter("will_run_out"); setRadarPage(1); }}
-              className="font-bold text-primary hover:underline cursor-pointer"
-            >
-              Filter list ↓
-            </button>
-          </div>
-        </div>
 
-        {/* KPI 2: Today's Order List */}
-        <div className={`${ANALYTICS_CARD_CLASS} p-4 flex flex-col justify-between`}>
-          <div>
-            <div className="flex items-start justify-between gap-2">
+            {/* Card 2: Restock Urgency */}
+            <div className={`${ANALYTICS_CARD_CLASS} p-5 flex flex-col justify-between`}>
               <div>
-                <p className="text-[10px] font-bold uppercase tracking-wider text-amber-600 dark:text-amber-400">2 · Today&apos;s Order List</p>
-                <p className="text-[11px] text-muted-foreground mt-0.5">What do I order, and how much?</p>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Restock Urgency</span>
+                  <button
+                    type="button"
+                    onClick={() => setActiveSection("Restocking")}
+                    className="text-xs font-semibold text-primary hover:underline cursor-pointer"
+                  >
+                    View list →
+                  </button>
+                </div>
+                <div className="mt-2 flex items-baseline gap-2">
+                  <span className="text-3xl font-bold tracking-tight tabular-nums text-foreground">
+                    {reorderRecs.length}
+                  </span>
+                  <span className="text-sm font-medium text-muted-foreground">medicines</span>
+                </div>
+                <div className="mt-2 flex items-center gap-1.5 flex-wrap">
+                  {outOfStockCount > 0 && (
+                    <span className="rounded-full bg-rose-500/15 px-2 py-0.5 text-[11px] font-bold text-rose-700 dark:text-rose-300">
+                      ● {outOfStockCount} Out
+                    </span>
+                  )}
+                  {criticalCount > 0 && (
+                    <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[11px] font-bold text-amber-800 dark:text-amber-300">
+                      ● {criticalCount} Critical
+                    </span>
+                  )}
+                  {lowCount > 0 && (
+                    <span className="rounded-full bg-yellow-500/15 px-2 py-0.5 text-[11px] font-bold text-yellow-800 dark:text-yellow-300">
+                      ● {lowCount} Low
+                    </span>
+                  )}
+                </div>
               </div>
-              <button
-                type="button"
-                onClick={() => setGlassBoxRecord({
-                  metric: "todays_order_list",
-                  title: "Today's Order List — ROP Trigger & EOQ Batch Sizing",
-                  display: { label: "Recommended Restock Budget", value: fmt(estimatedRestockCost), unit: `(${reorderRecs.length} items)` },
-                  ownerSentence: `Order ${reorderRecs.length} items today (≈ ${fmt(estimatedRestockCost)} across ${executiveSnapshot.supplierCount} suppliers) where Inventory Position ≤ ROP.`,
-                  formula_id: "EOQ_ROP_ORDER_v1",
-                  formulaDisplay: "Trigger: IP ≤ ROP   |   Q* = √(2·D·S / H)   |   Order Cost = Σ (Q*_i × C_i)",
-                  inputs: [
-                    { symbol: "Count", label: "Items with IP ≤ ROP", value: `${reorderRecs.length} SKUs` },
-                    { symbol: "Σ Q*", label: "Total EOQ Order Units", value: `${totalEoqUnits.toLocaleString()} units` },
-                    { symbol: "S", label: "Ordering Cost per Batch", value: `₱${orderCostSetting.toFixed(2)}` },
-                    { symbol: "I", label: "Annual Carrying Rate", value: `${Math.round(holdingRateSetting * 100)}%/yr` },
-                  ],
-                  steps: [
-                    {
-                      label: "Evaluate inventory position against Reorder Point (ROP)",
-                      expr: "IP = On-Hand + On-Order ≤ LTD + Safety Stock",
-                      result: `${reorderRecs.length} SKUs triggered`,
-                    },
-                    {
-                      label: "Compute optimal order quantity Q* per triggered SKU",
-                      expr: "Q* = max(MinThreshold, √(2·D·S / H)) pack-rounded",
-                      result: `${totalEoqUnits.toLocaleString()} total units`,
-                    },
-                    {
-                      label: "Aggregate total purchase capital across suppliers",
-                      expr: `Σ (Q*_i × UnitCost_i) across ${executiveSnapshot.supplierCount} suppliers`,
-                      result: fmt(estimatedRestockCost),
-                    },
-                  ],
-                  citation: "Harris (1913) & Mahatme et al. (2012): Economic Order Quantity in pharmacy inventory control.",
-                })}
-                className={`inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[10px] font-mono font-bold border transition-colors cursor-pointer shrink-0 ${
-                  auditMode
-                    ? "bg-primary/10 border-primary/30 text-primary"
-                    : "bg-muted/50 border-border text-muted-foreground hover:text-foreground"
-                }`}
-                title="Inspect mathematical proof"
-              >
-                <span>ƒ</span>
-                {auditMode && <span>Proof</span>}
-              </button>
+              <div className="mt-4 pt-3 border-t border-border/60 flex items-center justify-between text-xs text-muted-foreground">
+                <span>Triggered at Reorder Point (ROP)</span>
+                <span>·</span>
+                <span className="text-amber-600 dark:text-amber-400 font-medium">{outOfStockCount + criticalCount} urgent</span>
+              </div>
             </div>
-            <p className="mt-2.5 text-2xl font-extrabold tabular-nums tracking-tight text-foreground">
-              {reorderRecs.length}{" "}
-              <span className="text-xs font-semibold text-muted-foreground">
-                {reorderRecs.length === 1 ? "item" : "items"}
-              </span>
-            </p>
-            <p className="mt-1 text-xs font-semibold text-amber-600 dark:text-amber-400 tabular-nums">
-              ≈ {fmt(estimatedRestockCost)} ({executiveSnapshot.supplierCount} {executiveSnapshot.supplierCount === 1 ? "supplier" : "suppliers"})
-            </p>
-          </div>
-          <div className="mt-3 pt-2 border-t border-border/50 flex items-center justify-between text-[11px]">
-            <span className="text-muted-foreground">{totalEoqUnits.toLocaleString()} EOQ units</span>
-            <button
-              type="button"
-              onClick={() => setActiveSection("Restocking")}
-              className="font-bold text-primary hover:underline cursor-pointer"
-            >
-              Order list →
-            </button>
-          </div>
-        </div>
 
-        {/* KPI 3: Stock Cover */}
-        <div className={`${ANALYTICS_CARD_CLASS} p-4 flex flex-col justify-between`}>
-          <div>
-            <div className="flex items-start justify-between gap-2">
+            {/* Card 3: Suggested Order Budget (EOQ) */}
+            <div className={`${ANALYTICS_CARD_CLASS} p-5 flex flex-col justify-between`}>
               <div>
-                <p className="text-[10px] font-bold uppercase tracking-wider text-sky-600 dark:text-sky-400">3 · Stock Cover</p>
-                <p className="text-[11px] text-muted-foreground mt-0.5">How long will my stock last?</p>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Suggested Order (EOQ)</span>
+                  <button
+                    type="button"
+                    onClick={() => setSmaInspector("eoq")}
+                    className="text-xs font-semibold text-primary hover:underline cursor-pointer"
+                  >
+                    Show Math
+                  </button>
+                </div>
+                <div className="mt-2 flex items-baseline gap-2">
+                  <span className="text-3xl font-bold tracking-tight tabular-nums text-foreground">
+                    {fmt(estimatedRestockCost)}
+                  </span>
+                </div>
+                <p className="mt-2 text-xs text-muted-foreground">
+                  Optimal batch sizing for <strong className="text-foreground">{totalEoqUnits.toLocaleString()} units</strong>
+                </p>
               </div>
-              <button
-                type="button"
-                onClick={() => setGlassBoxRecord({
-                  metric: "stock_cover_days",
-                  title: "Stock Cover — Cost-Weighted Inventory Runway",
-                  display: { label: "Current Stock Cover", value: `${executiveSnapshot.stockCoverDays}`, unit: "days" },
-                  ownerSentence: `Current stock covers ${executiveSnapshot.stockCoverDays} days of demand (EOQ steady-state target is ${executiveSnapshot.targetCoverDays} days).`,
-                  formula_id: "STOCK_COVER_v1",
-                  formulaDisplay: "Cover = Σ(OH × C) ÷ Σ(d × C)   |   Target = Σ((SS + Q*/2) × C) ÷ Σ(d × C)",
-                  inputs: [
-                    { symbol: "Σ(OH×C)", label: "Total On-Hand Inventory Cost", value: fmt(executiveSnapshot.totalOnHandCost) },
-                    { symbol: "Σ(d×C)", label: "Daily COGS Burn Rate", value: `${fmt(executiveSnapshot.dailyCogsBurn)}/day` },
-                    { symbol: "TargetVal", label: "EOQ Steady-State Value", value: fmt(executiveSnapshot.steadyStateTargetCost) },
-                    { symbol: "TargetDays", label: "Model Benchmark Cover", value: `${executiveSnapshot.targetCoverDays} days` },
-                  ],
-                  steps: [
-                    {
-                      label: "Sum total on-hand inventory value at unit cost C",
-                      expr: `Σ (OnHand_i × UnitCost_i) across ${scopedInventory.length} items`,
-                      result: fmt(executiveSnapshot.totalOnHandCost),
-                    },
-                    {
-                      label: "Divide by cost-weighted daily demand burn Σ(d × C)",
-                      expr: `${fmt(executiveSnapshot.totalOnHandCost)} ÷ ${fmt(Math.max(1, executiveSnapshot.dailyCogsBurn))}/day`,
-                      result: `${executiveSnapshot.stockCoverDays} days`,
-                    },
-                    {
-                      label: "Compare against EOQ steady-state average inventory (SS + Q*/2)",
-                      expr: `${fmt(executiveSnapshot.steadyStateTargetCost)} ÷ ${fmt(Math.max(1, executiveSnapshot.dailyCogsBurn))}/day`,
-                      result: `Target: ${executiveSnapshot.targetCoverDays} days`,
-                    },
-                  ],
-                  citation: "Silver, Pyke & Thomas (2017): Cost-weighted days of supply against EOQ cycle stock.",
-                })}
-                className={`inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[10px] font-mono font-bold border transition-colors cursor-pointer shrink-0 ${
-                  auditMode
-                    ? "bg-primary/10 border-primary/30 text-primary"
-                    : "bg-muted/50 border-border text-muted-foreground hover:text-foreground"
-                }`}
-                title="Inspect mathematical proof"
-              >
-                <span>ƒ</span>
-                {auditMode && <span>Proof</span>}
-              </button>
+              <div className="mt-4 pt-3 border-t border-border/60 flex items-center justify-between text-xs text-muted-foreground">
+                <span>Across {executiveSnapshot.supplierCount} {executiveSnapshot.supplierCount === 1 ? "supplier" : "suppliers"}</span>
+                <span>·</span>
+                <span className="text-primary font-medium">Balances S &amp; H</span>
+              </div>
             </div>
-            <p className="mt-2.5 text-2xl font-extrabold tabular-nums tracking-tight text-foreground">
-              {executiveSnapshot.stockCoverDays}{" "}
-              <span className="text-xs font-semibold text-muted-foreground">days</span>
-            </p>
-            <p className="mt-1 text-xs font-medium text-muted-foreground tabular-nums">
-              Model target: <strong className="text-foreground">{executiveSnapshot.targetCoverDays} days</strong>
-            </p>
-          </div>
-          <div className="mt-3 pt-2 border-t border-border/50 flex items-center justify-between text-[11px]">
-            <span className="text-muted-foreground">{onHandUnits.toLocaleString()}u on hand</span>
-            <button
-              type="button"
-              onClick={() => setActiveSection("Forecast")}
-              className="font-bold text-primary hover:underline cursor-pointer"
-            >
-              Forecast →
-            </button>
-          </div>
-        </div>
 
-        {/* KPI 4: Cash in Excess Stock */}
-        <div className={`${ANALYTICS_CARD_CLASS} p-4 flex flex-col justify-between`}>
-          <div>
-            <div className="flex items-start justify-between gap-2">
+            {/* Card 4: Stock Runway & Inventory Value */}
+            <div className={`${ANALYTICS_CARD_CLASS} p-5 flex flex-col justify-between`}>
               <div>
-                <p className="text-[10px] font-bold uppercase tracking-wider text-purple-600 dark:text-purple-400">4 · Cash in Excess Stock</p>
-                <p className="text-[11px] text-muted-foreground mt-0.5">How much money sits idle?</p>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Stock Runway (DOH)</span>
+                  <span className="rounded-full bg-sky-500/10 px-2 py-0.5 text-[11px] font-semibold text-sky-700 dark:text-sky-300">
+                    ● Target: {executiveSnapshot.targetCoverDays}d
+                  </span>
+                </div>
+                <div className="mt-2 flex items-baseline gap-2">
+                  <span className="text-3xl font-bold tracking-tight tabular-nums text-foreground">
+                    {executiveSnapshot.stockCoverDays}
+                  </span>
+                  <span className="text-sm font-medium text-muted-foreground">days of supply</span>
+                </div>
+                <p className="mt-2 text-xs text-muted-foreground">
+                  Total stock value: <strong className="text-foreground">{fmt(executiveSnapshot.totalOnHandCost)}</strong>
+                </p>
               </div>
-              <button
-                type="button"
-                onClick={() => setGlassBoxRecord({
-                  metric: "cash_in_excess_stock",
-                  title: "Cash in Excess Stock — Working Capital Above EOQ Ceiling",
-                  display: { label: "Idle Excess Capital", value: fmt(executiveSnapshot.excessCashValue), unit: `(${executiveSnapshot.excessSharePct}%)` },
-                  ownerSentence: `${fmt(executiveSnapshot.excessCashValue)} (${executiveSnapshot.excessSharePct}% of inventory value) sits in excess or dead stock above model ceiling S_max.`,
-                  formula_id: "EXCESS_CASH_v1",
-                  formulaDisplay: "Excess Cash = Σ max(0, OH − S_max) × C,   where S_max = SS + Q* (0 if SMA-6 = 0)",
-                  inputs: [
-                    { symbol: "S_max", label: "Steady-State Max (SS + Q*)", value: "Per-SKU ceiling" },
-                    { symbol: "θ", label: "Overstock Buffer Threshold", value: "1.2 × S_max" },
-                    { symbol: "SKUs_ex", label: "Overstocked / Dead SKUs", value: `${executiveSnapshot.idleExcessSkus.length} items` },
-                    { symbol: "Share", label: "% of Total Inventory Value", value: `${executiveSnapshot.excessSharePct}%` },
-                  ],
-                  steps: [
-                    {
-                      label: "Compute model maximum on-hand ceiling per SKU",
-                      expr: "S_max = Safety Stock (SS) + Optimal Order Batch (Q*)",
-                      result: "Steady-state peak stock",
-                    },
-                    {
-                      label: "Identify units exceeding θ·S_max (θ = 1.2) or Dead Stock (SMA-6 = 0)",
-                      expr: `Flagged across ${executiveSnapshot.idleExcessSkus.length} SKUs`,
-                      result: fmt(executiveSnapshot.excessCashValue),
-                    },
-                    {
-                      label: "Compute share of total inventory capital tied up",
-                      expr: `${fmt(executiveSnapshot.excessCashValue)} ÷ ${fmt(Math.max(1, executiveSnapshot.totalOnHandCost))} × 100`,
-                      result: `${executiveSnapshot.excessSharePct}% of inventory`,
-                    },
-                  ],
-                  citation: "Devnani et al. (2010) & Mahatme et al. (2012): Working capital optimization via EOQ ceiling control.",
-                })}
-                className={`inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[10px] font-mono font-bold border transition-colors cursor-pointer shrink-0 ${
-                  auditMode
-                    ? "bg-primary/10 border-primary/30 text-primary"
-                    : "bg-muted/50 border-border text-muted-foreground hover:text-foreground"
-                }`}
-                title="Inspect mathematical proof"
-              >
-                <span>ƒ</span>
-                {auditMode && <span>Proof</span>}
-              </button>
-            </div>
-            <p className="mt-2.5 text-2xl font-extrabold tabular-nums tracking-tight text-foreground">
-              {fmt(executiveSnapshot.excessCashValue)}
-            </p>
-            <p className="mt-1 text-xs font-medium text-muted-foreground tabular-nums">
-              {executiveSnapshot.excessSharePct}% of inventory · {executiveSnapshot.idleExcessSkus.length} SKUs
-            </p>
-          </div>
-          <div className="mt-3 pt-2 border-t border-border/50 flex items-center justify-between text-[11px]">
-            <span className="text-muted-foreground">Above S_max = SS + Q*</span>
-            <button
-              type="button"
-              onClick={() => { setStatusBucketFilter("overstock"); setRadarPage(1); }}
-              className="font-bold text-primary hover:underline cursor-pointer"
-            >
-              Inspect ↓
-            </button>
-          </div>
-        </div>
-
-        {/* KPI 5: Expiry Exposure */}
-        <div className={`${ANALYTICS_CARD_CLASS} p-4 flex flex-col justify-between`}>
-          <div>
-            <div className="flex items-start justify-between gap-2">
-              <div>
-                <p className="text-[10px] font-bold uppercase tracking-wider text-orange-600 dark:text-orange-400">5 · Expiry Exposure</p>
-                <p className="text-[11px] text-muted-foreground mt-0.5">What will I lose to expiry?</p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setGlassBoxRecord({
-                  metric: "expiry_exposure_fefo",
-                  title: "Expiry Exposure — Batch-Level FEFO Depletion Simulation",
-                  display: { label: "Projected Unsold Expiry Value", value: fmt(executiveSnapshot.expiryExposureValue), unit: `(${executiveSnapshot.expiryExposureUnits}u)` },
-                  ownerSentence: `${fmt(executiveSnapshot.expiryExposureValue)} (${executiveSnapshot.expiryExposureUnits.toLocaleString()} units across ${executiveSnapshot.expiryExposureBatches} batches) projected to expire unsold at current SMA burn rate.`,
-                  formula_id: "FEFO_EXPIRY_v1",
-                  formulaDisplay: "at_risk_b = max(0, Q_b − max(0, d · T_b − Σ_{j < b} sold_j))",
-                  inputs: [
-                    { symbol: "Horizon", label: "FEFO Simulation Window", value: "180 days" },
-                    { symbol: "Batches", label: "Batches at Risk of Expiry", value: `${executiveSnapshot.expiryExposureBatches} batches` },
-                    { symbol: "Units", label: "Projected Unsold Units", value: `${executiveSnapshot.expiryExposureUnits.toLocaleString()} units` },
-                    { symbol: "Value", label: "Projected Financial Write-Off", value: fmt(executiveSnapshot.expiryExposureValue) },
-                  ],
-                  steps: [
-                    {
-                      label: "Sort each product's active batches in First-Expired, First-Out (FEFO) order",
-                      expr: "T_b = days remaining until batch b expiration date",
-                      result: "Earliest-expiring batches depleted first",
-                    },
-                    {
-                      label: "Simulate cumulative demand consumption before batch b expires",
-                      expr: "sold_b = min(Q_b, max(0, d × T_b − Σ_{j<b} sold_j))",
-                      result: "Units absorbed by projected sales",
-                    },
-                    {
-                      label: "Value remaining unsold batch quantity at batch unit cost",
-                      expr: "Σ (Q_b − sold_b) × UnitCost_b",
-                      result: fmt(executiveSnapshot.expiryExposureValue),
-                    },
-                  ],
-                  citation: "Management Sciences for Health (MDS-3): FEFO batch depletion modeling in community pharmacies.",
-                })}
-                className={`inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[10px] font-mono font-bold border transition-colors cursor-pointer shrink-0 ${
-                  auditMode
-                    ? "bg-primary/10 border-primary/30 text-primary"
-                    : "bg-muted/50 border-border text-muted-foreground hover:text-foreground"
-                }`}
-                title="Inspect mathematical proof"
-              >
-                <span>ƒ</span>
-                {auditMode && <span>Proof</span>}
-              </button>
-            </div>
-            <p className="mt-2.5 text-2xl font-extrabold tabular-nums tracking-tight text-foreground">
-              {fmt(executiveSnapshot.expiryExposureValue)}
-            </p>
-            <p className="mt-1 text-xs font-medium text-muted-foreground tabular-nums">
-              {executiveSnapshot.expiryExposureUnits.toLocaleString()}u across {executiveSnapshot.expiryExposureBatches} {executiveSnapshot.expiryExposureBatches === 1 ? "batch" : "batches"}
-            </p>
-          </div>
-          <div className="mt-3 pt-2 border-t border-border/50 flex items-center justify-between text-[11px]">
-            <span className="text-muted-foreground">180d FEFO simulation</span>
-            <button
-              type="button"
-              onClick={() => { setStatusBucketFilter("expiry_risk"); setRadarPage(1); }}
-              className="font-bold text-primary hover:underline cursor-pointer"
-            >
-              Review ↓
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* ── L1 Act & L2 Understand: Interactive Status Ladder & Action Radar ── */}
-      <div className={`${ANALYTICS_CARD_CLASS} overflow-hidden`}>
-        <div className="p-5 border-b border-border/70 space-y-3.5">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div>
-              <div className="flex items-center gap-2">
-                <h3 className="text-sm font-bold text-foreground">Action Radar &amp; Status Ladder</h3>
-                <InfoTip
-                  title="Mutually Exclusive Status Ladder"
-                  lines={[
-                    "Every product is evaluated top-down into one clear operational bucket based on its runway, reorder point (ROP), and SMA sales velocity.",
-                    "Click any bucket pill below to filter medicines, or click 'ƒ Proof' on any row to inspect its exact mathematical trace.",
-                  ]}
-                />
-              </div>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                Plain-language diagnosis per medicine · Click any bucket to focus or click <strong>ƒ</strong> to verify the math
-              </p>
-            </div>
-            <div className="relative w-full sm:w-64">
-              <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
-              <input
-                type="text"
-                value={radarSearch}
-                onChange={e => { setRadarSearch(e.target.value); setRadarPage(1); }}
-                placeholder="Search medicine in radar…"
-                className="w-full rounded-xl border border-border bg-background pl-8 pr-7 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
-              />
-              {radarSearch && (
+              <div className="mt-4 pt-3 border-t border-border/60 flex items-center justify-between text-xs text-muted-foreground">
+                <span>{onHandUnits.toLocaleString()} units on shelf</span>
+                <span>·</span>
                 <button
                   type="button"
-                  onClick={() => { setRadarSearch(""); setRadarPage(1); }}
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground cursor-pointer"
+                  onClick={() => setActiveSection("Products")}
+                  className="text-xs font-semibold text-primary hover:underline cursor-pointer"
                 >
-                  <X size={12} />
+                  Products →
                 </button>
-              )}
+              </div>
             </div>
           </div>
 
-          {/* Bucket Filter Pills */}
-          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-thin">
-            {([
-              {
-                id: "actionable",
-                label: "Needs Action",
-                count: executiveSnapshot.skuRows.filter(r => r.bucket !== "healthy" || r.skuExpiryUnits > 0).length,
-              },
-              {
-                id: "out_of_stock",
-                label: "Out of Stock",
-                count: executiveSnapshot.skuRows.filter(r => r.bucket === "out_of_stock").length,
-              },
-              {
-                id: "will_run_out",
-                label: "Will Run Out First",
-                count: executiveSnapshot.skuRows.filter(r => r.bucket === "will_run_out").length,
-              },
-              {
-                id: "reorder_now",
-                label: "Reorder Now",
-                count: executiveSnapshot.skuRows.filter(r => r.bucket === "reorder_now").length,
-              },
-              {
-                id: "reorder_soon",
-                label: "Reorder Soon",
-                count: executiveSnapshot.skuRows.filter(r => r.bucket === "reorder_soon").length,
-              },
-              {
-                id: "expiry_risk",
-                label: "Expiry Risk",
-                count: executiveSnapshot.expiryRiskSkus.length,
-              },
-              {
-                id: "overstock",
-                label: "Overstock",
-                count: executiveSnapshot.skuRows.filter(r => r.bucket === "overstock" || r.excessUnits > 0).length,
-              },
-              {
-                id: "dead_non_moving",
-                label: "Dead / Non-Moving",
-                count: executiveSnapshot.skuRows.filter(r => r.bucket === "dead_stock" || r.bucket === "non_moving").length,
-              },
-              {
-                id: "healthy",
-                label: "Healthy",
-                count: executiveSnapshot.skuRows.filter(r => r.bucket === "healthy").length,
-              },
-            ] as const).map(pill => (
-              <button
-                key={pill.id}
-                type="button"
-                onClick={() => { setStatusBucketFilter(pill.id); setRadarPage(1); }}
-                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border transition-colors cursor-pointer shrink-0 ${
-                  statusBucketFilter === pill.id
-                    ? "bg-primary text-primary-foreground border-primary shadow-2xs"
-                    : "bg-background hover:bg-muted text-muted-foreground hover:text-foreground border-border"
-                }`}
-              >
-                <span>{pill.label}</span>
-                <span className={`rounded-full px-1.5 py-0.2 text-[10px] tabular-nums ${
-                  statusBucketFilter === pill.id ? "bg-primary-foreground/20 text-primary-foreground" : "bg-muted text-muted-foreground"
-                }`}>
-                  {pill.count}
-                </span>
-              </button>
-            ))}
-          </div>
-        </div>
+          {/* ── Row 2: Dual Intelligence Charts ── */}
+          <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.7fr)_minmax(320px,1fr)]">
+            {/* Left: Forecast Trend Line Chart */}
+            <section className={`${ANALYTICS_CARD_CLASS} min-w-0 p-5 flex flex-col justify-between`}>
+              <div>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+                  <div>
+                    <h3 className="text-sm font-semibold text-foreground">Sales History &amp; Moving Average Forecast</h3>
+                    <p className="text-xs text-muted-foreground mt-0.5">Recorded transaction demand alongside SMA-3 and SMA-6 projections.</p>
+                  </div>
+                  <div className="flex items-center gap-3 text-xs font-medium flex-wrap">
+                    <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-blue-600 inline-block" />Actual</span>
+                    <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-orange-500 inline-block" />SMA-3</span>
+                    <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-violet-500 inline-block" />SMA-6</span>
+                  </div>
+                </div>
 
-        <div className="overflow-x-auto" data-table-scroll="fixed">
-          <table className="w-full text-xs">
-            <thead className="bg-muted/20 border-b border-border/60 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-              <tr>
-                <th className="py-3 px-5 text-left">Medicine &amp; Trend</th>
-                <th className="py-3 px-4 text-left">Status Bucket</th>
-                <th className="py-3 px-4 text-left">What This Means (Owner Reading)</th>
-                <th className="py-3 px-4 text-left">Runway vs. Lead Time</th>
-                <th className="py-3 px-5 text-right">Action &amp; Proof</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border/40">
-              {paginatedRadarRows.map(row => {
-                const canOrderNow = row.bucket === "out_of_stock" || row.bucket === "will_run_out" || row.bucket === "reorder_now" || row.bucket === "reorder_soon";
-                const runwayPct = Math.min(100, Math.max(6, Math.round((Math.min(row.runway, 30) / 30) * 100)));
-                return (
-                  <tr key={row.product.id} className="hover:bg-muted/15 transition-colors">
-                    <td className="py-3 px-5">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-semibold text-foreground">{row.product.name}</span>
-                        {row.trendSignal === "up" && (
-                          <span className="inline-flex items-center gap-0.5 rounded bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 px-1.5 py-0.5 text-[10px] font-bold">
-                            ▲ +{ Math.abs(row.trendPct)}%
-                          </span>
-                        )}
-                        {row.trendSignal === "down" && (
-                          <span className="inline-flex items-center gap-0.5 rounded bg-amber-500/15 text-amber-700 dark:text-amber-300 px-1.5 py-0.5 text-[10px] font-bold">
-                            ▼ {row.trendPct}%
-                          </span>
-                        )}
-                        {row.skuExpiryUnits > 0 && (
-                          <span className="inline-flex items-center gap-1 rounded bg-orange-500/15 text-orange-700 dark:text-orange-300 px-1.5 py-0.5 text-[10px] font-bold">
-                            ⏳ {row.skuExpiryUnits}u expiry risk
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-[11px] text-muted-foreground mt-0.5">
-                        {row.product.category} · {row.confidenceLabel}
-                      </p>
-                    </td>
+                {smaLoading ? (
+                  <p className="py-16 text-center text-sm text-muted-foreground">Loading sales history…</p>
+                ) : smaChartData.length ? (
+                  <div className="h-[270px] w-full">
+                    <ForecastTrendChart
+                      history={smaChartData}
+                      nextPeriod={nextForecastMonth}
+                      sma3={forecastSMA3}
+                      sma6={forecastSMA6}
+                      periodUnit="month"
+                    />
+                  </div>
+                ) : (
+                  <p className="py-16 text-center text-sm text-muted-foreground">No sales history available for this selection.</p>
+                )}
+              </div>
 
-                    <td className="py-3 px-4">
-                      <span className={`inline-flex items-center rounded-lg border px-2.5 py-1 text-[11px] font-bold ${row.bucketTone}`}>
-                        {row.bucketLabel}
-                      </span>
-                    </td>
+              {/* Chart stats strip */}
+              <div className="mt-4 pt-3 border-t border-border/60 grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+                <div>
+                  <span className="text-muted-foreground block text-[11px]">Peak Sales Month</span>
+                  <strong className="text-foreground font-semibold">
+                    {peakSalesMonth ? `${peakSalesMonth.month} (${peakSalesMonth.demand.toLocaleString()} units)` : "—"}
+                  </strong>
+                </div>
+                <div>
+                  <span className="text-muted-foreground block text-[11px]">Average Monthly Sales</span>
+                  <strong className="text-foreground font-semibold">
+                    {avgMonthlyDemand.toLocaleString()} units / month
+                  </strong>
+                </div>
+                <div>
+                  <span className="text-muted-foreground block text-[11px]">Next Month Estimate</span>
+                  <strong className="text-primary font-semibold">
+                    {Math.round(activeForecastUnits).toLocaleString()} units ({nextForecastMonth})
+                  </strong>
+                </div>
+              </div>
+            </section>
 
-                    <td className="py-3 px-4">
-                      <p className="font-medium text-foreground">{row.ownerReading}</p>
-                      <p className="text-[10px] text-muted-foreground mt-0.5 font-mono">
-                        OH: {row.onHand}u{row.onOrder > 0 ? ` + PO: ${row.onOrder}u` : ""} · ROP: {row.rop}u · Champion: {row.kStar} ({row.champMonthly.toFixed(1)}/mo)
-                      </p>
-                    </td>
+            {/* Right: Sales by Category */}
+            <section className={`${ANALYTICS_CARD_CLASS} p-5 flex flex-col justify-between`}>
+              <div>
+                <div className="flex items-center justify-between gap-2 mb-4">
+                  <div>
+                    <h3 className="text-sm font-semibold text-foreground">Sales by Category</h3>
+                    <p className="text-xs text-muted-foreground mt-0.5">Therapeutic category share of units sold.</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setActiveSection("Products")}
+                    className="text-xs font-semibold text-primary hover:underline cursor-pointer"
+                  >
+                    View all →
+                  </button>
+                </div>
 
-                    <td className="py-3 px-4">
-                      <div className="w-36 space-y-1">
-                        <div className="flex items-center justify-between text-[10px]">
-                          <span className="font-semibold text-foreground tabular-nums">
-                            {row.runway >= 900 ? "90+ days" : `${Math.round(row.runway)}d cover`}
-                          </span>
-                          <span className="text-muted-foreground">L = {row.L}d</span>
+                {categorySalesLoading ? (
+                  <p className="py-12 text-center text-sm text-muted-foreground">Loading categories…</p>
+                ) : categorySalesError ? (
+                  <p role="status" className="py-12 text-center text-sm text-destructive">Unable to load category sales.</p>
+                ) : chartCategoryData.length ? (
+                  <div className="space-y-3.5">
+                    {chartCategoryData.slice(0, 5).map((category, index) => (
+                      <div key={category.name} className="space-y-1.5">
+                        <div className="flex items-center justify-between gap-3 text-xs">
+                          <span className="truncate font-medium text-foreground">{category.name}</span>
+                          <span className="shrink-0 font-semibold tabular-nums text-foreground">{category.value}%</span>
                         </div>
-                        <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
+                        <div className="h-2 overflow-hidden rounded-full bg-muted">
                           <div
-                            className={`h-full rounded-full ${
-                              row.runway < row.L
-                                ? "bg-rose-500"
-                                : row.ip <= row.rop
-                                ? "bg-amber-500"
-                                : "bg-emerald-500"
-                            }`}
-                            style={{ width: `${row.onHand === 0 ? 4 : runwayPct}%` }}
+                            className="h-full rounded-full transition-all duration-300"
+                            style={{
+                              width: `${Math.min(100, Math.max(0, category.value))}%`,
+                              backgroundColor: CATEGORY_COLORS[index % CATEGORY_COLORS.length],
+                            }}
                           />
                         </div>
                       </div>
-                    </td>
-
-                    <td className="py-3 px-5 text-right">
-                      <div className="inline-flex items-center justify-end gap-1.5">
-                        <button
-                          type="button"
-                          onClick={() => openSkuGlassBox(row)}
-                          className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border text-[11px] font-semibold transition-colors cursor-pointer ${
-                            auditMode
-                              ? "bg-primary/10 border-primary/30 text-primary"
-                              : "bg-background hover:bg-muted border-border text-muted-foreground hover:text-foreground"
-                          }`}
-                          title="Open L3 Glass-Box calculation trace for this medicine"
-                        >
-                          <span className="font-mono font-bold">ƒ</span>
-                          <span>Proof</span>
-                        </button>
-                        {canOrderNow && canEdit ? (
-                          <button
-                            type="button"
-                            onClick={() => openPoDraftModal(
-                              row.product,
-                              row.qStar,
-                              Math.max(0, getReorderUnits(row.product) - row.onHand),
-                              row.qStar
-                            )}
-                            className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground text-[11px] font-bold transition-colors cursor-pointer"
-                          >
-                            Order {row.qStar}u
-                          </button>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setScope(`product:${row.product.id}`);
-                              setActiveSection("Forecast");
-                            }}
-                            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-border bg-background hover:bg-muted text-foreground text-[11px] font-medium transition-colors cursor-pointer"
-                          >
-                            Chart →
-                          </button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-              {filteredRadarRows.length === 0 && (
-                <tr>
-                  <td colSpan={5} className="py-8 text-center text-xs text-muted-foreground">
-                    No medicines in this status bucket.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-        <TablePager
-          total={filteredRadarRows.length}
-          page={radarPage}
-          pageSize={RADAR_PAGE_SIZE}
-          onPage={setRadarPage}
-        />
-      </div>
-
-      {/* Charts row */}
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 items-start">
-        {/* Current supply and recent demand by product */}
-        <div className={`xl:col-span-2 ${ANALYTICS_CARD_CLASS} p-5 min-h-[340px]`}>
-          <div className="flex items-start justify-between mb-4 gap-3 flex-wrap">
-            <div>
-              <div className="flex items-center gap-1.5">
-                <h3 className="text-sm font-semibold text-foreground">Supply &amp; Demand by Product</h3>
-                <InfoTip
-                  title="How to read this chart"
-                  lines={[
-                    { label: "Supply", value: "Current stock on hand from the selected inventory products" },
-                    { label: "Demand", value: `Actual units sold in ${supplyDemandProductData.monthLabel ?? "the latest recorded sales month"}, from transactions` },
-                    "Both bars use base units. Stock is the current inventory snapshot; sales are from the latest month with recorded sales.",
-                    "Incoming supplier orders are shown in the metric above and are not added to current stock.",
-                    "The chart ranks products by units sold in that month. If no sales exist, it shows in-stock products and omits the sales series.",
-                  ]}
-                />
-              </div>
-              <p className="text-[11px] text-muted-foreground mt-0.5">{scopeLabel} · Current stock vs units sold{ supplyDemandProductData.monthLabel ? ` in ${supplyDemandProductData.monthLabel}` : ""}</p>
-            </div>
-            <div className="flex flex-wrap items-center gap-3">
-              <div className="flex flex-wrap items-center gap-3 text-[11px] text-muted-foreground">
-                <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-blue-600 inline-block" />Stock on hand</span>
-                {supplyDemandProductData.hasSales
-                  ? <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-violet-500 inline-block" />Sales in {supplyDemandProductData.monthLabel}</span>
-                  : <span className="text-muted-foreground">No recorded sales</span>}
-              </div>
-              <button
-                type="button"
-                onClick={() => setActiveSection("Forecast")}
-                className="text-xs font-semibold text-primary hover:underline cursor-pointer inline-flex items-center gap-1 ml-auto"
-              >
-                <span>Forecast Trends</span>
-                <ArrowRight size={12} />
-              </button>
-            </div>
-          </div>
-          <div className="text-foreground" style={{ height: 250 }}>
-            {supplyDemandProductData.products.length === 0 ? (
-              <div className="w-full h-full flex items-center justify-center text-sm text-muted-foreground">No in-stock products to compare for this selection.</div>
-            ) : (
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={supplyDemandProductData.products} layout="vertical" margin={{ top: 4, right: 32, bottom: 2, left: 0 }} barGap={3}>
-                  <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="var(--border)" />
-                  <XAxis type="number" allowDecimals={false} tick={{ fontSize: 10, fill: "var(--muted-foreground)" }} tickFormatter={value => Number(value) >= 1000 ? `${(Number(value) / 1000).toFixed(1)}k` : String(value)} />
-                  <YAxis type="category" dataKey="name" width={132} interval={0} tick={{ fontSize: 10, fill: "var(--muted-foreground)" }} tickFormatter={value => String(value).length > 19 ? `${String(value).slice(0, 18)}…` : String(value)} />
-                  <Tooltip formatter={(value, name) => [`${Number(value).toLocaleString()} units`, name]} labelStyle={{ color: "var(--foreground)", fontWeight: 700 }} contentStyle={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: 10, fontSize: 11 }} />
-                  <Bar dataKey="stock" name="Stock on hand" fill="#2563eb" barSize={11} radius={[0, 4, 4, 0]} isAnimationActive={false} />
-                  {supplyDemandProductData.hasSales && <Bar dataKey="soldInLatestMonth" name={`Units sold · ${supplyDemandProductData.monthLabel}`} fill="#8b5cf6" barSize={11} radius={[0, 4, 4, 0]} isAnimationActive={false}>
-                    <LabelList dataKey="soldInLatestMonth" position="right" formatter={value => Number(value) > 0 ? value : ""} style={{ fill: "#7c3aed", fontSize: 10, fontWeight: 600 }} />
-                  </Bar>}
-                </BarChart>
-              </ResponsiveContainer>
-            )}
-          </div>
-          <p className="mt-1 text-[10px] text-muted-foreground">Stock is current; sales use the latest month with recorded transactions. Incoming orders are separate. The Forecast section shows next-month estimates.</p>
-        </div>
-
-        {/* Category pie chart */}
-        <div className={`${ANALYTICS_CARD_CLASS} p-5 h-[340px] flex flex-col min-h-0`}>
-          <div className="mb-4 flex items-start justify-between gap-2">
-            <div>
-              <div className="flex items-center gap-1.5">
-                <h3 className="text-sm font-semibold text-foreground">Sales by Category</h3>
-                <InfoTip
-                  title="Sales Category Breakdown"
-                  lines={[
-                    "Shows the percentage share of sales across therapeutic categories (e.g. Antibiotics, Analgesics, Vitamins).",
-                    { label: "Purpose", value: "Identify key revenue drivers" },
-                    "Helps allocate working capital effectively to high-turnover medication groups.",
-                  ]}
-                />
-              </div>
-              <p className="text-[11px] text-muted-foreground mt-0.5">Share of all units sold by category</p>
-            </div>
-            <button
-              type="button"
-              onClick={() => setActiveSection("Products")}
-              className="text-xs font-semibold text-primary hover:underline cursor-pointer inline-flex items-center gap-1 shrink-0 mt-0.5"
-            >
-              <span>Product Margins</span>
-              <ArrowRight size={12} />
-            </button>
-          </div>
-          <div className="h-[160px] flex-shrink-0">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                {chartCategoryData.length > 0 && (
-                  <>
-                    <Pie
-                      data={chartCategoryData}
-                      cx="50%"
-                      cy="50%"
-                      innerRadius={48}
-                      outerRadius={70}
-                      paddingAngle={3}
-                      dataKey="value"
-                      isAnimationActive={false}
-                    >
-                      {chartCategoryData.map((_, i) => <Cell key={`cell-${i}`} fill={CATEGORY_COLORS[i % CATEGORY_COLORS.length]} />)}
-                    </Pie>
-                    <Tooltip
-                      formatter={(v: number) => `${v}%`}
-                      labelStyle={{ color: "var(--foreground)", fontWeight: 600 }}
-                      itemStyle={{ color: "var(--foreground)" }}
-                      contentStyle={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: "8px", fontSize: "11px", color: "var(--foreground)", boxShadow: "0 8px 24px rgba(0,0,0,0.22)" }}
-                      wrapperStyle={{ zIndex: 20, outline: "none" }}
-                      position={{ x: 8, y: 8 }}
-                      allowEscapeViewBox={{ x: false, y: false }}
-                    />
-                  </>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="py-12 text-center text-sm text-muted-foreground">No category sales available yet.</p>
                 )}
-              </PieChart>
-            </ResponsiveContainer>
-          </div>
-          {categorySalesLoading ? (
-            <p className="text-xs text-muted-foreground text-center">Loading…</p>
-          ) : categorySalesError ? (
-            <p className="text-xs text-destructive text-center">Unable to load category sales.</p>
-          ) : chartCategoryData.length === 0 ? (
-            <p className="text-xs text-muted-foreground text-center">No sales data available.</p>
-          ) : <div className="space-y-2 mt-2 flex-1 min-h-0 overflow-y-auto pr-1">
-            {chartCategoryData.map((cat, i) => (
-              <div key={cat.name} className="flex items-center justify-between">
-                <div className="flex items-center gap-2 min-w-0">
-                  <span className="w-2 h-2 rounded-sm flex-shrink-0" style={{ backgroundColor: CATEGORY_COLORS[i % CATEGORY_COLORS.length] }} />
-                  <span className="text-xs text-muted-foreground truncate">{cat.name}</span>
-                </div>
-                <span className="text-xs font-semibold text-foreground flex-shrink-0">{cat.value}%</span>
               </div>
-            ))}
-          </div>}
-        </div>
-      </div>
 
-      </>}
-
-
-      {/* Demand forecast: Product-level & Scope SMA estimates */}
-      {activeSection === "Forecast" && <>
-      <section className="space-y-4">
-        {/* Focused Product Inspection Banner when a specific product is selected */}
-        {scope !== "all" && (
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-primary/30 bg-primary/5 px-4 py-2.5">
-            <div className="text-xs">
-              <span className="font-bold text-primary uppercase tracking-wider text-[10px] mr-2">Focused Forecast Scope</span>
-              <span className="font-semibold text-foreground">{scopeLabel}</span>
-              <span className="text-muted-foreground ml-2">· Showing historical sales, back-test overlay, and SMA calculations for this selection</span>
-            </div>
-            <button
-              type="button"
-              onClick={() => setScope("all")}
-              className="rounded-lg bg-card border border-border hover:bg-muted px-3 py-1 text-xs font-bold text-foreground cursor-pointer shadow-2xs"
-            >
-              ← View All Products
-            </button>
-          </div>
-        )}
-
-        {/* ── Row 1: Clean Executive Hero Card (Dynamic, Zero Hardcoded Numbers) ── */}
-        {(() => {
-          const periodNoun = forecastPeriodUnit === "week" ? "Week" : "Month";
-          const periodPlural = forecastPeriodUnit === "week" ? "Weeks" : "Months";
-          const periodShort = forecastPeriodUnit === "week" ? "Wk" : "Mo";
-          const sma3Acc = getAccuracyBadge(sma3Error?.smape);
-          const sma6Acc = getAccuracyBadge(sma6Error && !sma6Error.insufficientData ? sma6Error.smape : null);
-          const has6Periods = smaMonths.length >= 6;
-          return (
-            <div className={`${ANALYTICS_CARD_CLASS} p-5 sm:p-7`}>
-              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-5">
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground">
-                      <TrendingUp size={14} className="text-primary" />
-                      Projected Demand · <span className="text-foreground font-bold">{nextForecastMonth}</span>
-                    </span>
-                    <InfoTip
-                      title="Projected demand"
-                      color="sky"
-                      lines={[
-                        `This is an estimate of units customers may buy in ${nextForecastMonth}, based on completed sales periods for ${scopeLabel}.`,
-                        "SMA-3 follows recent changes more closely; SMA-6 smooths short-term swings with a longer baseline.",
-                        "Use it as a planning aid, not a guarantee of future sales.",
-                      ]}
-                    />
-                    <span className="text-muted-foreground/40">·</span>
-                    <span className="text-xs text-muted-foreground font-medium">{scopeLabel}</span>
-                  </div>
-
-                  <div className="flex items-baseline gap-3 flex-wrap">
-                    <span className="text-4xl sm:text-5xl font-extrabold tabular-nums tracking-tight text-foreground">
-                      {Math.round(activeForecastUnits).toLocaleString()}
-                    </span>
-                    <span className="text-sm sm:text-base font-semibold text-muted-foreground">
-                      units expected
-                    </span>
-                    {latestSalesMonth && (
-                      <span className={`inline-flex items-center gap-1 text-xs font-medium ${
-                        Math.round(activeForecastUnits) >= latestSalesMonth.demand
-                          ? "text-emerald-700 dark:text-emerald-300"
-                          : "text-amber-700 dark:text-amber-300"
-                      }`}>
-                        {Math.round(activeForecastUnits) >= latestSalesMonth.demand ? <ArrowUpRight size={13} /> : <ArrowDownRight size={13} />}
-                        {Math.round(activeForecastUnits) >= latestSalesMonth.demand ? "+" : "−"}
-                        {Math.abs(Math.round(activeForecastUnits) - latestSalesMonth.demand).toLocaleString()} vs {latestSalesMonth.month} ({latestSalesMonth.demand.toLocaleString()} sold)
-                      </span>
-                    )}
-                  </div>
-
-                  <p className="text-xs text-muted-foreground leading-relaxed max-w-2xl">
-                    {smaMonths.length === 0 ? (
-                      "No recorded sales history yet for this selection."
-                    ) : (
-                      <>
-                        Based on <strong className="text-foreground font-semibold">{activeForecastModel} ({Math.round(activeForecastUnits).toLocaleString()} units)</strong> · {last3.length} periods averaged ({last3.map(m => `${m.month}: ${m.demand.toLocaleString()}`).join(", ")}).
-                        {activeForecastModel === "SMA-3" && sma3Error && (
-                          <span className="ml-1 text-foreground">Back-test error: <strong className="font-semibold">{sma3Error.smape.toFixed(1)}% ({sma3Acc.label})</strong>.</span>
-                        )}
-                      </>
-                    )}
-                  </p>
-
-                  <div className="flex items-center gap-2 pt-1 flex-wrap">
-                    <button
-                      type="button"
-                      onClick={() => setSmaInspector(activeForecastModel === "SMA-3" ? "sma3" : "sma6")}
-                      className="inline-flex items-center gap-1.5 text-xs text-primary font-semibold hover:underline cursor-pointer"
-                    >
-                      <Calculator size={13} />
-                      View Calculation Math
-                    </button>
-                    <span className="text-border">·</span>
-                    <button
-                      type="button"
-                      onClick={() => setSmapeInspector(activeForecastModel === "SMA-3" ? "sma3" : "sma6")}
-                      className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground font-medium cursor-pointer"
-                    >
-                      Accuracy History ({activeForecastModel === "SMA-3" ? (sma3Error ? `${sma3Error.points} checks` : "Needs 4+ periods") : (sma6Error && !sma6Error.insufficientData ? `${sma6Error.points} checks` : "Needs 7+ periods")})
-                    </button>
-                    <InfoTip
-                      title="Back-test accuracy and volatility"
-                      lines={[
-                      "SmartTrack re-estimates past periods using only sales that came before each period, then compares each estimate with recorded sales.",
-                      "The score is an average relative difference: lower means closer. It is not the percentage of units missed.",
-                      "High Volatility means the past differences were large; it does not predict future volatility.",
-                      ]}
-                    />
-                  </div>
-                </div>
-
-                {/* Quick Model Selector Segment */}
-                <div className="flex flex-col gap-1.5 shrink-0 border-t lg:border-t-0 lg:border-l border-border/80 pt-3 lg:pt-0 lg:pl-6">
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Active Forecast Model</span>
-                    <InfoTip
-                      title="Choose a forecast model"
-                      lines={[
-                      "SMA-3 averages the latest three completed periods and responds faster when demand changes.",
-                      "SMA-6 averages up to six periods, so it is a steadier baseline that is less affected by a single spike.",
-                      "You can switch models at any time; this selection is a recommendation, not an automatic order.",
-                      ]}
-                    />
-                  </div>
-                  <div className="inline-flex rounded-2xl border border-border/70 bg-muted/45 p-1 gap-1">
-                    <button
-                      type="button"
-                      onClick={() => setSelectedModelOverride("SMA-3")}
-                      className={`text-left px-3.5 py-2 rounded-lg transition-all cursor-pointer ${
-                        activeForecastModel === "SMA-3"
-                        ? "bg-card text-foreground shadow-sm font-bold ring-1 ring-border/50"
-                          : "text-muted-foreground hover:text-foreground font-medium"
-                      }`}
-                    >
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-xs">SMA-3 ({periodShort})</span>
-                        <span className="rounded bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 text-[9px] font-bold px-1.5 py-0.2">
-                          {selectedForecast?.model === "SMA-6" ? "Short-Term" : "Recommended"}
-                        </span>
-                      </div>
-                      <span className="block text-sm font-extrabold tabular-nums mt-0.5">
-                        {Math.round(forecastSMA3).toLocaleString()} <span className="text-[10px] font-normal text-muted-foreground">units</span>
-                      </span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => setSelectedModelOverride("SMA-6")}
-                      className={`text-left px-3.5 py-2 rounded-lg transition-all cursor-pointer ${
-                        activeForecastModel === "SMA-6"
-                          ? "bg-card text-foreground shadow-xs font-bold"
-                          : "text-muted-foreground hover:text-foreground font-medium"
-                      }`}
-                    >
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-xs">SMA-6 ({periodShort})</span>
-                        <span className="text-[9px] text-muted-foreground">
-                          {has6Periods ? "Steady" : `${smaMonths.length}/6`}
-                        </span>
-                      </div>
-                      <span className="block text-sm font-extrabold tabular-nums mt-0.5">
-                        {Math.round(forecastSMA6).toLocaleString()} <span className="text-[10px] font-normal text-muted-foreground">units</span>
-                      </span>
-                    </button>
-                  </div>
-                </div>
+              <div className="mt-4 pt-3 border-t border-border/60 text-xs text-muted-foreground flex items-center justify-between">
+                <span>Top category: <strong className="text-foreground">{topCategory?.name ?? "—"}</strong></span>
+                <span>{topCategory ? `${topCategory.value}% of sales` : ""}</span>
               </div>
-            </div>
-          );
-        })()}
+            </section>
+          </div>
 
-        {/* ── Row 2: Product-Level Demand Forecast Table (Answers "Which Specific Products Will Customers Buy?") ── */}
-        <div className={`${ANALYTICS_CARD_CLASS} overflow-hidden`}>
-          <div className="px-5 py-4 border-b border-border space-y-3">
-            <div className="flex flex-wrap items-start justify-between gap-3">
+          {/* ── Row 3: Actionable Urgent Restock Table (The Action Radar) ── */}
+          <section className={`${ANALYTICS_CARD_CLASS} overflow-hidden`}>
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/60 p-5">
               <div>
-                <div className="flex items-center gap-2 flex-wrap">
-                  <h3 className="text-sm font-bold text-foreground">
-                    Product-Level Demand Forecasts for {nextForecastMonth}
-                  </h3>
-                  <span className="rounded-full bg-primary/10 text-primary border border-primary/20 px-2.5 py-0.5 text-[10px] font-bold">
-                    {filteredProductForecasts.length} of {productForecastList.length} medicines
+                <div className="flex items-center gap-2">
+                  <h3 className="text-sm font-bold text-foreground">Top Urgent Restock Priorities</h3>
+                  <span className="rounded-full bg-amber-500/15 px-2.5 py-0.5 text-[10px] font-bold text-amber-800 dark:text-amber-300">
+                    Action Needed
                   </span>
                 </div>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  Individual product predictions ranked by expected demand. Click <strong>Inspect Chart</strong> on any medicine to plot its historical sales and SMA back-test above.
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  Highest priority medicines nearing stockout before the next supplier delivery arrives.
                 </p>
               </div>
-              <div className="flex items-center gap-1.5 flex-wrap">
-                {([
-                  { id: "all", label: `All (${productForecastList.length})` },
-                  { id: "shortfall", label: `Shortfall Risk (${productForecastList.filter(r => r.projectedShortfall > 0).length})` },
-                  { id: "rising", label: `↑ Rising Trend (${productForecastList.filter(r => r.trendDirection === "rising").length})` },
-                  { id: "high_confidence", label: `High Confidence (${productForecastList.filter(r => r.confidenceTier === "high").length})` },
-                ] as const).map(tab => (
-                  <button
-                    key={tab.id}
-                    type="button"
-                    onClick={() => { setProductForecastFilter(tab.id); setProductForecastPage(1); }}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer border ${
-                      productForecastFilter === tab.id
-                        ? "bg-card text-foreground border-border shadow-sm"
-                        : "bg-background text-muted-foreground border-border hover:bg-muted hover:text-foreground"
-                    }`}
-                  >
-                    {tab.label}
-                  </button>
-                ))}
-              </div>
+              <button
+                type="button"
+                onClick={() => setActiveSection("Restocking")}
+                className="inline-flex items-center gap-1.5 text-xs font-semibold text-primary hover:underline cursor-pointer"
+              >
+                <span>View all {reorderRecs.length} restocking medicines</span>
+                <ArrowRight size={13} />
+              </button>
             </div>
 
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pt-1">
-              <div className="relative flex-1 max-w-sm">
-                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
-                <input
-                  type="text"
-                  value={productForecastSearch}
-                  onChange={e => { setProductForecastSearch(e.target.value); setProductForecastPage(1); }}
-                  placeholder="Search specific medicine name, ID, or category…"
-                  className="w-full rounded-xl border border-border bg-background pl-9 pr-8 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
-                />
-                {productForecastSearch && (
-                  <button
-                    type="button"
-                    onClick={() => { setProductForecastSearch(""); setProductForecastPage(1); }}
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground cursor-pointer"
-                  >
-                    <X size={13} />
-                  </button>
-                )}
-              </div>
-              <span className="text-[11px] text-muted-foreground">
-                Showing {forecastPeriodUnit === "week" ? "weekly (3-Wk / 6-Wk)" : "monthly (3-Mo / 6-Mo)"} product forecasts · Coverage compares stock against 30-day demand
-              </span>
-            </div>
-          </div>
-
-          <div className="overflow-x-auto" data-table-scroll="fixed">
-            <table className="w-full text-xs">
-              <thead className="bg-muted/20 border-b border-border/60 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-                <tr>
-                  <th className="py-3 px-5 text-left">
-                    <AnalyticsColumnHeader label="Medicine" title="Medicine & confidence" description="Each row is one medicine. High Confidence means at least six periods with sales in four of the latest six; Short History means there are at least three periods and some recent sales; Sporadic Sales means sales are intermittent. No Sales History means there is not enough activity to forecast from." />
-                  </th>
-                  <th className="py-3 px-4 text-left">
-                    <AnalyticsColumnHeader label="Recent Sales" title="Recent recorded sales" description="The quantities sold in the latest completed periods shown here, plus the total sales in the history used for this medicine." />
-                  </th>
-                  <th className="py-3 px-4 text-left text-foreground bg-primary/[0.03]">
-                    <AnalyticsColumnHeader label={`${nextForecastMonth} Forecast`} title="Projected demand" description={`A model-based estimate of how many units may sell in ${nextForecastMonth}. SMA-3 reacts more to recent changes; SMA-6 uses a longer history for a steadier estimate. It is guidance, not a guaranteed sale.`} />
-                  </th>
-                  <th className="py-3 px-4 text-left">
-                    <AnalyticsColumnHeader label="Trend" title="Recent demand trend" description="Compares the short-term average with the longer baseline. Rising and slowing describe the observed direction; they do not guarantee what will happen next." />
-                  </th>
-                  <th className="py-3 px-4 text-left">
-                    <AnalyticsColumnHeader label="Stock & Coverage" title="Stock and days of supply" description="Shows current stock, incoming purchase-order units, and the estimated days current stock can cover at recent forecast demand. A shortfall means expected demand may exceed stock plus incoming units." />
-                  </th>
-                  <th className="py-3 px-5 text-right">
-                    <AnalyticsColumnHeader label="Action" title="Inspect or restock" description="Inspect focuses the forecast on this medicine. Restock opens its planning row when its stock status needs attention." align="right" />
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border/40">
-                {paginatedProductForecasts.map(row => {
-                  const {
-                    product: p,
-                    totalSold,
-                    sma3,
-                    sma6,
-                    recommendedModel,
-                    recommendedForecast,
-                    recent3Periods,
-                    confidenceTier,
-                    confidenceLabel,
-                    trendDirection,
-                    trendPercent,
-                    incomingQty,
-                    daysOfSupply,
-                    projectedShortfall,
-                  } = row;
-                  const isFocused = scope === `product:${p.id}`;
-
-                  return (
-                    <tr
-                      key={p.id}
-                      className={`transition-colors ${
-                        isFocused ? "bg-primary/5" : "hover:bg-muted/20"
-                      }`}
-                    >
-                      {/* Medicine */}
-                      <td className="py-3 px-5">
-                        <p className="font-semibold text-foreground text-xs">{p.name}</p>
-                        <p className="text-[11px] text-muted-foreground">{p.category}</p>
-                        <div className="flex items-center gap-1.5 mt-1">
-                          <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${
-                            confidenceTier === "high" ? "bg-emerald-500" :
-                            confidenceTier === "short" ? "bg-amber-500" :
-                            confidenceTier === "intermittent" ? "bg-orange-500" : "bg-muted-foreground/40"
-                          }`} />
-                          <span className="text-[10px] text-muted-foreground font-medium">
-                            {confidenceLabel}
-                          </span>
-                        </div>
-                      </td>
-
-                      {/* Recent 3 periods */}
-                      <td className="py-3 px-4">
-                        {recent3Periods.length > 0 ? (
-                          <div>
-                            <p className="text-xs font-medium tabular-nums text-foreground">
-                              {recent3Periods.map(rp => rp.qty).join(" → ")}
-                            </p>
-                            <p className="text-[10px] text-muted-foreground mt-0.5">
-                              {totalSold.toLocaleString()} units sold
-                            </p>
+            <div className="overflow-x-auto" data-table-scroll="fixed">
+              <table className="w-full text-xs">
+                <thead className="bg-muted/30 text-left text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
+                  <tr>
+                    <th className="px-5 py-3">Medicine</th>
+                    <th className="px-4 py-3">In Stock vs. ROP</th>
+                    <th className="px-4 py-3">Urgency Status</th>
+                    <th className="px-4 py-3">Suggested Order (EOQ)</th>
+                    <th className="px-4 py-3 text-right">Est. Cost</th>
+                    <th className="px-5 py-3 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border/50">
+                  {urgentRestocks.map(rec => {
+                    const isOutOfStock = rec.product.stock === 0;
+                    const stockRatio = rec.product.stock / Math.max(1, rec.suggestedRop);
+                    const isCritical = stockRatio <= 0.4;
+                    return (
+                      <tr key={rec.product.id} className="hover:bg-muted/20 transition-colors">
+                        <td className="px-5 py-3">
+                          <p className="font-semibold text-foreground text-xs">{rec.product.name}</p>
+                          <p className="text-[11px] text-muted-foreground mt-0.5">{rec.product.category}{rec.product.supplier ? ` · ${rec.product.supplier}` : ""}</p>
+                        </td>
+                        <td className="px-4 py-3 tabular-nums">
+                          <div className="text-xs font-medium text-foreground">
+                            {rec.product.stock.toLocaleString()} <span className="text-muted-foreground font-normal">/ {rec.suggestedRop.toLocaleString()} units</span>
                           </div>
-                        ) : (
-                          <span className="text-xs text-muted-foreground">0 sales</span>
-                        )}
-                      </td>
-
-                      {/* Next Period Forecast */}
-                      <td className="py-3 px-4 bg-primary/[0.02]">
-                        {totalSold > 0 ? (
-                          <div>
-                            <div className="flex items-baseline gap-1.5">
-                              <span className="text-xs font-bold tabular-nums text-foreground">
-                                {Math.round(recommendedForecast).toLocaleString()} units
-                              </span>
-                              <span className="text-[10px] font-semibold text-primary">
-                                {recommendedModel}
-                              </span>
-                            </div>
-                            <p className="text-[10px] text-muted-foreground mt-0.5">
-                              SMA-3: {Math.round(sma3)} · SMA-6: {Math.round(sma6)}
-                            </p>
-                          </div>
-                        ) : (
-                          <div>
-                            <span className="text-xs text-muted-foreground">Using min level</span>
-                            <span className="block text-[10px] text-muted-foreground">({getReorderUnits(p)} units)</span>
-                          </div>
-                        )}
-                      </td>
-
-                      {/* Trend */}
-                      <td className="py-3 px-4">
-                        {trendDirection === "rising" ? (
-                          <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">
-                            <ArrowUpRight size={13} /> +{trendPercent}%
-                          </span>
-                        ) : trendDirection === "slowing" ? (
-                          <span className="inline-flex items-center gap-1 text-[11px] font-medium text-muted-foreground">
-                            <ArrowDownRight size={13} /> {trendPercent}%
-                          </span>
-                        ) : trendDirection === "steady" ? (
-                          <span className="text-[11px] text-muted-foreground">→ Steady</span>
-                        ) : (
-                          <span className="text-[11px] text-muted-foreground">—</span>
-                        )}
-                      </td>
-
-                      {/* Stock & Coverage */}
-                      <td className="py-3 px-4">
-                        <div className="text-xs font-medium tabular-nums text-foreground">
-                          {p.stock.toLocaleString()} units
-                          {incomingQty > 0 && <span className="text-[10px] text-sky-600 dark:text-sky-400 ml-1">+{incomingQty} PO</span>}
-                        </div>
-                        {projectedShortfall > 0 ? (
-                          <span className="text-[10px] font-bold text-red-600 dark:text-red-400 block mt-0.5">
-                            Shortfall: {projectedShortfall.toLocaleString()}u{daysOfSupply != null ? ` (~${daysOfSupply}d)` : ""}
-                          </span>
-                        ) : (
-                          <span className="text-[10px] text-muted-foreground block mt-0.5">
-                            Covered ({daysOfSupply != null ? (daysOfSupply > 90 ? ">90d" : `~${daysOfSupply}d`) : "in stock"})
-                          </span>
-                        )}
-                      </td>
-
-                      {/* Action */}
-                      <td className="py-3 px-5 text-right">
-                        <div className="inline-flex items-center justify-end gap-1.5">
-                          <button
-                            type="button"
-                            onClick={() => setScope(isFocused ? "all" : `product:${p.id}`)}
-                            className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition-all cursor-pointer ${
-                              isFocused
-                                ? "bg-card text-foreground border-border shadow-sm"
-                                : "bg-background hover:bg-muted text-foreground border-border"
-                            }`}
-                          >
-                            {isFocused ? "Selected" : "Inspect"}
-                          </button>
-                          {(p.status === "out_of_stock" || p.status === "critical" || p.status === "low") && (
+                          <span className="text-[10px] text-muted-foreground">ROP trigger</span>
+                        </td>
+                        <td className="px-4 py-3">
+                          {isOutOfStock ? (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-rose-500/15 text-rose-700 dark:text-rose-300 border border-rose-500/30">
+                              ● Out of Stock
+                            </span>
+                          ) : isCritical ? (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-500/15 text-amber-800 dark:text-amber-300 border border-amber-500/30">
+                              ● Critical Buffer
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-semibold bg-yellow-500/15 text-yellow-800 dark:text-yellow-300 border border-yellow-500/30">
+                              ● Low Stock
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 font-semibold tabular-nums text-foreground">
+                          {rec.effectiveOrderQty.toLocaleString()} units
+                          <span className="block text-[10px] text-muted-foreground font-normal">Pack-rounded batch</span>
+                        </td>
+                        <td className="px-4 py-3 text-right font-semibold tabular-nums text-foreground">
+                          {fmt(rec.effectiveOrderQty * rec.unitCost)}
+                          <span className="block text-[10px] text-muted-foreground font-normal">@ ₱{rec.unitCost.toFixed(2)}/u</span>
+                        </td>
+                        <td className="px-5 py-3 text-right">
+                          <div className="inline-flex items-center justify-end gap-1.5">
                             <button
                               type="button"
-                              onClick={() => {
-                                setRestockSearch(p.name);
-                                setActiveSection("Restocking");
-                              }}
-                              className="px-2.5 py-1.5 rounded-lg bg-primary/10 hover:bg-primary/20 text-primary border border-primary/20 text-xs font-semibold transition-colors cursor-pointer"
+                              onClick={() => setSelectedEoqProductId(rec.product.id)}
+                              className="rounded-lg border border-border px-2.5 py-1 text-xs font-semibold text-primary hover:bg-primary/5 transition-colors cursor-pointer"
+                              title="Show math computation"
                             >
-                              Restock →
+                              Show Math
                             </button>
-                          )}
-                        </div>
+                            {canEdit && (
+                              <button
+                                type="button"
+                                onClick={() => openPoDraftModal(rec.product, rec.eoq, rec.shortage, rec.effectiveOrderQty)}
+                                className="rounded-lg bg-primary px-3 py-1 text-xs font-bold text-primary-foreground hover:bg-primary/90 transition-colors cursor-pointer shadow-2xs"
+                              >
+                                Order
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {urgentRestocks.length === 0 && (
+                    <tr>
+                      <td colSpan={6} className="px-5 py-8 text-center text-xs text-muted-foreground">
+                        All medicines currently have healthy stock above their reorder points.
                       </td>
                     </tr>
-                  );
-                })}
-                {filteredProductForecasts.length === 0 && (
-                  <tr>
-                    <td colSpan={6} className="py-8 text-center text-xs text-muted-foreground">
-                      No medicines match the selected forecast filter or search query.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-          <TablePager
-            total={filteredProductForecasts.length}
-            page={productForecastPage}
-            pageSize={PRODUCT_FORECAST_PAGE_SIZE}
-            onPage={setProductForecastPage}
-          />
-        </div>
-
-        {/* ── Row 3: Historical Back-Test Overlay & Trend Chart ── */}
-        <div className={`${ANALYTICS_CARD_CLASS} p-4 sm:p-5 space-y-4`}>
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <h3 className="text-sm font-bold text-foreground">
-                {forecastPeriodUnit === "week" ? "Weekly" : "Monthly"} Sales History, Back-Test Overlay &amp; {nextForecastMonth} Projections ({scopeLabel})
-              </h3>
-              <p className="mt-0.5 text-xs text-muted-foreground">
-                Solid blue line shows actual recorded sales. Dashed lines show historical back-test tracking and project {nextForecastMonth} demand using <strong>SMA-3 ({Math.round(forecastSMA3).toLocaleString()} units)</strong> and <strong>SMA-6 ({Math.round(forecastSMA6).toLocaleString()} units)</strong>.
-              </p>
+                  )}
+                </tbody>
+              </table>
             </div>
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs font-medium text-foreground">
-              <span className="flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-full bg-blue-600" />Actual Sales</span>
-              <span className="flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-full bg-orange-500" />SMA-3 ({Math.round(forecastSMA3).toLocaleString()})</span>
-              <span className="flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-full bg-violet-500" />SMA-6 ({Math.round(forecastSMA6).toLocaleString()})</span>
-            </div>
-          </div>
-          {smaLoading && forecastPeriodUnit === "month" ? (
-            <div className="flex h-[250px] items-center justify-center text-xs text-muted-foreground">Loading sales history…</div>
-          ) : smaChartData.length === 0 ? (
-            <div className="flex h-[250px] items-center justify-center text-xs text-muted-foreground">No sales history for this selection yet.</div>
-          ) : (
-            <ForecastTrendChart
-              history={smaChartData}
-              nextPeriod={nextForecastMonth}
-              sma3={forecastSMA3}
-              sma6={forecastSMA6}
-              periodUnit={forecastPeriodUnit}
-            />
-          )}
+          </section>
 
-          {/* Clean 3-Metric Summary Footer Bar */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-3 border-t border-border/70 text-xs">
-            <div className="rounded-xl border border-border bg-muted/20 px-3.5 py-2.5">
-              <div className="flex items-center gap-1.5">
-                <span className="block text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Latest Recorded Sales</span>
-                <InfoTip title="Latest recorded sales" lines={["Actual units recorded as sold in the most recent completed period with sales. This is historical data, not a forecast."]} />
-              </div>
-              <span className="text-base font-bold tabular-nums text-foreground mt-0.5 block">
-                {latestSalesMonth ? `${latestSalesMonth.demand.toLocaleString()} units` : "No sales yet"}
-              </span>
-              <span className="text-[11px] text-muted-foreground">Recorded in {latestSalesMonth?.month ?? "recent transactions"}</span>
-            </div>
-            <div className="rounded-xl border border-border bg-muted/20 px-3.5 py-2.5">
-              <div className="flex items-center gap-1.5">
-                <span className="block text-[10px] font-bold uppercase tracking-wider text-muted-foreground">SMA-3 Short-Term Avg</span>
-                <InfoTip title="SMA-3 short-term average" lines={["The average sales across up to the latest three completed periods. It follows recent changes more quickly than SMA-6."]} />
-              </div>
-              <span className="text-base font-bold tabular-nums text-foreground mt-0.5 block">
-                {Math.round(forecastSMA3).toLocaleString()} units
-              </span>
-              <span className="text-[11px] text-muted-foreground">
-                {last3.length > 0
-                  ? `Avg of last ${last3.length} (${last3.map(m => m.demand.toLocaleString()).join(" + ")} ÷ ${last3.length})`
-                  : "No periods recorded"}
-              </span>
-            </div>
-            <div className="rounded-xl border border-border bg-muted/20 px-3.5 py-2.5">
-              <div className="flex items-center gap-1.5">
-                <span className="block text-[10px] font-bold uppercase tracking-wider text-muted-foreground">SMA-6 Steady Baseline</span>
-                <InfoTip title="SMA-6 steady baseline" lines={["The average sales across up to the latest six completed periods. Its longer window smooths short-term swings compared with SMA-3."]} />
-              </div>
-              <span className="text-base font-bold tabular-nums text-foreground mt-0.5 block">
-                {Math.round(forecastSMA6).toLocaleString()} units
-              </span>
-              <span className="text-[11px] text-muted-foreground">
-                {last6.length > 0
-                  ? `Avg of last ${last6.length} (${last6.reduce((s, m) => s + m.demand, 0).toLocaleString()} total ÷ ${last6.length})`
-                  : "No periods recorded"}
-              </span>
-            </div>
-          </div>
-        </div>
-
-        {/* ── Row 4: Expandable SMA-3 vs. SMA-6 Detailed Formula Evaluation ── */}
-        <details className={`group ${ANALYTICS_CARD_CLASS} overflow-hidden`}>
-          <summary className="px-5 py-3.5 flex items-center justify-between cursor-pointer hover:bg-muted/30 transition-colors select-none">
-            <div className="flex items-center gap-2">
-              <Calculator size={14} className="text-primary" />
-              <span className="text-xs font-bold text-foreground">
-                Model Math Comparison: SMA-3 vs. SMA-6 ({scopeLabel})
-              </span>
-              <span className="text-[11px] text-muted-foreground font-normal">
-                · {smaMonths.length} historical {forecastPeriodUnit === "week" ? "weeks" : "months"} analyzed
-              </span>
-            </div>
-            <span className="text-xs font-semibold text-primary">
-              View Detailed Formulas ▼
-            </span>
-          </summary>
-
-          <div className="overflow-x-auto border-t border-border/60" data-table-scroll="fixed">
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="border-b border-border/60 bg-muted/20 text-muted-foreground text-[10px] uppercase font-bold tracking-wider">
-                  <th className="py-2.5 px-5 text-left"><AnalyticsColumnHeader label="Model" title="Forecast model" description="SMA-3 averages the latest three completed periods and responds faster to recent changes. SMA-6 averages up to six periods and gives a steadier baseline." /></th>
-                  <th className="py-2.5 px-4 text-left"><AnalyticsColumnHeader label="Formula" title="How the average is calculated" description="Add the recorded sales from the available recent periods, then divide by the number of periods included. A₁, A₂, and so on represent each period's sales." /></th>
-                  <th className="py-2.5 px-4 text-left"><AnalyticsColumnHeader label="Sales Averaged" title="Sales included in this model" description="These are the recorded units used for the displayed average. If there are fewer periods than the model's full window, the available periods are shown." /></th>
-                  <th className="py-2.5 px-4 text-left"><AnalyticsColumnHeader label="Historical Accuracy (Back-Test)" title="Back-test difference and volatility" description="SmartTrack replays past estimates using only earlier sales, then compares them with what actually sold. The percentage is average relative difference, not percent of units missed; lower means closer. High Volatility means the past differences were large, not that future demand is certain to vary." /></th>
-                  <th className="py-2.5 px-4 text-left font-bold text-foreground"><AnalyticsColumnHeader label={`${nextForecastMonth} Forecast`} title="Projected demand" description={`The model's estimated unit demand for ${nextForecastMonth}, based on the sales periods above. Treat it as a planning estimate rather than a promise.`} /></th>
-                  <th className="py-2.5 px-5 text-right"><AnalyticsColumnHeader label="Calculation" title="Calculation details" description="Open the step-by-step calculation to see the inputs and arithmetic used for this model." align="right" /></th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border/40">
-                <tr className="hover:bg-muted/15 transition-colors">
-                  <td className="py-3 px-5">
-                    <div className="flex items-center gap-2">
-                      <span className="h-2 w-2 rounded-full bg-orange-500" />
-                      <span className="font-bold text-foreground">SMA-3 (Short-Term)</span>
-                      <span className="rounded bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 text-[9px] font-bold px-1.5 py-0.2 uppercase">
-                        {selectedForecast?.model === "SMA-6" ? "Responsive" : "Recommended"}
-                      </span>
-                    </div>
-                    <span className="block text-[10px] text-muted-foreground mt-0.5">Reacts faster to recent prescription spikes</span>
-                  </td>
-                  <td className="py-3 px-4 font-mono text-[11px] text-foreground">
-                    (A₁ + A₂ + A₃) ÷ {Math.max(1, last3.length)}
-                  </td>
-                  <td className="py-3 px-4 text-muted-foreground">
-                    {last3.length > 0
-                      ? `Last ${last3.length} (${last3.map(m => m.demand.toLocaleString()).join(" + ")} = ${last3.reduce((s, m) => s + m.demand, 0).toLocaleString()} total)`
-                      : "No recorded sales"}
-                  </td>
-                  <td className="py-3 px-4">
-                    {sma3Error ? (
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-bold text-foreground tabular-nums">{sma3Error.smape.toFixed(1)}% diff</span>
-                        <span className={`rounded border px-1.5 py-0.5 text-[9px] font-bold ${getAccuracyBadge(sma3Error.smape).tone}`}>
-                          {getAccuracyBadge(sma3Error.smape).label}
-                        </span>
-                      </div>
-                    ) : (
-                      <span className="text-muted-foreground">Needs 4+ periods for back-test</span>
-                    )}
-                  </td>
-                  <td className="py-3 px-4">
-                    <span className="text-sm font-extrabold tabular-nums text-foreground">
-                      {Math.round(forecastSMA3).toLocaleString()} units
-                    </span>
-                  </td>
-                  <td className="py-3 px-5 text-right">
-                    <button
-                      type="button"
-                      onClick={() => setSmaInspector("sma3")}
-                      className="text-xs font-bold text-primary hover:underline cursor-pointer"
-                    >
-                      View Steps →
-                    </button>
-                  </td>
-                </tr>
-
-                <tr className="hover:bg-muted/15 transition-colors">
-                  <td className="py-3 px-5">
-                    <div className="flex items-center gap-2">
-                      <span className="h-2 w-2 rounded-full bg-violet-500" />
-                      <span className="font-bold text-foreground">SMA-6 (Steady Baseline)</span>
-                      <span className="rounded bg-muted text-muted-foreground text-[9px] font-bold px-1.5 py-0.2 uppercase">
-                        {smaMonths.length >= 6 ? "Steady" : `${smaMonths.length}/6 Periods`}
-                      </span>
-                    </div>
-                    <span className="block text-[10px] text-muted-foreground mt-0.5">Filters out temporary one-period fluctuations</span>
-                  </td>
-                  <td className="py-3 px-4 font-mono text-[11px] text-foreground">
-                    (A₁ + … + A₆) ÷ {Math.max(1, last6.length)}
-                  </td>
-                  <td className="py-3 px-4 text-muted-foreground">
-                    {last6.length > 0
-                      ? `Last ${last6.length} (${last6.reduce((s, m) => s + m.demand, 0).toLocaleString()} total ÷ ${last6.length})`
-                      : "No recorded sales"}
-                  </td>
-                  <td className="py-3 px-4">
-                    {sma6Error && !sma6Error.insufficientData ? (
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-bold text-foreground tabular-nums">{sma6Error.smape.toFixed(1)}% diff</span>
-                        <span className={`rounded border px-1.5 py-0.5 text-[9px] font-bold ${getAccuracyBadge(sma6Error.smape).tone}`}>
-                          {getAccuracyBadge(sma6Error.smape).label}
-                        </span>
-                      </div>
-                    ) : (
-                      <span className="text-muted-foreground">Needs 7+ periods for back-test (has {smaMonths.length})</span>
-                    )}
-                  </td>
-                  <td className="py-3 px-4">
-                    <span className="text-sm font-extrabold tabular-nums text-foreground">
-                      {Math.round(forecastSMA6).toLocaleString()} units
-                    </span>
-                  </td>
-                  <td className="py-3 px-5 text-right">
-                    <button
-                      type="button"
-                      onClick={() => setSmaInspector("sma6")}
-                      className="text-xs font-bold text-primary hover:underline cursor-pointer"
-                    >
-                      View Steps →
-                    </button>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </details>
-      </section>
-      </>}
-
-      {/* Restocking: Highlight EOQ (Economic Order Quantity) & Reorder Point (ROP) clearly */}
-      {activeSection === "Restocking" && <>
-      {/* ── Top Bar: Sleek Unified Control Strip (Linear Style) ── */}
-      <div className={`${ANALYTICS_CARD_CLASS} flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4`}>
-        <div className="flex items-center gap-2.5 flex-wrap">
-          <span className="text-xs font-bold text-foreground">Demand Basis:</span>
-          <InfoTip
-            title="Restocking demand basis (D)"
-            lines={[
-              "D is the annual demand estimate used by EOQ and lead-time ROP calculations.",
-              "Auto uses the selected forecast recommendation. SMA-3 responds faster to recent changes; SMA-6 is steadier; All-Time Avg uses the full available sales history.",
-              "Changing the basis can change order quantities. It never creates an order by itself.",
-            ]}
-          />
-          <div className="inline-flex rounded-2xl border border-border/70 bg-muted/45 p-1 text-xs font-semibold">
-            {([
-              { id: "auto", label: "Auto (SMA)" },
-              { id: "sma3", label: "SMA-3" },
-              { id: "sma6", label: "SMA-6" },
-              { id: "historical", label: "All-Time Avg" },
-            ] as const).map(opt => (
-              <button
-                key={opt.id}
-                type="button"
-                onClick={() => handleSetDemandBasis(opt.id)}
-                className={`px-3 py-1 rounded-md transition-all cursor-pointer ${
-                  demandBasis === opt.id
-                    ? "bg-card text-foreground font-bold shadow-sm ring-1 ring-border/50"
-                    : "text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                {opt.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2 flex-wrap">
-          <button
-            type="button"
-            onClick={() => setShowEoqSettingsModal(true)}
-            className="inline-flex items-center gap-1.5 rounded-xl border border-border bg-background hover:bg-muted text-foreground px-3 py-1.5 text-xs font-semibold shadow-2xs transition-colors cursor-pointer"
-          >
-            <SlidersHorizontal size={13} className="text-primary" />
-            <span>Parameters (S, I, Lead Time)</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => setSmaInspector("eoq")}
-            className="inline-flex items-center gap-1.5 rounded-xl border border-border bg-background hover:bg-muted text-muted-foreground hover:text-foreground px-3 py-1.5 text-xs font-semibold shadow-2xs transition-colors cursor-pointer"
-          >
-            <Calculator size={13} />
-            <span>EOQ Formula</span>
-          </button>
-        </div>
-      </div>
-
-      {poBannerMessage && (
-        <div className={`flex items-center justify-between gap-3 rounded-xl border px-4 py-3 text-xs font-semibold ${
-          poBannerMessage.type === "success"
-            ? "border-emerald-300 bg-emerald-50 text-emerald-900 dark:border-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-200"
-            : "border-red-300 bg-red-50 text-red-900 dark:border-red-800 dark:bg-red-950/30 dark:text-red-200"
-        }`}>
-          <span>{poBannerMessage.text}</span>
-          <div className="flex items-center gap-2 shrink-0">
-            {poBannerMessage.type === "success" && (
-              <button
-                type="button"
-                onClick={() => window.dispatchEvent(new CustomEvent("smarttrack:navigate", { detail: "purchases" }))}
-                className="underline font-bold cursor-pointer"
-              >
-                View Purchase Orders →
-              </button>
-            )}
-            <button type="button" onClick={() => setPoBannerMessage(null)} className="p-1 hover:opacity-75 cursor-pointer">
-              <X size={14} />
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* ── 4 Summary KPI Cards ── */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-        {/* Card 1 */}
-        <div className={`${ANALYTICS_CARD_CLASS} p-4 sm:p-5 flex flex-col justify-between`}>
-          <div>
-            <div className="flex items-center gap-1.5">
-              <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">To Restock</p>
-              <InfoTip title="Products to restock" lines={["Count of products currently below their configured reorder thresholds and included in this restock plan."]} />
-            </div>
-            <p className={`mt-1.5 text-2xl font-extrabold tabular-nums ${reorderRecs.length ? "text-amber-600 dark:text-amber-400" : "text-foreground"}`}>
-              {reorderRecs.length} <span className="text-xs font-medium text-muted-foreground">products</span>
-            </p>
-          </div>
-          <p className="mt-2 text-[11px] text-muted-foreground border-t border-border/50 pt-2">
-            {reorderRecs.filter(r => r.product.status === "out_of_stock").length} Out ·{" "}
-            {reorderRecs.filter(r => r.product.status === "critical").length} Critical ·{" "}
-            {reorderRecs.filter(r => r.product.status === "low").length} Low
-          </p>
-        </div>
-
-        {/* Card 2 */}
-        <div className={`${ANALYTICS_CARD_CLASS} p-4 sm:p-5 flex flex-col justify-between`}>
-          <div>
-            <div className="flex items-center justify-between gap-2">
-              <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Planned Order Units</p>
-              <InfoTip
-                title="Planned Restock Units"
-                color="sky"
-                lines={[
-                  `Planned total order volume across all ${reorderRecs.length} restocking items.`,
-                  `Overall batch benchmark: ${eoqOverall.toLocaleString()} units.`,
-                ]}
-              />
-            </div>
-            <p className="mt-1.5 text-2xl font-extrabold tabular-nums text-foreground">
-              {totalEoqUnits.toLocaleString()} <span className="text-xs font-medium text-muted-foreground">units</span>
-            </p>
-          </div>
-          <p className="mt-2 text-[11px] text-muted-foreground border-t border-border/50 pt-2">
-            Benchmark: ~{eoqOverall.toLocaleString()} units / batch
-          </p>
-        </div>
-
-        {/* Card 3 */}
-        <div className={`${ANALYTICS_CARD_CLASS} p-4 sm:p-5 flex flex-col justify-between`}>
-          <div>
-            <div className="flex items-center justify-between gap-2">
-              <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Advisory ROP</p>
-              <InfoTip
-                title="Reorder Point (ROP)"
-                color="sky"
-                lines={[
-                  `Formula: (Daily Demand × ${leadTimeDaysSetting}d Lead) + ${safetyBufferSetting}% Safety Buffer.`,
-                  `Holding rate: ${Math.round(holdingRateSetting * 100)}%/yr · Order cost: ₱${orderCostSetting}.`,
-                ]}
-              />
-            </div>
-            <p className="mt-1.5 text-2xl font-extrabold tabular-nums text-foreground">
-              {leadTimeDaysSetting} Days <span className="text-xs font-medium text-muted-foreground">lead</span>
-            </p>
-          </div>
-          <p className="mt-2 text-[11px] text-muted-foreground border-t border-border/50 pt-2">
-            +{safetyBufferSetting}% safety buffer · S=₱{orderCostSetting}
-          </p>
-        </div>
-
-        {/* Card 4 */}
-        <div className={`${ANALYTICS_CARD_CLASS} p-4 sm:p-5 flex flex-col justify-between`}>
-          <div>
-            <div className="flex items-center gap-1.5">
-              <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Estimated Budget</p>
-              <InfoTip title="Estimated restock budget" lines={["Estimated cost of the planned order quantities across the products in this plan. Product-level costs use the unit cost shown in the calculation details."]} />
-            </div>
-            <p className="mt-1.5 text-2xl font-extrabold tabular-nums text-foreground">
-              {fmt(estimatedRestockCost)}
-            </p>
-          </div>
-          <p className="mt-2 text-[11px] text-muted-foreground border-t border-border/50 pt-2">
-            Total planned order cost across all items
-          </p>
-        </div>
-      </div>
-
-      {/* ── Row 3: Actionable EOQ Reorder Recommendations Table ── */}
-      {reorderRecs.length > 0 && (
-        <div className={`${ANALYTICS_CARD_CLASS} overflow-hidden`}>
-          {/* Table Header + Search & Status Filter Bar */}
-          <div className="px-5 py-3.5 border-b border-border space-y-3">
-            <div className="flex items-center justify-between flex-wrap gap-2">
-              <div>
-                <h3 className="text-sm font-bold text-foreground">Products Recommended for Restock</h3>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  Optimal order batches and lead-time thresholds calculated from your demand forecasts.
-                </p>
-              </div>
-              <div className="flex items-center gap-2">
-                {Object.keys(eoqOverrides).length > 0 && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setEoqOverrides({});
-                      try { localStorage.removeItem("smarttrack_eoq_overrides"); } catch { /* ignore */ }
-                    }}
-                    className="text-xs px-2.5 py-1 rounded-lg bg-amber-500/15 text-amber-800 dark:text-amber-300 border border-amber-500/30 font-semibold hover:bg-amber-500/25 cursor-pointer"
-                  >
-                    Reset {Object.keys(eoqOverrides).length} Override{Object.keys(eoqOverrides).length === 1 ? "" : "s"}
-                  </button>
-                )}
-                <span className="text-xs px-2.5 py-1 rounded-lg bg-muted text-foreground font-semibold border border-border">
-                  {filteredReorderRecs.length} of {reorderRecs.length} products
+          {/* ── Row 4: Inventory Velocity (Fast Movers vs. Slow Movers) ── */}
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            {/* Fast Movers */}
+            <section className={`${ANALYTICS_CARD_CLASS} p-5`}>
+              <div className="flex items-center justify-between mb-3">
+                <div>
+                  <h3 className="text-sm font-semibold text-foreground">Fast-Moving Medicines (Class A)</h3>
+                  <p className="text-xs text-muted-foreground mt-0.5">Top-selling medicines by recorded unit volume.</p>
+                </div>
+                <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold text-emerald-700 dark:text-emerald-300">
+                  High Turnover
                 </span>
               </div>
-            </div>
-
-            {/* Search & Status Filter Controls */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pt-1">
-              <div className="relative flex-1 max-w-sm">
-                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
-                <input
-                  type="text"
-                  value={restockSearch}
-                  onChange={e => { setRestockSearch(e.target.value); setRestockPage(1); }}
-                  placeholder="Search product name, ID, or category…"
-                  className="w-full rounded-xl border border-border bg-background pl-9 pr-8 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
-                />
-                {restockSearch && (
-                  <button
-                    type="button"
-                    onClick={() => { setRestockSearch(""); setRestockPage(1); }}
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground cursor-pointer"
-                  >
-                    <X size={13} />
-                  </button>
+              <div className="divide-y divide-border/50">
+                {topFastMovers.map((item, idx) => (
+                  <div key={item.product.id} className="py-2.5 flex items-center justify-between gap-3 text-xs">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[10px] font-bold text-primary">
+                        {idx + 1}
+                      </span>
+                      <div className="min-w-0">
+                        <p className="font-semibold text-foreground truncate">{item.product.name}</p>
+                        <p className="text-[10px] text-muted-foreground">{item.product.category}</p>
+                      </div>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <span className="font-bold tabular-nums text-foreground">{item.totalSold.toLocaleString()} sold</span>
+                      <span className="block text-[10px] text-muted-foreground">~{Math.round(item.monthlyEquivalentForecast)} u/mo</span>
+                    </div>
+                  </div>
+                ))}
+                {topFastMovers.length === 0 && (
+                  <p className="py-6 text-center text-xs text-muted-foreground">No sales transactions recorded yet.</p>
                 )}
               </div>
-              <div className="flex items-center gap-1.5 flex-wrap">
-                {([
-                  { id: "all", label: `All (${reorderRecs.length})` },
-                  { id: "out_of_stock", label: `Out of Stock (${reorderRecs.filter(r => r.product.status === "out_of_stock").length})` },
-                  { id: "critical", label: `Critical (${reorderRecs.filter(r => r.product.status === "critical").length})` },
-                  { id: "low", label: `Low (${reorderRecs.filter(r => r.product.status === "low").length})` },
-                ] as const).map(tab => (
-                  <button
-                    key={tab.id}
-                    type="button"
-                    onClick={() => { setRestockStatusFilter(tab.id); setRestockPage(1); }}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer border ${
-                      restockStatusFilter === tab.id
-                        ? "bg-card text-foreground border-border shadow-sm"
-                        : "bg-background text-muted-foreground border-border hover:bg-muted hover:text-foreground"
-                    }`}
-                  >
-                    {tab.label}
-                  </button>
-                ))}
+            </section>
+
+            {/* Slow Movers / Capital Watch */}
+            <section className={`${ANALYTICS_CARD_CLASS} p-5`}>
+              <div className="flex items-center justify-between mb-3">
+                <div>
+                  <h3 className="text-sm font-semibold text-foreground">Slow-Moving &amp; Idle Stock Watch</h3>
+                  <p className="text-xs text-muted-foreground mt-0.5">In-stock medicines with low recent demand.</p>
+                </div>
+                <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+                  Capital Watch
+                </span>
               </div>
-            </div>
+              <div className="divide-y divide-border/50">
+                {slowMovingItems.map(item => {
+                  const estCost = item.batches.find(b => b.unitCost)?.unitCost ?? (item.price * 0.7);
+                  const capitalValue = item.stock * estCost;
+                  return (
+                    <div key={item.id} className="py-2.5 flex items-center justify-between gap-3 text-xs">
+                      <div className="min-w-0">
+                        <p className="font-semibold text-foreground truncate">{item.name}</p>
+                        <p className="text-[10px] text-muted-foreground">{item.category} · {item.stock.toLocaleString()} units on shelf</p>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <span className="font-medium text-foreground">{fmt(capitalValue)}</span>
+                        <span className="block text-[10px] text-amber-600 dark:text-amber-400 font-medium">Idle capital</span>
+                      </div>
+                    </div>
+                  );
+                })}
+                {slowMovingItems.length === 0 && (
+                  <p className="py-6 text-center text-xs text-muted-foreground">No idle inventory detected.</p>
+                )}
+              </div>
+            </section>
+          </div>
+        </section>
+      )}
+
+      {activeSection === "Forecast" && (
+        <section className="space-y-5">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            {([
+              { model: "SMA-3" as const, label: "Recent 3-month average", units: forecastSMA3, help: "Averages the latest three completed months. It responds more quickly to recent changes." },
+              { model: "SMA-6" as const, label: "Steadier 6-month average", units: forecastSMA6, help: "Averages up to six completed months for a steadier estimate." },
+            ]).map(option => (
+              <section key={option.model} className={`${ANALYTICS_CARD_CLASS} p-5`}>
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-medium text-muted-foreground">{option.label}</p>
+                    <p className="mt-2 text-3xl font-semibold tracking-tight tabular-nums text-foreground">
+                      {Math.round(option.units).toLocaleString()} <span className="text-base font-medium text-muted-foreground">units</span>
+                    </p>
+                    <p className="mt-1 text-xs text-muted-foreground">Expected for {nextForecastMonth} · {option.model}</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setSmaInspector(option.model === "SMA-3" ? "sma3" : "sma6")}
+                    className="shrink-0 rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-primary hover:bg-primary/5"
+                  >
+                    Show Math
+                  </button>
+                </div>
+                <p className="mt-4 border-t border-border/60 pt-3 text-xs text-muted-foreground">{option.help}</p>
+                <button
+                  type="button"
+                  aria-pressed={activeForecastModel === option.model}
+                  onClick={() => setSelectedModelOverride(option.model)}
+                  className={`mt-3 rounded-lg px-3 py-1.5 text-xs font-semibold ${
+                    activeForecastModel === option.model
+                      ? "bg-primary/10 text-primary"
+                      : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                  }`}
+                >
+                  {activeForecastModel === option.model ? "Selected estimate" : "Use this estimate"}
+                </button>
+              </section>
+            ))}
           </div>
 
-          <div className="overflow-x-auto" data-table-scroll="fixed">
-            <table className="w-full">
-              <thead className="sticky top-0 z-10 bg-card shadow-sm">
-                <tr className="border-b border-border/60 bg-muted/20 text-muted-foreground text-[10px] uppercase font-bold tracking-wider">
-                  <th className="py-3 px-5 text-left"><AnalyticsColumnHeader label="Product" title="Product details" description="Medicine name, category, and supplier. The product identity helps you review the recommendation with its supplier." /></th>
-                  <th className="py-3 px-4 text-left"><AnalyticsColumnHeader label="Stock vs. Min" title="Stock compared with minimum" description="Current on-hand units compared with the configured minimum reorder level. The shortage indicates how many units are below that threshold." /></th>
-                  <th className="py-3 px-4 text-left"><AnalyticsColumnHeader label="Annual Demand (D)" title="Annual demand (D)" description={`The estimated number of units used in one year. Its source follows the selected demand basis (currently ${demandBasis === "sma3" ? "SMA-3" : demandBasis === "sma6" ? "SMA-6" : demandBasis === "historical" ? "All-Time Average" : "Auto"}); changing that basis can change the order recommendation.`} /></th>
-                  <th className="py-3 px-4 text-left"><AnalyticsColumnHeader label="Advisory ROP" title="Reorder point (ROP)" description={`The stock level that signals when to reorder: expected demand during the ${leadTimeDaysSetting}-day supplier lead time plus a ${safetyBufferSetting}% safety buffer. It is advisory; your configured minimum still controls stock alerts.`} /></th>
-                  <th className="py-3 px-4 text-left text-foreground bg-primary/[0.03]"><AnalyticsColumnHeader label="Planned Order (EOQ)" title="Economic order quantity (EOQ)" description="The recommended order size balances the cost of placing orders against the cost of holding inventory. Pack sizes can round this quantity, and FIFO sell-through estimates how long the batch may take to sell relative to shelf life." /></th>
-                  <th className="py-3 px-4 text-left"><AnalyticsColumnHeader label="Est. Cost" title="Estimated order cost" description="Planned order units multiplied by the available unit purchase cost. The product's cost source is shown in its calculation details." /></th>
-                  <th className="py-3 px-4 text-left"><AnalyticsColumnHeader label="Status" title="Current stock status" description="A status based on the product's current on-hand stock and configured reorder thresholds." /></th>
-                  <th className="py-3 px-5 text-right"><AnalyticsColumnHeader label="Actions" title="Review or create an order" description="Math opens the calculation details. Create PO starts a purchase-order draft for human review; it does not place an order automatically." align="right" /></th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border/40">
-                {paginatedReorderRecs.map(rec => {
-                  const {
-                    product: p,
-                    rawEoq,
-                    eoq,
-                    overrideQty,
-                    effectiveOrderQty,
-                    fifoSellThroughMonths,
-                    suggestedRop,
-                    shortage,
-                    annualDemand: prodAnnDemand,
-                    unitCost,
-                    isDemandFallback,
-                    demandSourceLabel,
-                  } = rec;
-                  const minUnits = getReorderUnits(p);
-                  const unitsPerPack = Math.max(1, p.unitsPerPack ?? 1);
-                  const effectivePacks = unitsPerPack > 1 ? Math.ceil(effectiveOrderQty / unitsPerPack) : null;
-                  return (
-                    <tr key={p.id} className="hover:bg-muted/15 transition-colors">
-                      {/* Product */}
-                      <td className="px-5 py-3">
-                        <p className="text-xs font-semibold text-foreground">{p.name}</p>
-                        <p className="text-[11px] text-muted-foreground">{p.category}{p.supplier ? ` · ${p.supplier}` : ""}</p>
-                      </td>
+          <section className={`${ANALYTICS_CARD_CLASS} min-w-0 p-4 sm:p-5`}>
+            <div className="mb-4">
+              <h3 className="text-sm font-semibold text-foreground">Monthly sales history</h3>
+              <p className="mt-1 text-xs text-muted-foreground">Compare recorded sales with SMA-3 and SMA-6.</p>
+            </div>
+            {smaLoading ? (
+              <p className="py-12 text-center text-sm text-muted-foreground">Loading sales history…</p>
+            ) : smaChartData.length ? (
+              <div className="h-[300px] w-full">
+                <ForecastTrendChart
+                  history={smaChartData}
+                  nextPeriod={nextForecastMonth}
+                  sma3={forecastSMA3}
+                  sma6={forecastSMA6}
+                  periodUnit="month"
+                />
+              </div>
+            ) : (
+              <p className="py-12 text-center text-sm text-muted-foreground">No sales history available for this selection.</p>
+            )}
+          </section>
 
-                      {/* Stock vs Min */}
+          <section className={`${ANALYTICS_CARD_CLASS} overflow-hidden`}>
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/60 p-4">
+              <div>
+                <h3 className="text-sm font-semibold text-foreground">Expected sales by medicine</h3>
+                <p className="mt-1 text-xs text-muted-foreground">{productForecastList.length} medicines · {activeForecastModel} estimates</p>
+              </div>
+              <div className="relative w-full sm:w-64">
+                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                <input
+                  value={productForecastSearch}
+                  onChange={event => { setProductForecastSearch(event.target.value); setProductForecastPage(1); }}
+                  placeholder="Search medicines"
+                  aria-label="Search forecast medicines"
+                  className="w-full rounded-xl border border-border bg-background py-2 pl-9 pr-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
+                />
+              </div>
+            </div>
+            <div className="overflow-x-auto" data-table-scroll="fixed">
+              <table className="w-full text-sm">
+                <thead className="bg-muted/30 text-left text-xs text-muted-foreground">
+                  <tr>
+                    <th className="px-4 py-3 font-medium">Medicine</th>
+                    <th className="px-4 py-3 font-medium">Recent monthly sales</th>
+                    <th className="px-4 py-3 text-right font-medium">Expected next month</th>
+                    <th className="px-4 py-3 text-right font-medium">In stock</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border/50">
+                  {paginatedProductForecasts.map(row => {
+                    const forecast = activeForecastModel === "SMA-3" ? row.monthlySma3 : row.monthlySma6;
+                    return (
+                      <tr key={row.product.id} className="hover:bg-muted/20">
+                        <td className="px-4 py-3">
+                          <p className="font-medium text-foreground">{row.product.name}</p>
+                          <p className="mt-0.5 text-xs text-muted-foreground">{row.product.category}</p>
+                        </td>
+                        <td className="px-4 py-3 text-xs tabular-nums text-muted-foreground">
+                          {row.recent3Periods.length
+                            ? row.recent3Periods.map(period => `${period.label}: ${period.qty}`).join(" · ")
+                            : "No recorded sales"}
+                        </td>
+                        <td className="px-4 py-3 text-right font-medium tabular-nums text-foreground">{Math.round(forecast).toLocaleString()} units</td>
+                        <td className="px-4 py-3 text-right tabular-nums text-foreground">{row.product.stock.toLocaleString()}</td>
+                      </tr>
+                    );
+                  })}
+                  {paginatedProductForecasts.length === 0 && (
+                    <tr><td colSpan={4} className="px-4 py-10 text-center text-sm text-muted-foreground">No medicines match your search.</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+            <TablePager total={filteredProductForecasts.length} page={productForecastPage} pageSize={PRODUCT_FORECAST_PAGE_SIZE} onPage={setProductForecastPage} />
+          </section>
+        </section>
+      )}
+
+      {activeSection === "Restocking" && (
+        <section className="space-y-5">
+          {poBannerMessage && (
+            <div role="status" className={`flex items-center justify-between gap-3 rounded-xl border px-4 py-3 text-sm ${
+              poBannerMessage.type === "success"
+                ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+                : "border-rose-500/25 bg-rose-500/10 text-rose-700 dark:text-rose-300"
+            }`}>
+              <span>{poBannerMessage.text}</span>
+              <button type="button" onClick={() => setPoBannerMessage(null)} aria-label="Dismiss message" className="rounded-md p-1 hover:bg-background/50"><X size={15} /></button>
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <SummaryCard label="Medicines to Restock" value={`${reorderRecs.length}`} note="Currently below their restock level" />
+            <SummaryCard label="Suggested Order Budget" value={fmt(estimatedRestockCost)} note="Estimated from suggested quantities" />
+          </div>
+
+          <section className={`${ANALYTICS_CARD_CLASS} flex flex-wrap items-center justify-between gap-3 p-4`}>
+            <div>
+              <p className="text-sm font-medium text-foreground">Demand used for the restock plan</p>
+              <p className="mt-1 text-xs text-muted-foreground">SMA-3 reacts faster; SMA-6 provides a steadier average.</p>
+            </div>
+            <div className="inline-flex rounded-xl bg-muted p-1" role="group" aria-label="Restocking demand model">
+              {([
+                { id: "auto", label: "Automatic SMA-3/6" },
+                { id: "sma3", label: "SMA-3" },
+                { id: "sma6", label: "SMA-6" },
+              ] as const).map(option => (
+                <button
+                  key={option.id}
+                  type="button"
+                  aria-pressed={demandBasis === option.id}
+                  onClick={() => handleSetDemandBasis(option.id)}
+                  className={`rounded-lg px-3 py-2 text-xs font-medium ${
+                    demandBasis === option.id ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+            <div className="flex gap-2">
+              <button type="button" onClick={() => setShowEoqSettingsModal(true)} className="rounded-xl border border-border px-3 py-2 text-xs font-semibold text-foreground hover:bg-muted">
+                Planning settings
+              </button>
+              <button type="button" onClick={() => setSmaInspector("eoq")} className="rounded-xl border border-border px-3 py-2 text-xs font-semibold text-primary hover:bg-primary/5">
+                Show Math
+              </button>
+            </div>
+          </section>
+
+          <section className={`${ANALYTICS_CARD_CLASS} overflow-hidden`}>
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/60 p-4">
+              <div>
+                <h3 className="text-sm font-semibold text-foreground">Medicines to restock</h3>
+                <p className="mt-1 text-xs text-muted-foreground">Review the recommendation before creating an order.</p>
+              </div>
+              <div className="relative w-full sm:w-64">
+                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                <input
+                  value={restockSearch}
+                  onChange={event => { setRestockSearch(event.target.value); setRestockPage(1); }}
+                  placeholder="Search medicines"
+                  aria-label="Search restock medicines"
+                  className="w-full rounded-xl border border-border bg-background py-2 pl-9 pr-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
+                />
+              </div>
+            </div>
+            <div className="overflow-x-auto" data-table-scroll="fixed">
+              <table className="w-full text-sm">
+                <thead className="bg-muted/30 text-left text-xs text-muted-foreground">
+                  <tr>
+                    <th className="px-4 py-3 font-medium">Medicine</th>
+                    <th className="px-4 py-3 font-medium">In stock</th>
+                    <th className="px-4 py-3 font-medium">Restock when at</th>
+                    <th className="px-4 py-3 font-medium">Suggested order</th>
+                    <th className="px-4 py-3 text-right font-medium">Estimated cost</th>
+                    <th className="px-4 py-3 text-right font-medium">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border/50">
+                  {paginatedReorderRecs.map(rec => (
+                    <tr key={rec.product.id} className="hover:bg-muted/20">
                       <td className="px-4 py-3">
-                        <div className="text-xs font-semibold tabular-nums text-foreground">
-                          {p.stock.toLocaleString()} <span className="text-muted-foreground font-normal text-[11px]">/ {minUnits.toLocaleString()}</span>
-                        </div>
-                        {shortage > 0 ? (
-                          <span className="text-[10px] font-semibold text-red-600 dark:text-red-400 tabular-nums">
-                            −{shortage.toLocaleString()} below min
-                          </span>
-                        ) : (
-                          <span className="text-[10px] text-muted-foreground">At threshold</span>
-                        )}
+                        <p className="font-medium text-foreground">{rec.product.name}</p>
+                        <p className="mt-0.5 text-xs text-muted-foreground">{rec.product.category}</p>
                       </td>
-
-                      {/* Demand (D) */}
+                      <td className="px-4 py-3 tabular-nums text-foreground">{rec.product.stock.toLocaleString()} units</td>
+                      <td className="px-4 py-3 tabular-nums text-foreground">{rec.suggestedRop.toLocaleString()} units</td>
+                      <td className="px-4 py-3 font-medium tabular-nums text-foreground">{rec.effectiveOrderQty.toLocaleString()} units</td>
+                      <td className="px-4 py-3 text-right tabular-nums text-foreground">{fmt(rec.effectiveOrderQty * rec.unitCost)}</td>
                       <td className="px-4 py-3">
-                        <div className="text-xs font-semibold tabular-nums text-foreground">
-                          {prodAnnDemand.toLocaleString()} <span className="text-[10px] font-normal text-muted-foreground">u/yr</span>
-                        </div>
-                        <span className="text-[10px] text-muted-foreground font-medium block mt-0.5">
-                          {isDemandFallback ? "Fallback (0 sales)" : demandSourceLabel.split(" (")[0]}
-                        </span>
-                      </td>
-
-                      {/* Suggested ROP */}
-                      <td className="px-4 py-3">
-                        <div className="text-xs font-semibold tabular-nums text-foreground">
-                          {suggestedRop.toLocaleString()} <span className="text-[10px] font-normal text-muted-foreground">units</span>
-                        </div>
-                        <span className="text-[10px] text-muted-foreground">{leadTimeDaysSetting}d lead</span>
-                      </td>
-
-                      {/* Planned Order */}
-                      <td className="px-4 py-3 bg-primary/[0.02]">
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          <span className="text-xs font-bold tabular-nums text-foreground">
-                            {effectiveOrderQty.toLocaleString()} units
-                          </span>
-                          {effectivePacks && (
-                            <span className="text-[10px] text-muted-foreground font-medium">
-                              ({effectivePacks} pk)
-                            </span>
-                          )}
-                          {overrideQty != null && (
-                            <span className="rounded bg-violet-500/15 text-violet-700 dark:text-violet-300 text-[9px] font-bold px-1.5 py-0.2">
-                              Custom
-                            </span>
-                          )}
-                        </div>
-                        {unitsPerPack > 1 && effectiveOrderQty % unitsPerPack !== 0 && (
-                          <span className="text-[10px] text-amber-600 dark:text-amber-400 font-medium block mt-0.5" title="Order quantity includes loose units beyond full supplier packs">
-                            {Math.floor(effectiveOrderQty / unitsPerPack)} pk + {effectiveOrderQty % unitsPerPack} loose
-                          </span>
-                        )}
-                        {fifoSellThroughMonths != null && fifoSellThroughMonths > 9 ? (
-                          <span className="text-[10px] text-amber-600 dark:text-amber-400 font-medium block mt-0.5">
-                            ~{fifoSellThroughMonths.toFixed(0)}m FIFO
-                          </span>
-                        ) : (
-                          <span className="text-[10px] text-muted-foreground block mt-0.5">Optimal batch</span>
-                        )}
-                      </td>
-
-                      {/* Est. Cost */}
-                      <td className="px-4 py-3">
-                        <div className="text-xs font-bold tabular-nums text-foreground">
-                          {fmt(effectiveOrderQty * unitCost)}
-                        </div>
-                        <span className="text-[10px] text-muted-foreground block mt-0.5">@ ₱{unitCost.toFixed(2)}/u</span>
-                      </td>
-
-                      {/* Status */}
-                      <td className="px-4 py-3">
-                        <StockBadge status={p.status} />
-                      </td>
-
-                      {/* Actions */}
-                      <td className="px-5 py-3 text-right">
-                        <div className="inline-flex items-center justify-end gap-1.5">
-                          <button
-                            type="button"
-                            onClick={() => setSelectedEoqProductId(p.id)}
-                            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-border bg-background hover:bg-muted text-muted-foreground hover:text-foreground text-[11px] font-medium transition-colors cursor-pointer"
-                            title="Inspect formula & math breakdown"
-                          >
-                            <Calculator size={12} />
-                            Math
+                        <div className="flex justify-end gap-2">
+                          <button type="button" onClick={() => setSelectedEoqProductId(rec.product.id)} className="rounded-lg border border-border px-2.5 py-1.5 text-xs font-semibold text-primary hover:bg-primary/5">
+                            Show Math
                           </button>
                           {canEdit && (
                             <button
                               type="button"
-                              onClick={() => openPoDraftModal(p, eoq, shortage, effectiveOrderQty)}
-                              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground text-[11px] font-bold transition-colors cursor-pointer shadow-2xs"
-                              title="Create a Supplier Purchase Order using this quantity"
+                              onClick={() => openPoDraftModal(rec.product, rec.eoq, rec.shortage, rec.effectiveOrderQty)}
+                              className="rounded-lg bg-primary px-2.5 py-1.5 text-xs font-semibold text-primary-foreground hover:opacity-90"
                             >
                               Create PO
                             </button>
@@ -4654,159 +3184,71 @@ export default function AnalyticsPage({
                         </div>
                       </td>
                     </tr>
-                  );
-                })}
-                {filteredReorderRecs.length === 0 && (
-                  <tr>
-                    <td colSpan={8} className="text-center py-8 text-xs text-muted-foreground">
-                      No restocking products match your search or status filter.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-          <TablePager
-            total={filteredReorderRecs.length}
-            page={restockPage}
-            pageSize={RESTOCK_PAGE_SIZE}
-            onPage={setRestockPage}
-          />
-        </div>
-      )}
-      {reorderRecs.length === 0 && <div className="rounded-xl border border-border bg-card px-5 py-8 text-center text-sm text-muted-foreground">No products are currently below their low-stock level.</div>}
-      </>}
-
-
-      {/* Product Performance table */}
-      {activeSection === "Products" && <>
-      {(() => {
-        const perfTotal = perf.length;
-        const perfColumns = [
-          { label: "Product", title: "Product", description: "The medicine represented by this row." },
-          { label: "Category", title: "Category", description: "The inventory category assigned to this medicine." },
-          { label: "Units Sold", title: "Units sold", description: "Total units sold in the recorded transaction history used for this report." },
-          { label: "Revenue", title: "Recorded revenue", description: "Sales revenue attributed to this product in the recorded transaction history." },
-          { label: "Demand Level", title: "Demand level", description: "A relative grouping based on historical product sales. It summarizes past activity and is not a forecast guarantee." },
-        ];
-        return (
-          <div className={`${ANALYTICS_CARD_CLASS} overflow-hidden`}>
-            <div className="px-5 py-4 border-b border-border/70 space-y-3">
-              <div className="flex items-center justify-between flex-wrap gap-2">
-                <div>
-                  <div className="flex items-center gap-1.5">
-                    <h3 className="text-sm font-semibold text-foreground">Product Performance</h3>
-                    <InfoTip
-                      title="Product Performance Overview"
-                      lines={[
-                        "Summary table of all individual products with sales volume, revenue, and demand level.",
-                        { label: "High Demand", value: "Fast-moving top revenue generators" },
-                        { label: "Moderate Demand", value: "Steady community medications" },
-                        { label: "Stable Demand", value: "Slow or steady-moving items (avoid overstocking)" },
-                      ]}
-                    />
-                  </div>
-                  <p className="text-[11px] text-muted-foreground mt-0.5">Based on historical sales transaction records</p>
-                </div>
-                {perfTotal > 0 && (
-                  <span className="text-[11px] px-2.5 py-1 rounded-full bg-muted text-muted-foreground font-medium border border-border">
-                    {filteredPerf.length === perfTotal
-                      ? `${perfTotal} products`
-                      : `${filteredPerf.length} of ${perfTotal} products`}
-                  </span>
-                )}
-              </div>
-
-              {/* Search & Demand Filter Controls */}
-              {perfTotal > 0 && (
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pt-1">
-                  <div className="relative flex-1 max-w-xs">
-                    <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                    <input
-                      type="text"
-                      value={productPerfSearch}
-                      onChange={e => { setProductPerfSearch(e.target.value); setProductPerfPage(1); }}
-                      placeholder="Search product or category…"
-                      className="w-full pl-8 pr-7 py-1.5 text-xs rounded-lg border border-border bg-background focus:outline-none focus:ring-1 focus:ring-primary text-foreground placeholder:text-muted-foreground"
-                    />
-                    {productPerfSearch && (
-                      <button
-                        type="button"
-                        onClick={() => { setProductPerfSearch(""); setProductPerfPage(1); }}
-                        className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground cursor-pointer"
-                      >
-                        <X size={12} />
-                      </button>
-                    )}
-                  </div>
-
-                  <div className="flex items-center gap-1 overflow-x-auto pb-1 sm:pb-0">
-                    {(["all", "High", "Moderate", "Stable"] as const).map(lvl => (
-                      <button
-                        key={lvl}
-                        type="button"
-                        onClick={() => { setProductPerfDemandFilter(lvl); setProductPerfPage(1); }}
-                        className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-all cursor-pointer ${
-                          productPerfDemandFilter === lvl
-                            ? "bg-card text-foreground shadow-sm ring-1 ring-border/50"
-                            : "bg-muted/60 text-muted-foreground hover:bg-muted hover:text-foreground border border-border/50"
-                        }`}
-                      >
-                        {lvl === "all" ? "All Levels" : `${lvl} Demand`}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            <div className="overflow-x-auto" data-table-scroll="fixed">
-              <table className="w-full">
-                <thead className="sticky top-0 z-10 bg-card shadow-sm">
-                  <tr className="border-b border-border/60 bg-muted/20">
-                    {perfColumns.map(column => (
-                      <th key={column.label} className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide py-3 text-left px-4 first:px-5">
-                        <AnalyticsColumnHeader label={column.label} title={column.title} description={column.description} />
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {paginatedPerf.length > 0 ? paginatedPerf.map(row => (
-                    <tr key={row.name} className="border-b border-border/40 hover:bg-muted/20 transition-colors">
-                      <td className="px-5 py-3 text-xs font-semibold text-foreground">{row.name}</td>
-                      <td className="px-4 py-3 text-xs text-muted-foreground">{row.cat || <span className="italic opacity-50">—</span>}</td>
-                      <td className="px-4 py-3 text-xs tabular-nums text-foreground">{row.units}</td>
-                      <td className="px-4 py-3 text-xs font-semibold tabular-nums text-foreground">{fmt(row.rev)}</td>
-                      <td className="px-4 py-3">
-                        <span className={`px-2 py-0.5 rounded text-[10px] font-semibold border ${
-                          row.level === "High" ? "bg-sky-50 text-sky-700 border-sky-200 dark:bg-sky-500/10 dark:text-sky-400 dark:border-sky-500/20"
-                          : row.level === "Moderate" ? "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-500/10 dark:text-amber-400 dark:border-amber-500/20"
-                          : "bg-muted text-muted-foreground border-border"
-                        }`}>{row.level}</span>
-                      </td>
-                    </tr>
-                  )) : (
-                    <tr>
-                      <td colSpan={5} className="text-center py-8 text-sm text-muted-foreground">
-                        {perfTotal === 0 ? "No sales data available yet" : "No products match your search or filter."}
-                      </td>
-                    </tr>
+                  ))}
+                  {paginatedReorderRecs.length === 0 && (
+                    <tr><td colSpan={6} className="px-4 py-10 text-center text-sm text-muted-foreground">No medicines need restocking or match your search.</td></tr>
                   )}
                 </tbody>
               </table>
             </div>
+            <TablePager total={filteredReorderRecs.length} page={restockPage} pageSize={RESTOCK_PAGE_SIZE} onPage={setRestockPage} />
+          </section>
+        </section>
+      )}
 
-            <TablePager
-              total={filteredPerf.length}
-              page={productPerfPage}
-              pageSize={PRODUCT_PERF_PAGE_SIZE}
-              onPage={setProductPerfPage}
-            />
+      {activeSection === "Products" && (
+        <section className={`${ANALYTICS_CARD_CLASS} overflow-hidden`}>
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/60 p-4">
+            <div>
+              <h2 className="text-sm font-semibold text-foreground">Medicine sales and forecast</h2>
+              <p className="mt-1 text-xs text-muted-foreground">Recorded sales, expected next-month demand, and stock on hand.</p>
+            </div>
+            <div className="relative w-full sm:w-64">
+              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+              <input
+                value={productForecastSearch}
+                onChange={event => { setProductForecastSearch(event.target.value); setProductForecastPage(1); }}
+                placeholder="Search medicines"
+                aria-label="Search products"
+                className="w-full rounded-xl border border-border bg-background py-2 pl-9 pr-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
+              />
+            </div>
           </div>
-        );
-      })()}
-      </>}
+          <div className="overflow-x-auto" data-table-scroll="fixed">
+            <table className="w-full text-sm">
+              <thead className="bg-muted/30 text-left text-xs text-muted-foreground">
+                <tr>
+                  <th className="px-4 py-3 font-medium">Medicine</th>
+                  <th className="px-4 py-3 font-medium">Category</th>
+                  <th className="px-4 py-3 text-right font-medium">Units sold</th>
+                  <th className="px-4 py-3 text-right font-medium">Expected next month</th>
+                  <th className="px-4 py-3 text-right font-medium">In stock</th>
+                  <th className="px-4 py-3 text-right font-medium">Stock status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border/50">
+                {paginatedProductForecasts.map(row => {
+                  const forecast = activeForecastModel === "SMA-3" ? row.monthlySma3 : row.monthlySma6;
+                  return (
+                    <tr key={row.product.id} className="hover:bg-muted/20">
+                      <td className="px-4 py-3 font-medium text-foreground">{row.product.name}</td>
+                      <td className="px-4 py-3 text-muted-foreground">{row.product.category}</td>
+                      <td className="px-4 py-3 text-right tabular-nums text-foreground">{row.totalSold.toLocaleString()}</td>
+                      <td className="px-4 py-3 text-right font-medium tabular-nums text-foreground">{Math.round(forecast).toLocaleString()} units</td>
+                      <td className="px-4 py-3 text-right tabular-nums text-foreground">{row.product.stock.toLocaleString()}</td>
+                      <td className="px-4 py-3 text-right"><StockBadge status={row.product.status} /></td>
+                    </tr>
+                  );
+                })}
+                {paginatedProductForecasts.length === 0 && (
+                  <tr><td colSpan={6} className="px-4 py-10 text-center text-sm text-muted-foreground">No medicines match your search.</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+          <TablePager total={filteredProductForecasts.length} page={productForecastPage} pageSize={PRODUCT_FORECAST_PAGE_SIZE} onPage={setProductForecastPage} />
+        </section>
+      )}
 
       {selectedEoqProduct && (
         <EoqBreakdownModal
@@ -4952,28 +3394,20 @@ export default function AnalyticsPage({
 
       {smaInspector === "sma3" && (
         <CalcInspectorModal
-          title="SMA-3 forecast — calculation"
+          title="Show Math · Recent 3-month average"
           formula={<SmaFormulaVisual type={last3.length === 3 ? "sma3" : "general"} />}
-          explanation="Use SMA-3 for a quick, short-term estimate of how many units may sell in the next period. It averages sales from the latest 3 periods, so recent changes affect it faster. For a fair past check, each old estimate uses only sales from before that period."
+          explanation="Add sales from the latest completed months and divide by the number of months used. This estimate responds more quickly to recent changes."
           variables={[
             ...last3.slice().reverse().map((period, index) => ({
-              label: `${index === 0 ? "Most recent" : `${index + 1} periods ago`} · t-${index + 1} (${period.month})`, value: `${period.demand.toLocaleString()} units sold`,
+              label: `${index === 0 ? "Most recent month" : `${index + 1} months ago`} · ${period.month}`, value: `${period.demand.toLocaleString()} units`,
             })),
-            { label: "Periods included", value: `${last3.length} of 3` },
-            ...(sma3Error ? [
-              { label: "Average past difference · Details", value: `${sma3Error.smape.toFixed(1)}% · lower was closer` },
-              { label: "Past periods checked", value: `${sma3Error.points}` },
-            ] : []),
+            { label: "Months included", value: `${last3.length} of 3` },
           ]}
           trail={[
             last3.length
-              ? `Add the sales from these periods: ${last3.slice().reverse().map(m => m.demand.toLocaleString()).join(" + ")} = ${last3.reduce((sum, m) => sum + m.demand, 0).toLocaleString()} units.`
+              ? `Step 1: ${last3.slice().reverse().map(m => m.demand.toLocaleString()).join(" + ")} = ${last3.reduce((sum, m) => sum + m.demand, 0).toLocaleString()} units.`
               : "No recorded sales periods are available for this scope.",
-            ...(last3.length ? [`Divide by the ${last3.length} periods used: ${last3.reduce((sum, m) => sum + m.demand, 0).toLocaleString()} ÷ ${last3.length} = about ${Math.round(sma3Computed).toLocaleString()} units expected in ${nextForecastMonth}.`] : []),
-            ...(sma3Error ? [
-              `Past check: compare an older estimate with the units actually sold that period (${sma3Error.points} periods checked).`,
-              `Average past difference: ${sma3Error.smape.toFixed(1)}%. Lower means those estimates were closer.`,
-            ] : []),
+            ...(last3.length ? [`Step 2: ${last3.reduce((sum, m) => sum + m.demand, 0).toLocaleString()} ÷ ${last3.length} = about ${Math.round(sma3Computed).toLocaleString()} units.`] : []),
           ]}
           result={`Estimated demand for ${nextForecastMonth}: ≈ ${Math.round(sma3Computed).toLocaleString()} units`}
           onClose={() => setSmaInspector(null)}
@@ -4982,28 +3416,20 @@ export default function AnalyticsPage({
 
       {smaInspector === "sma6" && (
         <CalcInspectorModal
-          title="SMA-6 forecast — calculation"
+          title="Show Math · Steadier 6-month average"
           formula={<SmaFormulaVisual type={last6.length === 6 ? "sma6" : "general"} />}
-          explanation="Use SMA-6 for a steadier view of demand. It averages sales from up to the latest 6 periods, so one unusually high or low period has less effect. It changes more slowly than SMA-3. For a fair past check, each old estimate uses only sales from before that period."
+          explanation="Add sales from up to the latest six completed months and divide by the number of months available. This gives a steadier estimate."
           variables={[
             ...last6.slice().reverse().map((period, index) => ({
-              label: `${index === 0 ? "Most recent" : `${index + 1} periods ago`} · t-${index + 1} (${period.month})`, value: `${period.demand.toLocaleString()} units sold`,
+              label: `${index === 0 ? "Most recent month" : `${index + 1} months ago`} · ${period.month}`, value: `${period.demand.toLocaleString()} units`,
             })),
-            { label: "Periods included", value: `${last6.length} of 6` },
-            ...(sma6Error && !sma6Error.insufficientData ? [
-              { label: "Average past difference · Details", value: `${sma6Error.smape.toFixed(1)}% · lower was closer` },
-              { label: "Past periods checked", value: `${sma6Error.points}` },
-            ] : []),
+            { label: "Months included", value: `${last6.length} of 6` },
           ]}
           trail={[
             last6.length
-              ? `Add the sales from these periods: ${last6.slice().reverse().map(m => m.demand.toLocaleString()).join(" + ")} = ${last6.reduce((sum, m) => sum + m.demand, 0).toLocaleString()} units.`
+              ? `Step 1: ${last6.slice().reverse().map(m => m.demand.toLocaleString()).join(" + ")} = ${last6.reduce((sum, m) => sum + m.demand, 0).toLocaleString()} units.`
               : "No recorded sales periods are available for this scope.",
-            ...(last6.length ? [`Divide by the ${last6.length} periods used${last6.length < 6 ? ` (${6 - last6.length} more needed for a full 6-period average)` : ""}: ${last6.reduce((sum, m) => sum + m.demand, 0).toLocaleString()} ÷ ${last6.length} = about ${Math.round(sma6Computed).toLocaleString()} units expected in ${nextForecastMonth}.`] : []),
-            ...(sma6Error && !sma6Error.insufficientData ? [
-              `Past check: compare an older estimate with the units actually sold that period (${sma6Error.points} periods checked).`,
-              `Average past difference: ${sma6Error.smape.toFixed(1)}%. Lower means those estimates were closer.`,
-            ] : []),
+            ...(last6.length ? [`Step 2: ${last6.reduce((sum, m) => sum + m.demand, 0).toLocaleString()} ÷ ${last6.length} = about ${Math.round(sma6Computed).toLocaleString()} units.`] : []),
           ]}
           result={`Estimated demand for ${nextForecastMonth}: ≈ ${Math.round(sma6Computed).toLocaleString()} units`}
           onClose={() => setSmaInspector(null)}
@@ -5050,12 +3476,6 @@ export default function AnalyticsPage({
           onSave={handleSaveEoqSettings}
           onReset={handleResetEoqSettings}
           onClose={() => setShowEoqSettingsModal(false)}
-        />
-      )}
-      {glassBoxRecord && (
-        <GlassBoxAuditModal
-          record={glassBoxRecord}
-          onClose={() => setGlassBoxRecord(null)}
         />
       )}
       {confirmExportCsv && (
