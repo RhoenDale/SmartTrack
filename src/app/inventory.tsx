@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef, useMemo } from "react";
-import { Search, Plus, Pencil, Trash2, Download } from "lucide-react";
+import { Search, Plus, Pencil, Trash2, Download, Upload } from "lucide-react";
 import { getReorderUnits, hasUserRole, sortBatchesByExpiry, type Product, type Transaction } from "./data";
 import { fmt, StockBadge } from "./shared";
+import { ProductImportModal } from "./product-import-modal";
 
 export default function InventoryPage({
   inventory,
@@ -11,6 +12,8 @@ export default function InventoryPage({
   onEditProduct,
   onDeleteProduct,
   onAddCategory,
+  onReload,
+  showToast,
   selectedProductId,
   hoveredProductId,
   userRoles,
@@ -22,18 +25,22 @@ export default function InventoryPage({
   onEditProduct: (p: Product) => void;
   onDeleteProduct: (p: Product) => void;
   onAddCategory: (cat: string) => void;
+  onReload?: () => void;
+  showToast?: (msg: string, type?: "info" | "success" | "warning") => void;
   selectedProductId?: string | null;
   hoveredProductId?: string | null;
   userRoles: string[];
 }) {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [showImportModal, setShowImportModal] = useState(false);
   const rowRefs = useRef<Record<string, HTMLTableRowElement | null>>({});
 
   // Check if user is admin (read-only access to inventory)
   const isAdmin   = hasUserRole({ roles: userRoles }, "admin") || hasUserRole({ roles: userRoles }, "admin/owner");
   const isCashier = hasUserRole({ roles: userRoles }, "cashier");
   const canModify = hasUserRole({ roles: userRoles }, "inventory_manager");
+  const canImport = isAdmin || canModify;
 
   // Units sold per product from sale transactions
   const soldByProductId = useMemo(() => {
@@ -124,14 +131,23 @@ export default function InventoryPage({
           <div className="flex items-center gap-2 flex-wrap justify-end">
             <button
               onClick={handleExportCsv}
-              className="flex items-center gap-2 px-3 py-2.5 border border-border bg-card text-foreground rounded-xl text-sm font-bold hover:bg-muted/50 transition-colors shadow-sm flex-shrink-0"
+              className="flex items-center gap-2 px-3 py-2.5 border border-border bg-card text-foreground rounded-xl text-sm font-bold hover:bg-muted/50 transition-colors shadow-sm flex-shrink-0 cursor-pointer"
             >
               <Download size={14} />Export CSV
             </button>
+            {canImport && (
+              <button
+                onClick={() => setShowImportModal(true)}
+                className="flex items-center gap-2 px-3 py-2.5 border border-border bg-card text-foreground rounded-xl text-sm font-bold hover:bg-muted/50 transition-colors shadow-sm flex-shrink-0 cursor-pointer"
+                title="Bulk import products from Excel or CSV spreadsheet"
+              >
+                <Upload size={14} className="text-emerald-500" />Import CSV
+              </button>
+            )}
             {canModify && (
               <button
                 onClick={onAddProduct}
-                className="flex items-center gap-2 px-4 py-2.5 bg-primary text-primary-foreground rounded-xl text-sm font-bold hover:opacity-90 transition-opacity shadow-sm shadow-primary/20 flex-shrink-0"
+                className="flex items-center gap-2 px-4 py-2.5 bg-primary text-primary-foreground rounded-xl text-sm font-bold hover:opacity-90 transition-opacity shadow-sm shadow-primary/20 flex-shrink-0 cursor-pointer"
               >
                 <Plus size={14} />Add Product
               </button>
@@ -311,6 +327,13 @@ export default function InventoryPage({
           </table>
         </div>
       </div>
+
+      <ProductImportModal
+        isOpen={showImportModal}
+        onClose={() => setShowImportModal(false)}
+        onSuccess={onReload}
+        showToast={showToast}
+      />
     </div>
   );
 }

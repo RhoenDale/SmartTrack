@@ -277,6 +277,15 @@ export const productsApi = {
   restore:      (id: string) => post<{ message: string }>(`/products/${id}/restore`, {}),
   purge:        (id: string) => del<{ message: string }>(`/products/${id}/purge`),
   setSupplier:  (id: string, supplier: string) => put(`/products/${id}`, { supplier }),
+  bulkImport:   (items: Array<Record<string, unknown>>) =>
+    post<{
+      success: boolean;
+      created: number;
+      updated: number;
+      total: number;
+      errors: string[];
+      message: string;
+    }>('/products/import', { items }),
 };
 
 // ─── Categories ───────────────────────────────────────────────────────────────

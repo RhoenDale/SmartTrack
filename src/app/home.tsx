@@ -2326,6 +2326,7 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
             {page === "inventory"    && <InventoryPage inventory={inventory} transactions={transactions} categories={categories}
               onAddProduct={() => setShowAddProduct(true)} onEditProduct={product => { setSuggestedBatchQty(0); setEditingProduct(product); }}
               onDeleteProduct={setDeletingProduct} onAddCategory={handleAddCategory}
+              onReload={() => void loadAll(false)} showToast={showHubToast}
               selectedProductId={selectedProductId} hoveredProductId={hoveredNotifPid} 
               userRoles={[user.role]} />}
             {page === "transactions" && <TransactionsPage user={user} transactions={transactions} inventory={inventory}

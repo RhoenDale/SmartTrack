@@ -186,8 +186,153 @@ if ($id && $id !== 'deleted' && $sub === 'purge' && $method === 'DELETE') {
     json_response(['message' => 'Product permanently deleted.']);
 }
 
+// ── POST /products/import — Bulk CSV/Excel Product Importer ──────────────────
+if ($id === 'import') {
+    if ($method !== 'POST') json_response(['error' => 'Method not allowed.'], 405);
+    require_role(['admin/owner', 'admin', 'inventory_manager']);
+    
+    $payload = body();
+    $items = $payload['items'] ?? [];
+    if (!is_array($items) || empty($items)) {
+        json_response(['error' => 'No items provided for import.'], 422);
+    }
+
+    $created = 0;
+    $updated = 0;
+    $errors  = [];
+    $today   = date('Y-m-d');
+    $oneYear = date('Y-m-d', strtotime('+1 year'));
+
+    $pdo->beginTransaction();
+    try {
+        $findBarcode = $pdo->prepare('SELECT id, name FROM products WHERE barcode = ? AND deleted_at IS NULL');
+        $findName    = $pdo->prepare('SELECT id, barcode FROM products WHERE LOWER(name) = LOWER(?) AND deleted_at IS NULL');
+        
+        $insertProd = $pdo->prepare(
+            'INSERT INTO products (barcode, name, supplier, reorder, price, sale_price, unit_label, units_per_pack, pack_price, status)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, "good")'
+        );
+
+        $updateProd = $pdo->prepare(
+            'UPDATE products SET supplier = COALESCE(NULLIF(?, ""), supplier),
+                                 price = CASE WHEN ? > 0 THEN ? ELSE price END,
+                                 sale_price = CASE WHEN ? > 0 THEN ? ELSE sale_price END,
+                                 reorder = CASE WHEN ? > 0 THEN ? ELSE reorder END,
+                                 updated_at = NOW()
+             WHERE id = ?'
+        );
+
+        $insertBatch = $pdo->prepare(
+            'INSERT INTO product_batches (batch_id, product_id, qty, expiry_date, received_date, batch_total_cost, unit_cost)
+             VALUES (?, ?, ?, ?, ?, ?, ?)'
+        );
+
+        foreach ($items as $idx => $row) {
+            $rowNum = $idx + 1;
+            $name = trim((string)($row['name'] ?? ''));
+            if ($name === '') {
+                $errors[] = "Row {$rowNum}: Missing medicine name (skipped).";
+                continue;
+            }
+
+            $barcode = trim((string)($row['barcode'] ?? ''));
+            $category = trim((string)($row['category'] ?? 'General'));
+            if ($category === '') $category = 'General';
+            $supplier = trim((string)($row['supplier'] ?? 'Direct Supplier'));
+            if ($supplier === '') $supplier = 'Direct Supplier';
+
+            $price = max(0, (float)($row['price'] ?? 0));
+            $salePrice = isset($row['sale_price']) && $row['sale_price'] !== '' ? max(0, (float)$row['sale_price']) : ($price > 0 ? round($price * 1.25, 2) : 0);
+            $reorder = max(1, (int)($row['reorder'] ?? 20));
+            $unitLabel = trim((string)($row['unit_label'] ?? 'unit')) ?: 'unit';
+            $qty = max(0, (int)($row['stock'] ?? $row['qty'] ?? 0));
+            
+            $expiry = trim((string)($row['expiry'] ?? $row['expiry_date'] ?? ''));
+            if ($expiry === '' || !strtotime($expiry)) {
+                $expiry = $oneYear;
+            } else {
+                $expiry = date('Y-m-d', strtotime($expiry));
+            }
+
+            // Check if product exists by barcode or exact name
+            $existingId = null;
+            if ($barcode !== '') {
+                $findBarcode->execute([$barcode]);
+                $existingId = $findBarcode->fetchColumn();
+            }
+            if (!$existingId) {
+                $findName->execute([$name]);
+                $existingId = $findName->fetchColumn();
+            }
+
+            if ($existingId) {
+                // Update existing product
+                $updateProd->execute([
+                    $supplier,
+                    $price, $price,
+                    $salePrice, $salePrice,
+                    $reorder, $reorder,
+                    $existingId
+                ]);
+                sync_product_categories($pdo, $existingId, [$category]);
+
+                // If stock is given, add a new batch
+                if ($qty > 0) {
+                    $batchId = trim((string)($row['batch_id'] ?? ''));
+                    if ($batchId === '') {
+                        $batchId = 'IMP-' . date('ymd') . '-' . substr(uniqid(), -4);
+                    }
+                    $batchTotalCost = round($qty * $price, 2);
+                    $insertBatch->execute([
+                        $batchId, $existingId, $qty, $expiry, $today, $batchTotalCost, $price
+                    ]);
+                }
+                sync_product_status((string)$existingId);
+                $updated++;
+            } else {
+                // New product
+                if ($barcode === '') {
+                    $barcode = 'ST-' . strtoupper(substr(md5($name . microtime()), 0, 8));
+                }
+
+                $insertProd->execute([
+                    $barcode, $name, $supplier, $reorder, $price, $salePrice, $unitLabel, 1, null
+                ]);
+                $newId = (string)$pdo->lastInsertId();
+                sync_product_categories($pdo, $newId, [$category]);
+
+                if ($qty > 0) {
+                    $batchId = trim((string)($row['batch_id'] ?? ''));
+                    if ($batchId === '') {
+                        $batchId = 'IMP-' . date('ymd') . '-' . substr(uniqid(), -4);
+                    }
+                    $batchTotalCost = round($qty * $price, 2);
+                    $insertBatch->execute([
+                        $batchId, $newId, $qty, $expiry, $today, $batchTotalCost, $price
+                    ]);
+                }
+                sync_product_status($newId);
+                $created++;
+            }
+        }
+
+        $pdo->commit();
+        json_response([
+            'success' => true,
+            'created' => $created,
+            'updated' => $updated,
+            'total'   => $created + $updated,
+            'errors'  => $errors,
+            'message' => "Successfully imported {$created} new products and updated {$updated} existing items."
+        ]);
+    } catch (Throwable $e) {
+        if ($pdo->inTransaction()) $pdo->rollBack();
+        json_response(['error' => 'Import failed: ' . $e->getMessage()], 500);
+    }
+}
+
 // ── /products/{id} generic block (excludes reserved words) ───────────────────
-if ($id && $id !== 'deleted') {
+if ($id && $id !== 'deleted' && $id !== 'import') {
     // GET single product
     if ($method === 'GET') {
         $stmt = $pdo->prepare('SELECT * FROM products WHERE id = ?');
