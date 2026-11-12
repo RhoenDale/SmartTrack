@@ -205,9 +205,9 @@ function handle_sale(PDO $pdo, array $authUser): void {
                 'daysLeft'      => (int)$daysLeft,
             ], 422);
         }
-        if ($daysLeft <= 60) {
+        if ($daysLeft <= 30) {
             json_response([
-                'error'         => "Cannot sell \"{$product['name']}\" — the first batch (ID: {$firstBatch['batch_id']}) expires in " . ceil($daysLeft) . " days (" . date('m/d/Y', strtotime($firstBatch['expiry_date'])) . "). Products within 60 days of expiry cannot be sold. Please remove or update this batch.",
+                'error'         => "Cannot sell \"{$product['name']}\" — the first batch (ID: {$firstBatch['batch_id']}) expires in " . ceil($daysLeft) . " days (" . date('m/d/Y', strtotime($firstBatch['expiry_date'])) . "). Products within 30 days of expiry cannot be sold. Please remove or update this batch.",
                 'type'          => 'expiry_block',
                 'batchId'       => $firstBatch['batch_id'],
                 'expiryDate'    => $firstBatch['expiry_date'],
@@ -337,8 +337,8 @@ function handle_multi_sale(PDO $pdo, array $authUser, array $data, array $items)
             $firstBatch = $firstBatchStmt->fetch();
             if ($firstBatch && $firstBatch['expiry_date'] !== null) {
                 $daysLeft = (strtotime($firstBatch['expiry_date']) - time()) / 86400;
-                if ($daysLeft <= 60) {
-                    throw new InvalidArgumentException("Cannot sell \"{$product['name']}\" — batch {$firstBatch['batch_id']} expires soon.");
+                if ($daysLeft <= 30) {
+                    throw new InvalidArgumentException("Cannot sell \"{$product['name']}\" — batch {$firstBatch['batch_id']} expires soon (within 30-day safety gate).");
                 }
             }
 
