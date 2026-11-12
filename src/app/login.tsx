@@ -345,35 +345,7 @@ function LoginPage({ onLogin, businessSettings }: {
               </button>
             </form>
 
-            {/* Quick Evaluator Access for Beta Testing */}
-            <div className="mt-5 pt-4 border-t border-slate-200/80">
-              <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider text-center mb-2">
-                Beta Testing Evaluator Quick Fill
-              </p>
-              <div className="grid grid-cols-2 gap-1.5">
-                {[
-                  { label: "Owner / Admin", email: "admin@tangub.ph", pass: "admin123" },
-                  { label: "Pharmacist", email: "inv@tangub.ph", pass: "inv123" },
-                  { label: "Cashier", email: "cashier@tangub.ph", pass: "cashier123" },
-                  { label: "IT Expert", email: "it.expert@tangub.ph", pass: "expert123" },
-                ].map(acc => (
-                  <button
-                    key={acc.label}
-                    type="button"
-                    onClick={() => {
-                      setEmail(acc.email);
-                      setPassword(acc.pass);
-                      setError("");
-                    }}
-                    className="px-2.5 py-1.5 rounded-xl bg-slate-100/90 hover:bg-blue-50 border border-slate-200/90 hover:border-blue-300 text-[11px] font-semibold text-slate-700 hover:text-blue-700 transition-all text-center truncate cursor-pointer shadow-2xs"
-                  >
-                    {acc.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="border-t border-slate-300/60 mt-4 pt-3 text-center">
+            <div className="border-t border-slate-300/60 mt-6 pt-4 text-center">
               <p className="text-[11px] text-slate-500 font-medium tracking-wide">
                 Secure staff access · {businessSettings?.businessName || "Tangub Pharmacy"}
               </p>
