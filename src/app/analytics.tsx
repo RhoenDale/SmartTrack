@@ -793,120 +793,109 @@ function EoqSettingsModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="fixed inset-0 bg-black/40 backdrop-blur-xs" onClick={onClose} />
-      <div className="relative z-10 bg-card border border-border rounded-2xl shadow-2xl w-full max-w-xl overflow-hidden flex flex-col max-h-[92vh]">
-        {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-border flex-shrink-0">
-          <div>
-            <div className="flex items-center gap-2">
-              <h3 className="text-base font-bold text-foreground">EOQ &amp; ROP Operational Parameters</h3>
-              {isSmartAuto ? (
-                <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
-                  ✨ Smart Auto Active
-                </span>
-              ) : (
-                <span className="rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold text-amber-600 dark:text-amber-400 border border-amber-500/20">
-                  👤 Manual Override
-                </span>
-              )}
+      <div role="dialog" aria-modal="true" aria-labelledby="restock-settings-title" className="relative z-10 flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-2xl">
+        <div className="flex flex-shrink-0 items-start justify-between gap-4 border-b border-border px-5 py-4">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <h3 id="restock-settings-title" className="text-base font-semibold text-foreground">Restocking settings</h3>
+              <span className={`rounded-full border px-2 py-0.5 text-[10px] font-medium ${
+                isSmartAuto
+                  ? "border-primary/20 bg-primary/5 text-primary"
+                  : "border-border bg-muted/50 text-muted-foreground"
+              }`}>
+                {isSmartAuto ? "Suggested values" : "Custom values"}
+              </span>
             </div>
-            <p className="text-xs text-muted-foreground mt-0.5">Automated recommendations calibrated from historical delivery receipts and Tangub retail standards</p>
+            <p className="mt-1 text-xs text-muted-foreground">Set the costs and delivery timing used to estimate when and how much to reorder.</p>
           </div>
-          <button type="button" onClick={onClose} aria-label="Close" className="text-muted-foreground hover:text-foreground p-1 rounded hover:bg-muted cursor-pointer">
+          <button type="button" onClick={onClose} aria-label="Close restocking settings" className="shrink-0 rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground">
             <X size={16} />
           </button>
         </div>
 
-        {/* Content & Plain Language Explanation */}
-        <form onSubmit={handleSubmit} className="p-5 space-y-4 overflow-y-auto flex-1">
-          {/* Automated System Recommendation Card */}
-          <div className="rounded-xl border border-primary/30 bg-primary/[0.04] p-4 space-y-3">
-            <div className="flex items-center justify-between">
-              <span className="inline-flex items-center gap-1.5 text-xs font-bold text-primary">
-                <SlidersHorizontal size={14} />
-                ✨ Automated SmartTrack System Recommendation
-              </span>
-              {isSmartAuto ? (
-                <span className="text-[11px] font-medium text-emerald-600 dark:text-emerald-400">
-                  ✓ Current parameters match system recommendation
-                </span>
-              ) : (
+        <form onSubmit={handleSubmit} className="flex-1 space-y-5 overflow-y-auto p-5">
+          <section className="space-y-3 rounded-xl border border-border/70 bg-muted/20 p-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="min-w-0">
+                <h4 className="text-sm font-semibold text-foreground">Suggested starting values</h4>
+                <p className="mt-1 max-w-xl text-xs leading-relaxed text-muted-foreground">
+                  {smartRecs.hasEmpiricalData
+                    ? `Average delivery time is based on ${smartRecs.totalReceiptsCount} recorded supplier deliveries (${smartRecs.recommendedLeadDays} days). Order cost and holding rate are editable starting estimates.`
+                    : "No supplier delivery history is available yet. These values are editable starting points—adjust them to match your suppliers and costs."}
+                </p>
+              </div>
+              {!isSmartAuto && (
                 <button
                   type="button"
                   onClick={() => applyPreset(smartRecs.benchmarkOrderCost, smartRecs.benchmarkHoldingRate, smartRecs.recommendedLeadDays, smartRecs.recommendedSafetyBuffer)}
-                  className="inline-flex items-center gap-1 rounded-lg bg-primary px-2.5 py-1 text-[11px] font-bold text-primary-foreground hover:bg-primary/90 transition-colors cursor-pointer"
+                  className="inline-flex shrink-0 items-center rounded-lg border border-border bg-card px-3 py-2 text-xs font-medium text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
                 >
-                  ⚡ Apply Smart Parameters
+                  Use suggested values
                 </button>
               )}
             </div>
 
-            <p className="text-xs text-muted-foreground leading-relaxed">
-              {smartRecs.hasEmpiricalData ? (
-                <>
-                  SmartTrack measured an empirical average lead time of <strong className="text-foreground">{smartRecs.recommendedLeadDays} days</strong> across <strong className="text-foreground">{smartRecs.totalReceiptsCount} historical delivery receipts</strong> with <strong className="text-foreground">{smartRecs.fulfillmentPct}% fulfillment reliability</strong>. Combined with Tangub pharmacy freight benchmarks, these parameters balance replenishment orders and prevent stockouts.
-                </>
-              ) : (
-                <>
-                  Standard Northern Mindanao retail pharmacy defaults automatically configured to balance supplier delivery fees against climate-controlled inventory carrying costs.
-                </>
-              )}
-            </p>
-
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1 text-xs">
-              <div className="rounded-lg bg-background/80 border border-border/60 p-2 text-center">
-                <p className="text-[10px] text-muted-foreground">Supplier Lead Time</p>
-                <p className="font-bold text-foreground text-sm mt-0.5">{smartRecs.recommendedLeadDays} days</p>
-                <p className="text-[9px] text-emerald-600 dark:text-emerald-400 font-medium">Empirical receipts</p>
+            <div className="grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
+              <div className="rounded-lg border border-border/60 bg-card p-3">
+                <p className="text-[11px] text-muted-foreground">Delivery time (L)</p>
+                <p className="mt-1 text-sm font-semibold tabular-nums text-foreground">{smartRecs.recommendedLeadDays} days</p>
+                <p className="mt-1 text-[10px] text-muted-foreground">{smartRecs.hasEmpiricalData ? "Supplier history" : "Starting value"}</p>
               </div>
-              <div className="rounded-lg bg-background/80 border border-border/60 p-2 text-center">
-                <p className="text-[10px] text-muted-foreground">Safety Stock Buffer</p>
-                <p className="font-bold text-foreground text-sm mt-0.5">+{smartRecs.recommendedSafetyBuffer}%</p>
-                <p className="text-[9px] text-emerald-600 dark:text-emerald-400 font-medium">{smartRecs.fulfillmentPct}% fill rate</p>
+              <div className="rounded-lg border border-border/60 bg-card p-3">
+                <p className="text-[11px] text-muted-foreground">Safety buffer (SS)</p>
+                <p className="mt-1 text-sm font-semibold tabular-nums text-foreground">+{smartRecs.recommendedSafetyBuffer}%</p>
+                <p className="mt-1 text-[10px] text-muted-foreground">Extra stock cushion</p>
               </div>
-              <div className="rounded-lg bg-background/80 border border-border/60 p-2 text-center">
-                <p className="text-[10px] text-muted-foreground">Order Cost (S)</p>
-                <p className="font-bold text-foreground text-sm mt-0.5">₱{smartRecs.benchmarkOrderCost}</p>
-                <p className="text-[9px] text-muted-foreground">Courier + admin</p>
+              <div className="rounded-lg border border-border/60 bg-card p-3">
+                <p className="text-[11px] text-muted-foreground">Order cost (S)</p>
+                <p className="mt-1 text-sm font-semibold tabular-nums text-foreground">₱{smartRecs.benchmarkOrderCost}</p>
+                <p className="mt-1 text-[10px] text-muted-foreground">Freight + processing</p>
               </div>
-              <div className="rounded-lg bg-background/80 border border-border/60 p-2 text-center">
-                <p className="text-[10px] text-muted-foreground">Holding Rate (I)</p>
-                <p className="font-bold text-foreground text-sm mt-0.5">{smartRecs.benchmarkHoldingRate}% / yr</p>
-                <p className="text-[9px] text-muted-foreground">A/C + storage + risk</p>
+              <div className="rounded-lg border border-border/60 bg-card p-3">
+                <p className="text-[11px] text-muted-foreground">Holding rate (I)</p>
+                <p className="mt-1 text-sm font-semibold tabular-nums text-foreground">{smartRecs.benchmarkHoldingRate}% / year</p>
+                <p className="mt-1 text-[10px] text-muted-foreground">A/C + storage + risk</p>
               </div>
             </div>
-          </div>
 
-          {/* 1-Click Operational Presets & Human Override */}
+            {smartRecs.supplierBreakdown && smartRecs.supplierBreakdown.length > 0 && (
+              <div className="mt-2.5 pt-2 border-t border-border/50 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
+                <span className="font-semibold text-foreground">Recorded distributor lead times:</span>
+                {smartRecs.supplierBreakdown.map(s => (
+                  <span key={s.name} className="tabular-nums">
+                    <strong className="text-foreground">{s.name.replace(/ (Corporation|\(Unilab\)|Inc\.|Supplies|Distributors|Traders|Pharma)/g, "")}</strong>: {s.leadDays.toFixed(1)}d ({s.receipts} receipts)
+                  </span>
+                ))}
+              </div>
+            )}
+          </section>
+
           <div>
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
-                Pharmacy Presets &amp; Human Intervention
-              </span>
-              <span className="text-[10px] text-muted-foreground">
-                Click preset or customize below
-              </span>
+            <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
+              <h4 className="text-sm font-semibold text-foreground">Quick presets</h4>
+              <span className="text-[11px] text-muted-foreground">Examples to start from; review before saving.</span>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
               {[
                 {
-                  name: "Local Fast Courier",
-                  desc: "Nearby distributor · low delivery fee",
+                  name: "Nearby supplier",
+                  desc: "Shorter delivery · lower order cost",
                   cost: 60,
                   hold: 15,
                   lead: 3,
                   buffer: 15,
                 },
                 {
-                  name: "Tangub Benchmark",
-                  desc: "Standard retail pharmacy default",
+                  name: "Standard order",
+                  desc: "General-purpose starting point",
                   cost: 120,
                   hold: 20,
                   lead: smartRecs.recommendedLeadDays,
                   buffer: smartRecs.recommendedSafetyBuffer,
                 },
                 {
-                  name: "Regional / Cold-Chain",
-                  desc: "Freight shipping · higher A/C storage",
+                  name: "Long-distance supplier",
+                  desc: "Longer delivery · larger buffer",
                   cost: 250,
                   hold: 25,
                   lead: 14,
@@ -922,17 +911,18 @@ function EoqSettingsModal({
                   <button
                     key={preset.name}
                     type="button"
+                    aria-pressed={isSelected}
                     onClick={() => applyPreset(preset.cost, preset.hold, preset.lead, preset.buffer)}
-                    className={`text-left p-2.5 rounded-xl border transition-all cursor-pointer ${
+                    className={`rounded-xl border p-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 ${
                       isSelected
-                        ? "border-primary bg-primary/10 ring-1 ring-primary/30"
+                        ? "border-primary/50 bg-primary/[0.06]"
                         : "border-border bg-background hover:bg-muted/50"
                     }`}
                   >
-                    <span className="block text-xs font-bold text-foreground">{preset.name}</span>
-                    <span className="block text-[10px] text-muted-foreground mt-0.5">{preset.desc}</span>
-                    <span className="block text-[10px] font-mono font-semibold text-primary mt-1">
-                      ₱{preset.cost} · {preset.hold}% · {preset.lead}d · +{preset.buffer}%
+                    <span className="block text-xs font-semibold text-foreground">{preset.name}</span>
+                    <span className="mt-1 block text-[10px] text-muted-foreground">{preset.desc}</span>
+                    <span className="mt-2 block text-[10px] font-medium tabular-nums text-muted-foreground">
+                      ₱{preset.cost} / order · {preset.hold}% / yr · {preset.lead} days · +{preset.buffer}%
                     </span>
                   </button>
                 );
@@ -940,97 +930,124 @@ function EoqSettingsModal({
             </div>
           </div>
 
-          {/* Form Inputs */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+          <div className="grid grid-cols-1 gap-4 border-t border-border/60 pt-4 sm:grid-cols-2">
             <div>
-              <label className="block text-xs font-semibold text-foreground mb-1">
-                Order Cost S (₱ per purchase order)
-              </label>
+              <div className="mb-1 flex items-center justify-between">
+                <label htmlFor="restock-order-cost" className="text-xs font-semibold text-foreground">
+                  Order cost S
+                </label>
+                <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[9px] font-mono font-medium text-primary">
+                  Drives EOQ batch size
+                </span>
+              </div>
               <input
+                id="restock-order-cost"
                 type="number"
                 step="any"
                 min="1"
                 value={formOrderCost}
                 onChange={e => setFormOrderCost(e.target.value)}
-                className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+                className="w-full rounded-lg border border-border bg-background px-3 py-2.5 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
                 required
               />
-              <span className="text-[10px] text-muted-foreground mt-1 block">Freight courier + PO clerical processing fee</span>
+              <span className="mt-1 block text-[11px] text-muted-foreground">
+                Tangub benchmark (₱120): ₱90 regional courier + ₱30 clerical PO processing.
+              </span>
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-foreground mb-1">
-                Annual Holding Rate I (% of unit cost)
-              </label>
+              <div className="mb-1 flex items-center justify-between">
+                <label htmlFor="restock-holding-rate" className="text-xs font-semibold text-foreground">
+                  Annual holding rate I
+                </label>
+                <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[9px] font-mono font-medium text-primary">
+                  Drives EOQ holding penalty
+                </span>
+              </div>
               <input
+                id="restock-holding-rate"
                 type="number"
                 step="any"
                 min="1"
                 max="100"
                 value={formHoldingPercent}
                 onChange={e => setFormHoldingPercent(e.target.value)}
-                className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+                className="w-full rounded-lg border border-border bg-background px-3 py-2.5 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
                 required
               />
-              <span className="text-[10px] text-muted-foreground mt-1 block">A/C electricity, shelf space, and expiry loss risk</span>
+              <span className="mt-1 block text-[11px] text-muted-foreground">
+                Pharmacy carrying cost (20%/yr): 8% A/C climate control + 6% capital + 6% expiry risk.
+              </span>
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-foreground mb-1">
-                Supplier Lead Time (days to deliver)
-              </label>
+              <div className="mb-1 flex items-center justify-between">
+                <label htmlFor="restock-lead-time" className="text-xs font-semibold text-foreground">
+                  Supplier delivery time L
+                </label>
+                <span className="rounded bg-amber-500/10 px-1.5 py-0.5 text-[9px] font-mono font-medium text-amber-600 dark:text-amber-400">
+                  Drives ROP reorder day
+                </span>
+              </div>
               <input
+                id="restock-lead-time"
                 type="number"
                 step="1"
                 min="1"
                 max="90"
                 value={formLeadTimeDays}
                 onChange={e => setFormLeadTimeDays(e.target.value)}
-                className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+                className="w-full rounded-lg border border-border bg-background px-3 py-2.5 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
                 required
               />
-              <span className="text-[10px] text-muted-foreground mt-1 block">
-                Historical receipt average: {smartRecs.recommendedLeadDays} days
+              <span className="mt-1 block text-[11px] text-muted-foreground">
+                Empirical average from {smartRecs.totalReceiptsCount} deliveries: {smartRecs.recommendedLeadDays} days from PO to receipt.
               </span>
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-foreground mb-1">
-                Safety Stock Buffer (% above lead demand)
-              </label>
+              <div className="mb-1 flex items-center justify-between">
+                <label htmlFor="restock-safety-buffer" className="mb-1 text-xs font-semibold text-foreground">
+                  Safety stock buffer SS
+                </label>
+                <span className="rounded bg-amber-500/10 px-1.5 py-0.5 text-[9px] font-mono font-medium text-amber-600 dark:text-amber-400">
+                  Drives ROP safety cushion
+                </span>
+              </div>
               <input
+                id="restock-safety-buffer"
                 type="number"
                 step="1"
                 min="0"
                 max="200"
                 value={formSafetyBuffer}
                 onChange={e => setFormSafetyBuffer(e.target.value)}
-                className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+                className="w-full rounded-lg border border-border bg-background px-3 py-2.5 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
                 required
               />
-              <span className="text-[10px] text-muted-foreground mt-1 block">
-                Cushion against late deliveries and sudden sales spikes
+              <span className="mt-1 block text-[11px] text-muted-foreground">
+                Extra stock cushion calibrated to current supplier delivery reliability ({smartRecs.fulfillmentPct}% on-time).
               </span>
             </div>
           </div>
 
-          {/* Action buttons */}
-          <div className="flex items-center justify-between gap-3 pt-3 border-t border-border">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4">
             <button
               type="button"
               onClick={() => {
                 onReset();
                 onClose();
               }}
-              className="text-xs font-semibold text-muted-foreground hover:text-foreground hover:underline cursor-pointer"
+              className="inline-flex items-center gap-2 rounded-lg px-2 py-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
             >
-              Reset to Smart Defaults (₱{smartRecs.benchmarkOrderCost} · {smartRecs.benchmarkHoldingRate}% · {smartRecs.recommendedLeadDays}d · {smartRecs.recommendedSafetyBuffer}%)
+              <RotateCcw size={14} />
+              Reset to suggested defaults
             </button>
             <button
               type="submit"
-              className="px-4 py-1.5 rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-bold shadow-xs cursor-pointer"
+              className="rounded-lg bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-offset-2"
             >
-              Save &amp; Recalculate
+              Save changes
             </button>
           </div>
         </form>
@@ -1723,12 +1740,6 @@ export default function AnalyticsPage({
     } catch { return {}; }
   });
   const [showEoqSettingsModal, setShowEoqSettingsModal] = useState(false);
-
-  const isSmartAutoParameters =
-    orderCostSetting === smartOperationalRecommendations.benchmarkOrderCost &&
-    Math.round(holdingRateSetting * 100) === smartOperationalRecommendations.benchmarkHoldingRate &&
-    leadTimeDaysSetting === smartOperationalRecommendations.recommendedLeadDays &&
-    safetyBufferSetting === smartOperationalRecommendations.recommendedSafetyBuffer;
 
   const handleSetOverrideQty = (productId: string, qty: number | null) => {
     setEoqOverrides(prev => {
@@ -3453,22 +3464,14 @@ export default function AnalyticsPage({
                 <button
                   type="button"
                   onClick={() => setShowEoqSettingsModal(true)}
-                  className="rounded-xl border border-border px-3 py-1.5 text-xs font-semibold text-foreground hover:bg-muted cursor-pointer inline-flex items-center gap-1.5"
+                  aria-label="Open restocking settings"
+                  className="inline-flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
                 >
-                  <SlidersHorizontal size={13} className="text-muted-foreground" />
-                  <span>Planning settings (₱{orderCostSetting} · {Math.round(holdingRateSetting * 100)}% · {leadTimeDaysSetting}d)</span>
-                  {isSmartAutoParameters ? (
-                    <span className="rounded-full bg-emerald-500/10 px-1.5 py-0.5 text-[9px] font-semibold text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
-                      ✨ Smart
-                    </span>
-                  ) : (
-                    <span className="rounded-full bg-amber-500/10 px-1.5 py-0.5 text-[9px] font-semibold text-amber-600 dark:text-amber-400 border border-amber-500/20">
-                      👤 Custom
-                    </span>
-                  )}
+                  <SlidersHorizontal size={15} className="text-muted-foreground" />
+                  <span>Planning settings</span>
                 </button>
                 <button type="button" onClick={() => setSmaInspector("eoq")} className="rounded-xl border border-border px-3 py-1.5 text-xs font-semibold text-primary hover:bg-primary/5 cursor-pointer">
-                  Store EOQ formula
+                  How EOQ works
                 </button>
               </div>
             </div>
