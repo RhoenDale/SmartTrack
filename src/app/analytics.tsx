@@ -14,7 +14,6 @@ import {
   ArrowUpRight,
   ArrowDownRight,
   SlidersHorizontal,
-  Sparkles,
   ArrowRight,
 } from "lucide-react";
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, ReferenceLine, BarChart, Bar, LabelList } from "recharts";
@@ -2062,57 +2061,55 @@ export default function AnalyticsPage({
   const [confirmExportCsv, setConfirmExportCsv] = useState(false);
 
   const sectionMeta: Record<string, { icon: string; title: string; desc: string }> = {
-    "Overview":          { icon: "📊", title: "Supply & Demand Overview",   desc: "Compare current inventory levels against customer sales and active supplier orders." },
-    "Forecast":          { icon: "🔮", title: "Demand Forecasting (SMA)",   desc: `Predict customer demand for ${nextForecastMonth} using Moving Averages and detect stockout risks early.` },
-    "Restocking":        { icon: "⚡", title: "Restock Planning (EOQ & ROP)", desc: "Scientific batch ordering and lead-time reorder thresholds connected to your demand forecasts." },
-    "Products":          { icon: "🏷️", title: "Product Performance",         desc: "Medicine sales velocity, inventory health, and revenue breakdown." },
+    "Overview":          { icon: "📊", title: "Supply & Demand Overview",   desc: "Sales, stock, and incoming orders at a glance." },
+    "Forecast":          { icon: "🔮", title: "Demand Forecast",   desc: `Moving-average estimates for ${nextForecastMonth}, with historical back-testing.` },
+    "Restocking":        { icon: "⚡", title: "Restock Planning", desc: "Review reorder quantities, lead-time thresholds, and planning assumptions." },
+    "Products":          { icon: "🏷️", title: "Product Performance",         desc: "Sales volume, revenue, and demand by product." },
   };
 
   return (
-    <div className="flex flex-col w-full max-w-[1400px] mx-auto" style={{ height: "calc(100dvh - 56px)" }}>
+    <div className="flex flex-col w-full max-w-[1480px] mx-auto" style={{ height: "calc(100dvh - 56px)" }}>
 
       {/* ── Fixed header: title + tab nav ── */}
-      <div className="flex-shrink-0 px-4 sm:px-6 pt-4 sm:pt-6 pb-3 bg-background border-b border-border/50 z-20">
+      <div className="flex-shrink-0 px-4 sm:px-7 lg:px-8 pt-5 sm:pt-7 pb-0 bg-background border-b border-border/70 z-20">
         {/* Page header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
-            <h1 className="text-xl font-bold text-foreground">Analytics</h1>
-            <p className="text-sm text-muted-foreground mt-0.5">
-              Sales · Forecasts · Restocking
-            </p>
+            <h1 className="text-2xl font-semibold tracking-tight text-foreground">Analytics</h1>
+            <p className="text-sm text-muted-foreground mt-1">Sales performance, demand forecasts, and replenishment</p>
           </div>
           <div className="flex items-center gap-2">
             <button
               type="button"
               onClick={() => setConfirmExportCsv(true)}
-              className="flex items-center gap-1.5 px-3 py-2 border border-border bg-card text-foreground rounded-xl text-xs font-bold hover:bg-muted/50 transition-colors shadow-xs cursor-pointer flex-shrink-0 st-btn-ghost"
+              className="flex items-center gap-2 px-3 py-2 border border-border bg-card text-foreground rounded-lg text-xs font-medium hover:bg-muted/50 transition-colors cursor-pointer flex-shrink-0 st-btn-ghost"
               title="Export full analytics dataset as CSV"
             >
-              <Download size={13} />
+              <Download size={14} />
               Export CSV
             </button>
           </div>
         </div>
 
         {/* Section navigation */}
-        <nav aria-label="Analytics sections" className="flex gap-1 overflow-x-auto rounded-xl border border-border/80 bg-card p-1 shadow-sm mt-3">
+        <nav aria-label="Analytics sections" className="flex gap-5 overflow-x-auto mt-5">
           {(["Overview", "Forecast", "Restocking", "Products"] as const).map(section => (
             <button
               key={section}
               type="button"
               aria-current={activeSection === section ? "page" : undefined}
               onClick={() => setActiveSection(section)}
-              className={`shrink-0 rounded-lg px-3.5 py-2 text-xs font-semibold transition-colors cursor-pointer ${activeSection === section ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:bg-muted/70 hover:text-foreground"}`}
+              className={`shrink-0 border-b-2 px-0.5 py-3 text-sm transition-colors cursor-pointer ${activeSection === section ? "border-primary font-semibold text-foreground" : "border-transparent font-medium text-muted-foreground hover:text-foreground"}`}
             >
               {section}
-              {section === "Restocking" && reorderRecs.length > 0 && <span className={`ml-2 rounded-full px-1.5 py-0.5 text-[10px] ${activeSection === section ? "bg-white/20" : "bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-300"}`}>{reorderRecs.length}</span>}
+              {section === "Restocking" && reorderRecs.length > 0 && <span className="ml-1.5 text-xs tabular-nums text-muted-foreground">{reorderRecs.length}</span>}
             </button>
           ))}
         </nav>
       </div>
 
       {/* ── Scrollable content ── */}
-      <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-4 space-y-5">
+      <div className="flex-1 overflow-y-auto px-4 sm:px-7 lg:px-8 py-6 space-y-6">
 
       {/* Section banner — shows what the active tab is for */}
       {(() => {
@@ -2120,17 +2117,17 @@ export default function AnalyticsPage({
         if (!meta) return null;
         const showScopeFilter = activeSection === "Overview" || activeSection === "Forecast";
         return (
-          <div className="flex flex-col sm:flex-row sm:items-center gap-3 rounded-2xl border border-border/70 bg-card/60 px-4 py-3 shadow-sm">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-4 border-b border-border/60 pb-4">
             <div className="flex items-start gap-3 flex-1 min-w-0">
               <div className="min-w-0">
-                <p className="text-sm font-bold text-foreground">{meta.title}</p>
-                <p className="text-[11px] text-muted-foreground mt-0.5 leading-relaxed">{meta.desc}</p>
+                <p className="text-base font-semibold tracking-tight text-foreground">{meta.title}</p>
+                <p className="text-xs text-muted-foreground mt-1 leading-relaxed">{meta.desc}</p>
               </div>
             </div>
             {showScopeFilter && (
               <div className="flex items-center gap-2 flex-shrink-0 flex-wrap">
                 {activeSection === "Forecast" && (
-                  <div className="inline-flex items-center rounded-lg border border-border bg-background p-0.5 text-[11px] font-semibold">
+                  <div className="inline-flex items-center rounded-lg border border-border bg-muted/30 p-0.5 text-xs font-medium">
                     <button
                       type="button"
                       onClick={() => setForecastPeriodUnit("month")}
@@ -2194,23 +2191,16 @@ export default function AnalyticsPage({
       {/* Overview: Executive Intelligence, Direct Detail Linking, and Decision Metrics */}
       {activeSection === "Overview" && <>
       {/* ── 1. Executive Intelligence & Synthesis Strip ("Pharmacy Operational Pulse") ── */}
-      <div className="rounded-2xl border border-primary/20 bg-gradient-to-r from-primary/[0.08] via-card to-card p-5 sm:p-6 shadow-sm space-y-3.5">
+      <div className="rounded-2xl border border-border bg-card p-5 sm:p-6 space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-primary/15 border border-primary/25 px-3 py-1 text-xs font-bold text-primary uppercase tracking-wider">
-              <Sparkles size={13} />
-              Executive Analytics Pulse · {nextForecastMonth}
-            </span>
-            <span className="text-xs text-muted-foreground font-medium">
-              Real-time operational synthesis across sales, forecast &amp; restocking
-            </span>
+          <div>
+            <p className="text-sm font-semibold text-foreground">Business summary</p>
+            <p className="mt-0.5 text-xs text-muted-foreground">Based on recorded sales and current inventory</p>
           </div>
-          <span className="text-[11px] font-semibold text-muted-foreground bg-muted/40 px-2.5 py-1 rounded-lg border border-border">
-            {scopedInventory.length} products analyzed
-          </span>
+          <span className="text-xs text-muted-foreground">{scopedInventory.length} products</span>
         </div>
 
-        <p className="text-xs sm:text-[13px] text-foreground leading-relaxed">
+        <p className="flex flex-wrap items-baseline gap-x-2 gap-y-1.5 text-sm text-foreground leading-relaxed">
           {(() => {
             const forecastVal = Math.round(activeForecastUnits);
             const latestSales = latestSalesMonth?.demand ?? 0;
@@ -2221,59 +2211,65 @@ export default function AnalyticsPage({
 
             return (
               <>
-                According to your recorded sales transactions and Moving Average models, customer demand is projected at{" "}
-                <strong className="font-extrabold text-primary">{forecastVal.toLocaleString()} units</strong> for{" "}
-                <strong>{nextForecastMonth}</strong>
+                <span>Estimated demand</span>
+                <strong className="font-semibold tabular-nums text-foreground">{forecastVal.toLocaleString()} units</strong>
+                <span>for {nextForecastMonth}.</span>
                 {latestSalesMonth ? (
                   diff >= 0 ? (
-                    <> (a <strong className="text-emerald-600 dark:text-emerald-400 font-bold">+{diff.toLocaleString()} units (+{diffPct}%) surge</strong> compared to {latestSalesMonth.month} [{latestSales.toLocaleString()} sold])</>
+                    <span className="text-xs text-muted-foreground">↑ {diff.toLocaleString()} ({diffPct}%) vs {latestSalesMonth.month}</span>
                   ) : (
-                    <> (a <strong className="text-amber-600 dark:text-amber-400 font-bold">−{Math.abs(diff).toLocaleString()} units (−{diffPct}%) decrease</strong> compared to {latestSalesMonth.month})</>
+                    <span className="text-xs text-muted-foreground">↓ {Math.abs(diff).toLocaleString()} ({diffPct}%) vs {latestSalesMonth.month}</span>
                   )
                 ) : null}
-                . However, <strong className="font-bold text-amber-700 dark:text-amber-300">{reorderRecs.length} products</strong> are currently below safe inventory thresholds
-                {outCount > 0 ? <> (<strong className="text-red-600 dark:text-red-400">{outCount} out of stock</strong>, <strong>{critCount} critical</strong>)</> : <> (<strong>{critCount} critical</strong>)</>}
-                . Restocking these medicines to optimal Economic Order Quantities (EOQ) will require an estimated{" "}
-                <strong className="font-extrabold text-foreground">{fmt(estimatedRestockCost)}</strong> working capital across{" "}
-                <strong>{totalEoqUnits.toLocaleString()} planned batch units</strong>.
+                <span className="text-muted-foreground">·</span>
+                <span>{reorderRecs.length} products to review</span>
+                {(outCount > 0 || critCount > 0) && (
+                  <span className="text-xs text-muted-foreground">
+                    ({outCount} out of stock, {critCount} critical)
+                  </span>
+                )}
+                <span className="text-muted-foreground">·</span>
+                <span>Estimated restock</span>
+                <strong className="font-semibold tabular-nums text-foreground">{fmt(estimatedRestockCost)}</strong>
+                <span className="text-xs text-muted-foreground">for {totalEoqUnits.toLocaleString()} units</span>
               </>
             );
           })()}
         </p>
 
         {/* Direct Action Navigation Shortcuts */}
-        <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-border/60">
+        <div className="flex flex-wrap items-center gap-2 pt-3 border-t border-border/60">
           <button
             type="button"
             onClick={() => setActiveSection("Forecast")}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 text-xs font-bold transition-all shadow-2xs cursor-pointer"
+            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 text-xs font-semibold transition-colors cursor-pointer"
           >
-            <span>Explore Demand Forecast ({nextForecastMonth})</span>
+            <span>View forecast</span>
             <ArrowRight size={13} />
           </button>
           <button
             type="button"
             onClick={() => setActiveSection("Restocking")}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-amber-500/30 bg-amber-500/10 hover:bg-amber-500/20 text-amber-800 dark:text-amber-300 text-xs font-bold transition-all cursor-pointer"
+            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-border bg-background hover:bg-muted text-foreground text-xs font-medium transition-colors cursor-pointer"
           >
-            <span>Review EOQ Restock Plan ({reorderRecs.length} Items)</span>
+            <span>Review restocking</span>
             <ArrowRight size={13} />
           </button>
           <button
             type="button"
             onClick={() => setActiveSection("Products")}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-border bg-card hover:bg-muted text-foreground text-xs font-semibold transition-all cursor-pointer"
+            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-border bg-background hover:bg-muted text-foreground text-xs font-medium transition-colors cursor-pointer"
           >
-            <span>View Product Performance</span>
+            <span>Product performance</span>
             <ArrowRight size={13} />
           </button>
         </div>
       </div>
 
       {/* ── 2. Interconnected Executive Stat Tiles ── */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
         {/* Tile 1: Projected Demand (Direct link to Forecast) */}
-        <div className="rounded-xl border border-border/80 bg-card p-4 shadow-sm flex flex-col justify-between">
+        <div className="rounded-xl border border-border bg-card p-4 sm:p-5 flex flex-col justify-between">
           <div>
             <div className="flex items-center justify-between gap-2">
               <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Projected Demand · {nextForecastMonth}</p>
@@ -2305,7 +2301,7 @@ export default function AnalyticsPage({
         </div>
 
         {/* Tile 2: Restock Capital Needed (Direct link to Restocking) */}
-        <div className="rounded-xl border border-border/80 bg-card p-4 shadow-sm flex flex-col justify-between">
+        <div className="rounded-xl border border-border bg-card p-4 sm:p-5 flex flex-col justify-between">
           <div>
             <div className="flex items-center justify-between gap-2">
               <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Restock Urgency (EOQ)</p>
@@ -2337,7 +2333,7 @@ export default function AnalyticsPage({
         </div>
 
         {/* Tile 3: Current Stock on Hand (Direct link to Products) */}
-        <div className="rounded-xl border border-border/80 bg-card p-4 shadow-sm flex flex-col justify-between">
+        <div className="rounded-xl border border-border bg-card p-4 sm:p-5 flex flex-col justify-between">
           <div>
             <div className="flex items-center justify-between gap-2">
               <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Current Stock on Hand</p>
@@ -2368,7 +2364,7 @@ export default function AnalyticsPage({
         </div>
 
         {/* Tile 4: Top Demand Category (Direct link to Products) */}
-        <div className="rounded-xl border border-border/80 bg-card p-4 shadow-sm flex flex-col justify-between">
+        <div className="rounded-xl border border-border bg-card p-4 sm:p-5 flex flex-col justify-between">
           <div>
             <div className="flex items-center justify-between gap-2">
               <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Top Category Volume</p>
@@ -2420,7 +2416,7 @@ export default function AnalyticsPage({
       {/* Charts row */}
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 items-start">
         {/* Current supply and recent demand by product */}
-        <div className="xl:col-span-2 bg-card border border-border/80 rounded-2xl p-4 shadow-[0_2px_12px_-4px_rgba(13,148,136,0.06),0_1px_3px_rgba(0,0,0,0.02)] min-h-[340px]">
+        <div className="xl:col-span-2 bg-card border border-border rounded-2xl p-5 min-h-[340px]">
           <div className="flex items-start justify-between mb-4 gap-3 flex-wrap">
             <div>
               <div className="flex items-center gap-1.5">
@@ -2477,7 +2473,7 @@ export default function AnalyticsPage({
         </div>
 
         {/* Category pie chart */}
-        <div className="bg-card border border-border/80 rounded-2xl p-4 shadow-[0_2px_12px_-4px_rgba(13,148,136,0.06),0_1px_3px_rgba(0,0,0,0.02)] h-[340px] flex flex-col min-h-0">
+        <div className="bg-card border border-border rounded-2xl p-5 h-[340px] flex flex-col min-h-0">
           <div className="mb-4 flex items-start justify-between gap-2">
             <div>
               <div className="flex items-center gap-1.5">
@@ -2586,11 +2582,11 @@ export default function AnalyticsPage({
           const sma6Acc = getAccuracyBadge(sma6Error && !sma6Error.insufficientData ? sma6Error.smape : null);
           const has6Periods = smaMonths.length >= 6;
           return (
-            <div className="rounded-2xl border border-border/80 bg-card p-5 sm:p-6 shadow-sm">
+            <div className="rounded-2xl border border-border bg-card p-5 sm:p-7">
               <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-5">
                 <div className="space-y-2">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
+                    <span className="inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground">
                       <TrendingUp size={14} className="text-primary" />
                       Projected Demand · <span className="text-foreground font-bold">{nextForecastMonth}</span>
                     </span>
@@ -2606,10 +2602,10 @@ export default function AnalyticsPage({
                       units expected
                     </span>
                     {latestSalesMonth && (
-                      <span className={`inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-0.5 rounded-full ${
+                      <span className={`inline-flex items-center gap-1 text-xs font-medium ${
                         Math.round(activeForecastUnits) >= latestSalesMonth.demand
-                          ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
-                          : "bg-amber-500/10 text-amber-700 dark:text-amber-300"
+                          ? "text-emerald-700 dark:text-emerald-300"
+                          : "text-amber-700 dark:text-amber-300"
                       }`}>
                         {Math.round(activeForecastUnits) >= latestSalesMonth.demand ? <ArrowUpRight size={13} /> : <ArrowDownRight size={13} />}
                         {Math.round(activeForecastUnits) >= latestSalesMonth.demand ? "+" : "−"}
@@ -2618,7 +2614,7 @@ export default function AnalyticsPage({
                     )}
                   </div>
 
-                  <p className="text-xs text-muted-foreground leading-relaxed max-w-xl">
+                  <p className="text-xs text-muted-foreground leading-relaxed max-w-2xl">
                     {smaMonths.length === 0 ? (
                       "No recorded sales history yet for this selection."
                     ) : (
@@ -3147,7 +3143,7 @@ export default function AnalyticsPage({
       {/* Restocking: Highlight EOQ (Economic Order Quantity) & Reorder Point (ROP) clearly */}
       {activeSection === "Restocking" && <>
       {/* ── Top Bar: Sleek Unified Control Strip (Linear Style) ── */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-2xl border border-border/80 bg-card p-3 sm:p-4 shadow-sm">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl border border-border bg-card p-4">
         <div className="flex items-center gap-2.5 flex-wrap">
           <span className="text-xs font-bold text-foreground">Demand Basis:</span>
           <div className="inline-flex rounded-lg border border-border bg-muted/30 p-0.5 text-xs font-semibold">
@@ -3218,9 +3214,9 @@ export default function AnalyticsPage({
       )}
 
       {/* ── 4 Summary KPI Cards ── */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
         {/* Card 1 */}
-        <div className="rounded-xl border border-border/80 bg-card p-4 shadow-sm flex flex-col justify-between">
+        <div className="rounded-xl border border-border bg-card p-4 sm:p-5 flex flex-col justify-between">
           <div>
             <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">To Restock</p>
             <p className={`mt-1.5 text-2xl font-extrabold tabular-nums ${reorderRecs.length ? "text-amber-600 dark:text-amber-400" : "text-foreground"}`}>
@@ -3235,7 +3231,7 @@ export default function AnalyticsPage({
         </div>
 
         {/* Card 2 */}
-        <div className="rounded-xl border border-border/80 bg-card p-4 shadow-sm flex flex-col justify-between">
+        <div className="rounded-xl border border-border bg-card p-4 sm:p-5 flex flex-col justify-between">
           <div>
             <div className="flex items-center justify-between gap-2">
               <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Planned Order Units</p>
@@ -3258,7 +3254,7 @@ export default function AnalyticsPage({
         </div>
 
         {/* Card 3 */}
-        <div className="rounded-xl border border-border/80 bg-card p-4 shadow-sm flex flex-col justify-between">
+        <div className="rounded-xl border border-border bg-card p-4 sm:p-5 flex flex-col justify-between">
           <div>
             <div className="flex items-center justify-between gap-2">
               <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Advisory ROP</p>
@@ -3281,7 +3277,7 @@ export default function AnalyticsPage({
         </div>
 
         {/* Card 4 */}
-        <div className="rounded-xl border border-border/80 bg-card p-4 shadow-sm flex flex-col justify-between">
+        <div className="rounded-xl border border-border bg-card p-4 sm:p-5 flex flex-col justify-between">
           <div>
             <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Estimated Budget</p>
             <p className="mt-1.5 text-2xl font-extrabold tabular-nums text-foreground">
