@@ -1798,7 +1798,7 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
 
   const sidebarContent = (
     <div className="flex flex-col h-full" style={{ background: "linear-gradient(180deg, #0b1528 0%, #060b14 100%)" }}>
-      <button onClick={() => setSidebar(v => !v)}
+      <button type="button" onClick={() => setSidebar(v => !v)}
         className={`flex items-center gap-3 px-4 py-[18px] border-b border-white/[0.07] w-full hover:bg-white/[0.04] transition-colors group ${sidebarExpanded ? "text-left" : "justify-center"}`}>
         <img
           data-home-logo
@@ -1825,7 +1825,7 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
 
       <nav className="flex-1 px-2 py-3 space-y-0.5 overflow-y-auto">
         {navItems.map(item => (
-          <button key={item.id} onClick={() => setPage(item.id)} title={!sidebarExpanded ? item.label : undefined}
+          <button type="button" key={item.id} onClick={() => setPage(item.id)} title={!sidebarExpanded ? item.label : undefined}
             className={`w-full flex items-center gap-3 px-2.5 py-2.5 rounded-xl st-nav-item ${page === item.id ? "bg-blue-600/25 text-blue-200 border border-blue-400/30 shadow-2xs font-bold" : "text-white/50 hover:bg-white/[0.06] hover:text-white/90 border border-transparent"}`}>
             <item.icon size={15} className="flex-shrink-0" />
             {sidebarExpanded && <>
@@ -1952,16 +1952,20 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
                 <div ref={searchRef} className="relative w-48 sm:w-56 md:w-64 lg:w-72 max-w-[calc(50vw-220px)] hidden sm:block flex-shrink-0" style={{ zIndex: searchOpen ? 20 : 5 }}>
                   <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-blue-600 dark:text-blue-400 pointer-events-none z-10" />
                   <input
+                    id="smarttrack-global-search"
+                    name="global_search"
                     ref={searchInputRef}
                     placeholder={isInventoryManager ? "Search products…" : "Search products, transactions…"}
                     value={searchQuery}
+                    aria-label="Search products or transactions"
+                    autoComplete="off"
                     onChange={e => { setSearchQuery(e.target.value); setSearchHighlight(0); setSearchOpen(true); }}
                     onFocus={() => setSearchOpen(true)}
                     onKeyDown={handleSearchKeyDown}
                     className="w-full bg-background/95 dark:bg-card/95 border-[1.5px] border-blue-500/50 hover:border-blue-500/80 rounded-full pl-10 pr-10 py-2 text-xs sm:text-[13px] text-foreground font-medium placeholder:text-muted-foreground/80 focus:outline-none focus:ring-2 focus:ring-blue-500/25 focus:border-blue-500 shadow-xs transition-all"
                   />
                   {searchQuery && (
-                    <button onClick={() => { setSearchQuery(""); setSearchOpen(false); searchInputRef.current?.focus(); }}
+                    <button type="button" onClick={() => { setSearchQuery(""); setSearchOpen(false); searchInputRef.current?.focus(); }}
                       className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors cursor-pointer">
                       <X size={13} />
                     </button>
@@ -1987,7 +1991,7 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
                                     {products.map((r) => {
                                       const idx = searchResults.indexOf(r);
                                       return (
-                                        <button key={r.id} onMouseDown={() => handleSearchSelect(r)}
+                                        <button type="button" key={r.id} onMouseDown={() => handleSearchSelect(r)}
                                           onMouseEnter={() => setSearchHighlight(idx)}
                                           className={`w-full flex items-center gap-3 px-3 py-2.5 text-left transition-colors ${idx === searchHighlight ? "bg-primary/10" : "hover:bg-muted/40"}`}>
                                           <div className="w-6 h-6 rounded-lg bg-violet-100 dark:bg-violet-900/30 flex items-center justify-center flex-shrink-0">
@@ -2009,7 +2013,7 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
                                     {txns.map(r => {
                                       const idx = searchResults.indexOf(r);
                                       return (
-                                        <button key={r.id} onMouseDown={() => handleSearchSelect(r)}
+                                        <button type="button" key={r.id} onMouseDown={() => handleSearchSelect(r)}
                                           onMouseEnter={() => setSearchHighlight(idx)}
                                           className={`w-full flex items-center gap-3 px-3 py-2.5 text-left transition-colors ${idx === searchHighlight ? "bg-primary/10" : "hover:bg-muted/40"}`}>
                                           <div className="w-6 h-6 rounded-lg bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center flex-shrink-0">
@@ -2058,7 +2062,7 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
                     <RefreshCw size={16} className={refreshing ? "animate-spin" : ""} />
                   </button>
                   <div className="relative">
-                    <button onClick={() => setShowNotifications(v => !v)}
+                    <button type="button" onClick={() => setShowNotifications(v => !v)}
                       className="relative w-9 h-9 flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded-xl transition-all">
                       <Bell size={16} />
                       {unreadCount > 0 && <span className="absolute top-1.5 right-1.5 w-4 h-4 bg-red-500 rounded-full text-[9px] text-white flex items-center justify-center font-bold leading-none">{unreadCount}</span>}
@@ -2137,16 +2141,20 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
                   <div ref={searchRef} className="relative max-w-lg w-full hidden sm:block">
                     <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-blue-600 dark:text-blue-400 pointer-events-none z-10" />
                     <input
+                        id="smarttrack-global-search"
+                        name="global_search"
                       ref={searchInputRef}
                       placeholder={isInventoryManager ? "Search products…" : "Search products, transactions…"}
                       value={searchQuery}
+                        aria-label="Search products or transactions"
+                        autoComplete="off"
                       onChange={e => { setSearchQuery(e.target.value); setSearchHighlight(0); setSearchOpen(true); }}
                       onFocus={() => setSearchOpen(true)}
                       onKeyDown={handleSearchKeyDown}
                       className="w-full bg-background/95 dark:bg-card/95 border-[1.5px] border-blue-500/50 hover:border-blue-500/80 rounded-full pl-10 pr-10 py-2 text-xs sm:text-[13px] text-foreground font-medium placeholder:text-muted-foreground/80 focus:outline-none focus:ring-2 focus:ring-blue-500/25 focus:border-blue-500 shadow-xs transition-all"
                     />
                     {searchQuery && (
-                      <button onClick={() => { setSearchQuery(""); setSearchOpen(false); searchInputRef.current?.focus(); }}
+                      <button type="button" onClick={() => { setSearchQuery(""); setSearchOpen(false); searchInputRef.current?.focus(); }}
                         className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors cursor-pointer">
                         <X size={13} />
                       </button>
@@ -2176,7 +2184,7 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
                                       {products.map((r) => {
                                         const idx = searchResults.indexOf(r);
                                         return (
-                                          <button key={r.id} onMouseDown={() => handleSearchSelect(r)}
+                                          <button type="button" key={r.id} onMouseDown={() => handleSearchSelect(r)}
                                             onMouseEnter={() => setSearchHighlight(idx)}
                                             className={`w-full flex items-center gap-3 px-3 py-2.5 text-left transition-colors ${idx === searchHighlight ? "bg-primary/10" : "hover:bg-muted/40"}`}>
                                             <div className="w-6 h-6 rounded-lg bg-violet-100 dark:bg-violet-900/30 flex items-center justify-center flex-shrink-0">
@@ -2200,7 +2208,7 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
                                       {txns.map(r => {
                                         const idx = searchResults.indexOf(r);
                                         return (
-                                          <button key={r.id} onMouseDown={() => handleSearchSelect(r)}
+                                          <button type="button" key={r.id} onMouseDown={() => handleSearchSelect(r)}
                                             onMouseEnter={() => setSearchHighlight(idx)}
                                             className={`w-full flex items-center gap-3 px-3 py-2.5 text-left transition-colors ${idx === searchHighlight ? "bg-primary/10" : "hover:bg-muted/40"}`}>
                                             <div className="w-6 h-6 rounded-lg bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center flex-shrink-0">
@@ -2242,7 +2250,7 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
                     <RefreshCw size={16} className={refreshing ? "animate-spin" : ""} />
                   </button>
                   <div className="relative">
-                    <button onClick={() => setShowNotifications(v => !v)}
+                    <button type="button" onClick={() => setShowNotifications(v => !v)}
                       className="relative w-9 h-9 flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded-xl transition-all">
                       <Bell size={16} />
                       {unreadCount > 0 && <span className="absolute top-1.5 right-1.5 w-4 h-4 bg-red-500 rounded-full text-[9px] text-white flex items-center justify-center font-bold leading-none">{unreadCount}</span>}
@@ -2435,7 +2443,7 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
             <div className="space-y-4">
               <p className="text-sm text-foreground">{systemAlert.body}</p>
               <div className="flex justify-end">
-                <button onClick={() => { setPage("stock-alerts"); setSystemAlert(null); loadAll(false); }}
+                <button type="button" onClick={() => { setPage("stock-alerts"); setSystemAlert(null); loadAll(false); }}
                   className="rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 transition-opacity st-btn">
                   Reorder Now
                 </button>
