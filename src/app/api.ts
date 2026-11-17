@@ -187,18 +187,75 @@ async function request<T = unknown>(
   }
 }
 
-const get  = <T>(path: string) => request<T>(path, { method: 'GET' });
-const post = <T>(path: string, body: unknown) =>
-  request<T>(path, { method: 'POST', body: JSON.stringify(body) });
-const put  = <T>(path: string, body: unknown) =>
-  request<T>(path, { method: 'PUT', body: JSON.stringify(body) });
-const del  = <T>(path: string) => request<T>(path, { method: 'DELETE' });
-const delWithBody = <T>(path: string, body: unknown) =>
-  request<T>(path, { method: 'DELETE', body: JSON.stringify(body) });
+const READ_CACHE_TTL_MS = 45_000;
+const readCache = new Map<string, { data: unknown; fetchedAt: number }>();
+const inFlightReads = new Map<string, Promise<unknown>>();
+
+export function clearApiCache(): void {
+  readCache.clear();
+  inFlightReads.clear();
+}
+
+function getCacheKey(path: string): string {
+  return `${activeRoleStore.get() ?? ''}::${path}`;
+}
+
+function peekGet<T>(path: string, ttlMs = READ_CACHE_TTL_MS): T | null {
+  const entry = readCache.get(getCacheKey(path));
+  if (!entry) return null;
+  if (Date.now() - entry.fetchedAt > ttlMs) {
+    readCache.delete(getCacheKey(path));
+    return null;
+  }
+  return entry.data as T;
+}
+
+const get = <T>(path: string) => request<T>(path, { method: 'GET' });
+
+function cachedGet<T>(path: string, ttlMs = READ_CACHE_TTL_MS): Promise<T> {
+  const key = getCacheKey(path);
+  const entry = readCache.get(key);
+  if (entry && Date.now() - entry.fetchedAt <= ttlMs) {
+    return Promise.resolve(entry.data as T);
+  }
+  const existing = inFlightReads.get(key);
+  if (existing) return existing as Promise<T>;
+
+  const pending = request<T>(path, { method: 'GET' })
+    .then(data => {
+      readCache.set(key, { data, fetchedAt: Date.now() });
+      return data;
+    })
+    .finally(() => {
+      if (inFlightReads.get(key) === pending) {
+        inFlightReads.delete(key);
+      }
+    });
+  inFlightReads.set(key, pending);
+  return pending;
+}
+
+const post = <T>(path: string, body: unknown) => {
+  clearApiCache();
+  return request<T>(path, { method: 'POST', body: JSON.stringify(body) });
+};
+const put = <T>(path: string, body: unknown) => {
+  clearApiCache();
+  return request<T>(path, { method: 'PUT', body: JSON.stringify(body) });
+};
+const del = <T>(path: string) => {
+  clearApiCache();
+  return request<T>(path, { method: 'DELETE' });
+};
+const delWithBody = <T>(path: string, body: unknown) => {
+  clearApiCache();
+  return request<T>(path, { method: 'DELETE', body: JSON.stringify(body) });
+};
 
 // ─── Auth ─────────────────────────────────────────────────────────────────────
 export const authApi = {
   login: async (email: string, password: string) => {
+    clearApiCache();
     activeRoleStore.clear();
     const res = await post<{ user: import('./data').AuthUser; token: string }>(
       '/auth/login', { email, password }
@@ -208,6 +265,7 @@ export const authApi = {
     return res;
   },
   logout: async () => {
+    clearApiCache();
     try { await post('/auth/logout', {}); } catch { /* ignore */ }
     tokenStore.clear();
     activeRoleStore.clear();
@@ -276,7 +334,7 @@ export const productsApi = {
   listDeleted:  () => get<DeletedProduct[]>('/products/deleted'),
   restore:      (id: string) => post<{ message: string }>(`/products/${id}/restore`, {}),
   purge:        (id: string) => del<{ message: string }>(`/products/${id}/purge`),
-  setSupplier:  (id: string, supplier: string) => put(`/products/${id}`, { supplier }),
+  setSupplier:  (id: string, supplier: string) => post<{ message: string }>(`/products/${id}/supplier`, { supplier }),
   bulkImport:   (items: Array<Record<string, unknown>>) =>
     post<{
       success: boolean;
@@ -357,7 +415,9 @@ export type ReturnRequest = {
 
 export const returnRequestsApi = {
   list: () =>
-    get<ReturnRequest[]>('/return-requests'),
+    cachedGet<ReturnRequest[]>('/return-requests'),
+  peekList: () =>
+    peekGet<ReturnRequest[]>('/return-requests'),
   submit: (data: { sale_tx_id: string; qty: number; reason: string }) =>
     post<{
       record: ReturnRequest;
@@ -462,23 +522,32 @@ export const dashboardApi = {
 };
 
 // ─── Analytics ────────────────────────────────────────────────────────────────
+type SmaResponse = {
+  chartData:    { month: string; demand: number; supply: number; sma3: number | null; sma6: number | null }[];
+  sma3:         number;
+  sma6:         number;
+  eoq:          number;
+  totalDamaged: number;
+  adjustCount:  number;
+  returnLoss: number;
+  brokenLoss: number;
+  totalLoss: number;
+  uncostedBrokenCount: number;
+};
+
+const smaPath = (filters: { productId?: string; category?: string } = {}) =>
+  `/analytics/sma?product_id=${encodeURIComponent(filters.productId ?? '')}&category=${encodeURIComponent(filters.category ?? '')}`;
+
 export const analyticsApi = {
-  sma: (filters: { productId?: string; category?: string } = {}) => get<{
-    chartData:    { month: string; demand: number; supply: number; sma3: number | null; sma6: number | null }[];
-    sma3:         number;
-    sma6:         number;
-    eoq:          number;
-    totalDamaged: number;
-    adjustCount:  number;
-    returnLoss: number;
-    brokenLoss: number;
-    totalLoss: number;
-    uncostedBrokenCount: number;
-  }>(`/analytics/sma?product_id=${encodeURIComponent(filters.productId ?? '')}&category=${encodeURIComponent(filters.category ?? '')}`),
-  eoq:          () => get('/analytics/eoq'),
-  performance:  () => get('/analytics/performance'),
-  categorySales:() => get<{ name: string; value: number }[]>('/analytics/category-sales'),
-  adjustments:  () => get('/analytics/adjustments'),
+  sma: (filters: { productId?: string; category?: string } = {}) =>
+    cachedGet<SmaResponse>(smaPath(filters)),
+  peekSma: (filters: { productId?: string; category?: string } = {}) =>
+    peekGet<SmaResponse>(smaPath(filters)),
+  eoq:          () => cachedGet('/analytics/eoq'),
+  performance:  () => cachedGet('/analytics/performance'),
+  categorySales:() => cachedGet<{ name: string; value: number }[]>('/analytics/category-sales'),
+  peekCategorySales: () => peekGet<{ name: string; value: number }[]>('/analytics/category-sales'),
+  adjustments:  () => cachedGet('/analytics/adjustments'),
 };
 
 // ─── Reports ──────────────────────────────────────────────────────────────────
@@ -489,49 +558,54 @@ export const reportsApi = {
 };
 
 // ─── Financial Management ─────────────────────────────────────────────────────
+type FinancialSummaryResponse = {
+  totalRevenue: number; totalPreTax: number; totalVatCollected: number; netVatPayable: number;
+  totalReturns: number; netRevenue: number;
+  brokenStockLoss: number; totalLosses: number; netAfterLosses: number;
+  uncostedBrokenCount: number;
+  salesCount: number; returnsCount: number;
+  adjustmentsCount: number; totalTransactions: number; avgOrderValue: number;
+  todayRevenue: number; weekRevenue: number; monthRevenue: number;
+};
+
+type FinancialIncomeResponse = {
+  rows: {
+    productId: string; productName: string; category: string;
+    unitsSold: number; revenue: number;
+    totalCost: number | null; grossProfit: number | null;
+    margin: number | null; avgUnitCost: number | null;
+    multiCost: boolean; hasCostData: boolean;
+  }[];
+  totals: { revenue: number; totalCost: number; grossProfit: number; margin: number | null };
+};
+
+const finRangeQs = (dateFrom = '', dateTo = '') => {
+  const p = new URLSearchParams();
+  if (dateFrom) p.set('date_from', dateFrom);
+  if (dateTo)   p.set('date_to',   dateTo);
+  return p.toString() ? `?${p}` : '';
+};
+
 export const financialApi = {
-  summary:   (dateFrom = '', dateTo = '') => {
-    const p = new URLSearchParams();
-    if (dateFrom) p.set('date_from', dateFrom);
-    if (dateTo)   p.set('date_to',   dateTo);
-    const qs = p.toString() ? `?${p}` : '';
-    return get<{
-      totalRevenue: number; totalPreTax: number; totalVatCollected: number; netVatPayable: number;
-      totalReturns: number; netRevenue: number;
-      brokenStockLoss: number; totalLosses: number; netAfterLosses: number;
-      uncostedBrokenCount: number;
-      salesCount: number; returnsCount: number;
-      adjustmentsCount: number; totalTransactions: number; avgOrderValue: number;
-      todayRevenue: number; weekRevenue: number; monthRevenue: number;
-    }>(`/financial/summary${qs}`);
-  },
-  daily:     (days = 30) =>
-    get<{ date: string; revenue: number; returns: number; brokenLoss: number }[]>(`/financial/daily?days=${days}`),
-  monthly:   () =>
-    get<{ month: string; revenue: number; returns: number; brokenLoss: number; net: number; netAfterLosses: number; sales_count: number }[]>('/financial/monthly'),
+  summary:     (dateFrom = '', dateTo = '') => cachedGet<FinancialSummaryResponse>(`/financial/summary${finRangeQs(dateFrom, dateTo)}`),
+  peekSummary: (dateFrom = '', dateTo = '') => peekGet<FinancialSummaryResponse>(`/financial/summary${finRangeQs(dateFrom, dateTo)}`),
+  daily:       (days = 30) => cachedGet<{ date: string; revenue: number; returns: number; brokenLoss: number }[]>(`/financial/daily?days=${days}`),
+  peekDaily:   (days = 30) => peekGet<{ date: string; revenue: number; returns: number; brokenLoss: number }[]>(`/financial/daily?days=${days}`),
+  monthly:     () => cachedGet<{ month: string; revenue: number; returns: number; brokenLoss: number; net: number; netAfterLosses: number; sales_count: number }[]>('/financial/monthly'),
+  peekMonthly: () => peekGet<{ month: string; revenue: number; returns: number; brokenLoss: number; net: number; netAfterLosses: number; sales_count: number }[]>('/financial/monthly'),
   records:   (params: { type?: string; dateFrom?: string; dateTo?: string; page?: number; perPage?: number }) => {
     const p = new URLSearchParams({ type: params.type ?? 'all', page: String(params.page ?? 1), per_page: String(params.perPage ?? 25) });
     if (params.dateFrom) p.set('date_from', params.dateFrom);
     if (params.dateTo)   p.set('date_to',   params.dateTo);
-    return get<{
+    return cachedGet<{
       records: { id: string; type: string; product: string; qty: number; amount: number; staff: string; note: string; status: string; date: string }[];
       total: number; page: number; per_page: number; pages: number;
     }>(`/financial/records?${p}`);
   },
-  breakdown: (dateFrom = '', dateTo = '') => {
-    const p = new URLSearchParams();
-    if (dateFrom) p.set('date_from', dateFrom);
-    if (dateTo)   p.set('date_to',   dateTo);
-    const qs = p.toString() ? `?${p}` : '';
-    return get<{ category: string; revenue: number; units: number; share: number }[]>(`/financial/breakdown${qs}`);
-  },
-  staff:     (dateFrom = '', dateTo = '') => {
-    const p = new URLSearchParams();
-    if (dateFrom) p.set('date_from', dateFrom);
-    if (dateTo)   p.set('date_to',   dateTo);
-    const qs = p.toString() ? `?${p}` : '';
-    return get<{ staff: string; transactions: number; revenue: number; unitsSold: number }[]>(`/financial/staff${qs}`);
-  },
+  breakdown:     (dateFrom = '', dateTo = '') => cachedGet<{ category: string; revenue: number; units: number; share: number }[]>(`/financial/breakdown${finRangeQs(dateFrom, dateTo)}`),
+  peekBreakdown: (dateFrom = '', dateTo = '') => peekGet<{ category: string; revenue: number; units: number; share: number }[]>(`/financial/breakdown${finRangeQs(dateFrom, dateTo)}`),
+  staff:         (dateFrom = '', dateTo = '') => cachedGet<{ staff: string; transactions: number; revenue: number; unitsSold: number }[]>(`/financial/staff${finRangeQs(dateFrom, dateTo)}`),
+  peekStaff:     (dateFrom = '', dateTo = '') => peekGet<{ staff: string; transactions: number; revenue: number; unitsSold: number }[]>(`/financial/staff${finRangeQs(dateFrom, dateTo)}`),
   exportCsv: (type = 'all', dateFrom = '', dateTo = '') => {
     const p = new URLSearchParams({ type });
     if (dateFrom) p.set('date_from', dateFrom);
@@ -540,22 +614,8 @@ export const financialApi = {
     if (token)   p.set('token', token);
     window.open(`${API_BASE}/financial/export?${p}`, '_blank');
   },
-  income: (dateFrom = '', dateTo = '') => {
-    const p = new URLSearchParams();
-    if (dateFrom) p.set('date_from', dateFrom);
-    if (dateTo)   p.set('date_to',   dateTo);
-    const qs = p.toString() ? `?${p}` : '';
-    return get<{
-      rows: {
-        productId: string; productName: string; category: string;
-        unitsSold: number; revenue: number;
-        totalCost: number | null; grossProfit: number | null;
-        margin: number | null; avgUnitCost: number | null;
-        multiCost: boolean; hasCostData: boolean;
-      }[];
-      totals: { revenue: number; totalCost: number; grossProfit: number; margin: number | null };
-    }>(`/financial/income${qs}`);
-  },
+  income:     (dateFrom = '', dateTo = '') => cachedGet<FinancialIncomeResponse>(`/financial/income${finRangeQs(dateFrom, dateTo)}`),
+  peekIncome: (dateFrom = '', dateTo = '') => peekGet<FinancialIncomeResponse>(`/financial/income${finRangeQs(dateFrom, dateTo)}`),
 };
 
 // ─── Stock Alerts ─────────────────────────────────────────────────────────────
@@ -598,9 +658,11 @@ export interface SupplierPerformance {
 }
 
 export const purchaseOrdersApi = {
-  list: () => get<PurchaseOrder[]>('/purchase-orders'),
-  performance: () => get<SupplierPerformance[]>('/purchase-orders/performance'),
-  get: (id: number) => get<PurchaseOrder>(`/purchase-orders/${id}`),
+  list: () => cachedGet<PurchaseOrder[]>('/purchase-orders'),
+  peekList: () => peekGet<PurchaseOrder[]>('/purchase-orders'),
+  performance: () => cachedGet<SupplierPerformance[]>('/purchase-orders/performance'),
+  peekPerformance: () => peekGet<SupplierPerformance[]>('/purchase-orders/performance'),
+  get: (id: number) => cachedGet<PurchaseOrder>(`/purchase-orders/${id}`),
   create: (data: {
     supplier: string;
     orderedAt: string;
@@ -653,14 +715,45 @@ export const backupApi = {
   createBackup: () => post<{ success: boolean; message: string; filename: string; size: string }>('/backup/create'),
   runMigrations: () => post<{ success: boolean; message: string }>('/backup/migrate'),
   downloadBackupUrl: () => `${getApiBase()}/backup/export`,
+  downloadBackup: async () => {
+    const token = tokenStore.get();
+    const activeRole = activeRoleStore.get();
+    const res = await fetch(`${getApiBase()}/backup/export`, {
+      credentials: 'include',
+      headers: {
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(activeRole ? { 'X-Active-Role': activeRole } : {}),
+      },
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+      throw new Error(err.error || 'Failed to download backup');
+    }
+    const blob = await res.blob();
+    const disposition = res.headers.get('Content-Disposition') || '';
+    const match = disposition.match(/filename="?([^"]+)"?/i);
+    const filename = match?.[1] || `smarttrack_backup_${new Date().toISOString().slice(0, 10)}.sql`;
+    const objectUrl = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = objectUrl;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(objectUrl);
+  },
   restoreBackup: async (file: File) => {
+    clearApiCache();
     const formData = new FormData();
     formData.append('backup_file', file);
     const token = tokenStore.get();
+    const activeRole = activeRoleStore.get();
     const res = await fetch(`${getApiBase()}/backup/restore`, {
       method: 'POST',
+      credentials: 'include',
       headers: {
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(activeRole ? { 'X-Active-Role': activeRole } : {}),
       },
       body: formData,
     });

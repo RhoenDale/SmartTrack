@@ -15,8 +15,10 @@ function json_response(mixed $data, int $status = 200): void {
 function record_activity_request(int $status): void {
     global $resource, $id, $method, $uri;
     static $tableAvailable = null;
+    static $recording = false;
 
-    if ($resource === 'health' || $resource === 'activity') return;
+    if ($recording || $resource === 'health' || $resource === 'activity') return;
+    $recording = true;
 
     $isLogin = $resource === 'auth' && $id === 'login';
 
@@ -42,6 +44,8 @@ function record_activity_request(int $status): void {
         )->execute([$actorId, mb_substr($actorName, 0, 120), $method, $path, $status]);
     } catch (PDOException $error) {
         error_log('SmartTrack activity log write failed: ' . $error->getMessage());
+    } finally {
+        $recording = false;
     }
 }
 
@@ -495,4 +499,13 @@ function format_transaction(array $tx): array {
         'adjustmentReason' => $tx['adjustment_reason'] ?? null,
         'damagedQty'       => isset($tx['damaged_qty']) ? (int)$tx['damaged_qty'] : null,
     ];
+}
+
+/** Return SQL predicate excluding soft-deleted products when deleted_at exists. */
+function product_not_deleted_sql(PDO $pdo, string $alias = 'p'): string {
+    static $hasDeletedAt = null;
+    if ($hasDeletedAt === null) {
+        $hasDeletedAt = (bool)$pdo->query("SHOW COLUMNS FROM products LIKE 'deleted_at'")->fetchColumn();
+    }
+    return $hasDeletedAt ? "{$alias}.deleted_at IS NULL" : '1=1';
 }

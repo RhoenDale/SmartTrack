@@ -1,7 +1,7 @@
 // ─── Shared utilities, UI components and small modals used across pages ───────
 import React from "react";
 import { createPortal } from "react-dom";
-import { X, ArrowUpRight, ArrowDownRight, Package, Trash2, Eye, EyeOff, AlertTriangle, ShieldAlert, CircleCheck, Info } from "lucide-react";
+import { X, ArrowUpRight, ArrowDownRight, Package, Trash2, Eye, EyeOff, AlertTriangle, ShieldAlert, CircleCheck, Info, ChevronLeft, ChevronRight } from "lucide-react";
 import { getReorderUnits, hasUserRole, type Product, type StockStatus, type Transaction, type TxStatus, type TxType } from "./data";
 import type { ReceiptSettings } from "./api";
 
@@ -143,7 +143,7 @@ export function ConfirmDialog({
 
   // ── Sidebar mode: clean centered modal without heavy background blur ────────
   return (
-    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4">
+    <div data-st-confirm="true" className="fixed inset-0 z-[9999] flex items-center justify-center p-4">
       {/* Clean backdrop without blur */}
       <div className="absolute inset-0 bg-black/40 st-overlay-in" onClick={onCancel} />
       <div className="relative bg-card border border-border rounded-2xl shadow-2xl w-full max-w-sm p-6 text-center space-y-4 st-modal-in">
@@ -210,7 +210,7 @@ export function staffAbbrev(name: string) {
 }
 
 // ─── SVG Charts ───────────────────────────────────────────────────────────────
-export function SvgAreaChart({
+export const SvgAreaChart = React.memo(function SvgAreaChart({
   data,
   lines,
   yFormatter = (v: number) => String(v),
@@ -223,8 +223,51 @@ export function SvgAreaChart({
 }) {
   const [hoveredIndex, setHoveredIndex] = React.useState<number | null>(null);
 
+  const W = 500; const H = 200;
+  const hasRightAxis = lines.some(line => line.axis === "right");
+  const pad = { t: 8, r: hasRightAxis ? 42 : 8, b: 24, l: 46 };
+  const cw = W - pad.l - pad.r; const ch = H - pad.t - pad.b;
+
+  const geometry = React.useMemo(() => {
+    if (!data || data.length === 0) return null;
+    const maxForAxis = (axis: "left" | "right") => Math.max(
+      ...data.flatMap(d => lines
+        .filter(line => (line.axis ?? "left") === axis)
+        .map(line => Number(d[line.key]) || 0)),
+      1
+    ) * 1.08;
+    const leftMax = maxForAxis("left");
+    const rightMax = hasRightAxis ? maxForAxis("right") : leftMax;
+    const xs = (i: number) => data.length === 1 ? pad.l + cw / 2 : pad.l + (i / (data.length - 1)) * cw;
+    const ys = (v: number, axis: "left" | "right" = "left") =>
+      pad.t + ch - (v / (axis === "right" ? rightMax : leftMax)) * ch;
+
+    const linePaths = lines.map(line => {
+      const axis = line.axis ?? "left";
+      const pts = data.map((d, i) => [xs(i), ys(Number(d[line.key]) || 0, axis)] as [number, number]);
+      const linePts = pts.map(p => p.join(",")).join(" ");
+      const areaPts = [`${xs(0)},${pad.t + ch}`, ...pts.map(p => p.join(",")), `${xs(data.length - 1)},${pad.t + ch}`].join(" ");
+      return { key: line.key, color: line.color, name: line.name, axis, linePts, areaPts };
+    });
+
+    const hitAreas = data.map((d, i) => {
+      const tooltipWidth = 132;
+      const tooltipHeight = 22 + lines.length * 15;
+      const tooltipX = Math.max(2, Math.min(W - tooltipWidth - 2, xs(i) + 10));
+      const tooltipAnchorY = Math.min(...lines.map(line =>
+        ys(Number(d[line.key]) || 0, line.axis ?? "left")
+      ));
+      const tooltipY = Math.max(2, Math.min(H - tooltipHeight - 2, tooltipAnchorY - tooltipHeight / 2));
+      const hoverWidth = data.length === 1 ? cw : i === 0 ? (xs(1) - xs(0)) / 2 : i === data.length - 1 ? (xs(i) - xs(i - 1)) / 2 : (xs(i + 1) - xs(i - 1)) / 2;
+      const hoverX = i === 0 ? pad.l : (xs(i - 1) + xs(i)) / 2;
+      return { d, i, tooltipWidth, tooltipHeight, tooltipX, tooltipY, hoverWidth, hoverX };
+    });
+
+    return { leftMax, rightMax, linePaths, hitAreas, xs };
+  }, [data, lines, hasRightAxis, pad.l, pad.t, cw, ch]);
+
   // Handle empty or single data point
-  if (!data || data.length === 0) {
+  if (!geometry) {
     return (
       <div className="w-full h-full flex items-center justify-center text-sm text-muted-foreground">
         No data available
@@ -232,28 +275,8 @@ export function SvgAreaChart({
     );
   }
 
-  const W = 500; const H = 200;
-  const hasRightAxis = lines.some(line => line.axis === "right");
-  const pad = { t: 8, r: hasRightAxis ? 42 : 8, b: 24, l: 46 };
-  const cw = W - pad.l - pad.r; const ch = H - pad.t - pad.b;
-  const maxForAxis = (axis: "left" | "right") => Math.max(
-    ...data.flatMap(d => lines
-      .filter(line => (line.axis ?? "left") === axis)
-      .map(line => Number(d[line.key]) || 0)),
-    1
-  ) * 1.08;
-  const leftMax = maxForAxis("left");
-  const rightMax = hasRightAxis ? maxForAxis("right") : leftMax;
-  
-  // Safe calculation for x position
-  const xs = (i: number) => {
-    if (data.length === 1) return pad.l + cw / 2; // Center single point
-    return pad.l + (i / (data.length - 1)) * cw;
-  };
-  
-  const ys = (v: number, axis: "left" | "right" = "left") =>
-    pad.t + ch - (v / (axis === "right" ? rightMax : leftMax)) * ch;
-  
+  const { leftMax, rightMax, linePaths, hitAreas, xs } = geometry;
+
   return (
     <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-full" style={{ overflow: "visible" }}>
       {[0, 0.25, 0.5, 0.75, 1].map(t => {
@@ -273,55 +296,39 @@ export function SvgAreaChart({
       {data.map((d, i) => (i % Math.max(1, xTickInterval) === 0 || i === data.length - 1) && (
         <text key={String(d.day ?? d.month ?? i)} x={xs(i)} y={H - 5} textAnchor="middle" fontSize={10} fill="currentColor" opacity={0.55}>{d.day ?? d.month}</text>
       ))}
-      {lines.map(line => {
-        const axis = line.axis ?? "left";
-        const pts = data.map((d, i) => [xs(i), ys(Number(d[line.key]) || 0, axis)] as [number, number]);
-        const linePts = pts.map(p => p.join(",")).join(" ");
-        const areaPts = [`${xs(0)},${pad.t + ch}`, ...pts.map(p => p.join(",")), `${xs(data.length - 1)},${pad.t + ch}`].join(" ");
-        return (
-          <g key={line.key}>
-            <polygon points={areaPts} fill={line.color} fillOpacity={0.1} />
-            <polyline points={linePts} fill="none" stroke={line.color} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
-          </g>
-        );
-      })}
-      {data.map((d, i) => {
-        const tooltipWidth = 132;
-        const tooltipHeight = 22 + lines.length * 15;
-        const tooltipX = Math.max(2, Math.min(W - tooltipWidth - 2, xs(i) + 10));
-        const tooltipAnchorY = Math.min(...lines.map(line =>
-          ys(Number(d[line.key]) || 0, line.axis ?? "left")
-        ));
-        const tooltipY = Math.max(2, Math.min(H - tooltipHeight - 2, tooltipAnchorY - tooltipHeight / 2));
-        const hoverWidth = data.length === 1 ? cw : i === 0 ? (xs(1) - xs(0)) / 2 : i === data.length - 1 ? (xs(i) - xs(i - 1)) / 2 : (xs(i + 1) - xs(i - 1)) / 2;
-        return (
-          <g key={`hover-${String(d.day ?? d.month ?? i)}`}>
-            <rect
-              x={i === 0 ? pad.l : (xs(i - 1) + xs(i)) / 2}
-              y={pad.t}
-              width={hoverWidth}
-              height={ch}
-              fill="transparent"
-              onMouseEnter={() => setHoveredIndex(i)}
-              onMouseLeave={() => setHoveredIndex(null)}
-            />
-            {hoveredIndex === i && (
-              <g pointerEvents="none">
-                <rect x={tooltipX} y={tooltipY} width={tooltipWidth} height={tooltipHeight} rx={6} fill="var(--card)" stroke="var(--border)" />
-                <text x={tooltipX + 8} y={tooltipY + 15} fontSize={10} fontWeight={700} fill="currentColor">{d.month ?? d.day ?? `Point ${i + 1}`}</text>
-                {lines.map((line, lineIndex) => (
-                  <text key={line.key} x={tooltipX + 8} y={tooltipY + 30 + lineIndex * 15} fontSize={9} fill={line.color}>
-                    {line.name}: {yFormatter(Number(d[line.key]) || 0)}
-                  </text>
-                ))}
-              </g>
-            )}
-          </g>
-        );
-      })}
+      {linePaths.map(lp => (
+        <g key={lp.key}>
+          <polygon points={lp.areaPts} fill={lp.color} fillOpacity={0.1} />
+          <polyline points={lp.linePts} fill="none" stroke={lp.color} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
+        </g>
+      ))}
+      {hitAreas.map(({ d, i, tooltipWidth, tooltipHeight, tooltipX, tooltipY, hoverWidth, hoverX }) => (
+        <g key={`hover-${String(d.day ?? d.month ?? i)}`}>
+          <rect
+            x={hoverX}
+            y={pad.t}
+            width={hoverWidth}
+            height={ch}
+            fill="transparent"
+            onMouseEnter={() => setHoveredIndex(i)}
+            onMouseLeave={() => setHoveredIndex(null)}
+          />
+          {hoveredIndex === i && (
+            <g pointerEvents="none">
+              <rect x={tooltipX} y={tooltipY} width={tooltipWidth} height={tooltipHeight} rx={6} fill="var(--card)" stroke="var(--border)" />
+              <text x={tooltipX + 8} y={tooltipY + 15} fontSize={10} fontWeight={700} fill="currentColor">{d.month ?? d.day ?? `Point ${i + 1}`}</text>
+              {lines.map((line, lineIndex) => (
+                <text key={line.key} x={tooltipX + 8} y={tooltipY + 30 + lineIndex * 15} fontSize={9} fill={line.color}>
+                  {line.name}: {yFormatter(Number(d[line.key]) || 0)}
+                </text>
+              ))}
+            </g>
+          )}
+        </g>
+      ))}
     </svg>
   );
-}
+});
 
 export function SvgBarChart({ data }: { data: { name: string; sold: number }[] }) {
   if (data.length === 0) {
@@ -343,8 +350,28 @@ export function SvgBarChart({ data }: { data: { name: string; sold: number }[] }
             <text x={pad.l - 6} y={y + barH / 2 + 3.5} textAnchor="end" fontSize={10} fill="currentColor" opacity={0.6}>
               <title>{d.name}</title>{d.name.length > 13 ? `${d.name.slice(0, 12)}…` : d.name}
             </text>
-            <rect x={pad.l} y={y} width={bw} height={barH} rx={3} fill="#2563eb" fillOpacity={0.8} />
-            <text x={pad.l + bw + 4} y={y + barH / 2 + 3.5} fontSize={9} fill="currentColor" opacity={0.45}>{d.sold}</text>
+            <rect
+              x={pad.l}
+              y={y}
+              width={bw}
+              height={barH}
+              rx={3}
+              fill="#2563eb"
+              fillOpacity={0.8}
+              className="st-svg-bar-fill"
+              style={{ animationDelay: `${Math.min(i * 45, 270)}ms` }}
+            />
+            <text
+              x={pad.l + bw + 4}
+              y={y + barH / 2 + 3.5}
+              fontSize={9}
+              fill="currentColor"
+              opacity={0.45}
+              className="st-fade-in"
+              style={{ animationDelay: `${Math.min(i * 45 + 140, 410)}ms` }}
+            >
+              {d.sold}
+            </text>
           </g>
         );
       })}
@@ -418,7 +445,7 @@ export function InfoTip({
   const updateCoords = React.useCallback(() => {
     if (!ref.current) return;
     const rect = ref.current.getBoundingClientRect();
-    const width = Math.min(320, window.innerWidth - 32);
+    const width = Math.min(336, window.innerWidth - 32);
     let left = rect.left + rect.width / 2 - width / 2;
     if (left < 16) left = 16;
     if (left + width > window.innerWidth - 16) {
@@ -434,10 +461,16 @@ export function InfoTip({
     if (!open) return;
     updateCoords();
 
-    const handleScroll = () => updateCoords();
-    const handleResize = () => updateCoords();
-    window.addEventListener("scroll", handleScroll, true);
-    window.addEventListener("resize", handleResize);
+    let rafId = 0;
+    const scheduleUpdate = () => {
+      if (rafId) return;
+      rafId = window.requestAnimationFrame(() => {
+        rafId = 0;
+        updateCoords();
+      });
+    };
+    window.addEventListener("scroll", scheduleUpdate, { capture: true, passive: true });
+    window.addEventListener("resize", scheduleUpdate, { passive: true });
 
     function handleClick(e: MouseEvent) {
       const target = e.target as Node;
@@ -454,19 +487,52 @@ export function InfoTip({
     document.addEventListener("mousedown", handleClick);
     document.addEventListener("keydown", handleKeyDown);
     return () => {
-      window.removeEventListener("scroll", handleScroll, true);
-      window.removeEventListener("resize", handleResize);
+      if (rafId) window.cancelAnimationFrame(rafId);
+      window.removeEventListener("scroll", scheduleUpdate, true);
+      window.removeEventListener("resize", scheduleUpdate);
       document.removeEventListener("mousedown", handleClick);
       document.removeEventListener("keydown", handleKeyDown);
     };
   }, [open, updateCoords]);
 
-  const ringColor = {
-    default: "ring-1 ring-border/80 bg-muted/60 text-muted-foreground hover:text-primary hover:bg-primary/10 hover:ring-primary/40",
-    emerald: "ring-1 ring-emerald-300 dark:ring-emerald-700 text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 hover:bg-emerald-100",
-    sky:     "ring-1 ring-sky-300 dark:ring-sky-700 text-sky-600 dark:text-sky-400 bg-sky-50 dark:bg-sky-950/40 hover:bg-sky-100",
-    amber:   "ring-1 ring-amber-300 dark:ring-amber-700 text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 hover:bg-amber-100",
+  const tone = {
+    default: {
+      trigger: "ring-1 ring-border/80 bg-muted/60 text-muted-foreground hover:text-primary hover:bg-primary/10 hover:ring-primary/40",
+      badge: "bg-primary/10 text-primary ring-1 ring-primary/15 dark:bg-primary/15 dark:ring-primary/25",
+    },
+    emerald: {
+      trigger: "ring-1 ring-emerald-300/80 dark:ring-emerald-700/80 text-emerald-600 dark:text-emerald-400 bg-emerald-50/90 dark:bg-emerald-950/40 hover:bg-emerald-100 dark:hover:bg-emerald-950/70",
+      badge: "bg-emerald-500/10 dark:bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 ring-1 ring-emerald-500/20",
+    },
+    sky: {
+      trigger: "ring-1 ring-sky-300/80 dark:ring-sky-700/80 text-sky-600 dark:text-sky-400 bg-sky-50/90 dark:bg-sky-950/40 hover:bg-sky-100 dark:hover:bg-sky-950/70",
+      badge: "bg-sky-500/10 dark:bg-sky-500/15 text-sky-600 dark:text-sky-400 ring-1 ring-sky-500/20",
+    },
+    amber: {
+      trigger: "ring-1 ring-amber-300/80 dark:ring-amber-700/80 text-amber-600 dark:text-amber-400 bg-amber-50/90 dark:bg-amber-950/40 hover:bg-amber-100 dark:hover:bg-amber-950/70",
+      badge: "bg-amber-500/10 dark:bg-amber-500/15 text-amber-600 dark:text-amber-400 ring-1 ring-amber-500/20",
+    },
   }[color];
+
+  const segments = React.useMemo(() => {
+    const out: Array<
+      | { kind: "text"; text: string; isLead: boolean }
+      | { kind: "group"; rows: { label: string; value: string }[] }
+    > = [];
+    lines.forEach((line, idx) => {
+      if (typeof line === "string") {
+        out.push({ kind: "text", text: line, isLead: idx === 0 });
+      } else {
+        const prev = out[out.length - 1];
+        if (prev && prev.kind === "group") {
+          prev.rows.push(line);
+        } else {
+          out.push({ kind: "group", rows: [line] });
+        }
+      }
+    });
+    return out;
+  }, [lines]);
 
   return (
     <div ref={ref} className="relative inline-flex items-center">
@@ -478,7 +544,7 @@ export function InfoTip({
         <button
           type="button"
           onClick={() => setOpen(v => !v)}
-          className={`inline-flex h-5 w-5 items-center justify-center rounded-full transition-all cursor-pointer shadow-2xs hover:scale-110 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 ${ringColor}`}
+          className={`inline-flex h-5 w-5 items-center justify-center rounded-full transition-transform duration-150 cursor-pointer shadow-2xs hover:scale-105 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 ${tone.trigger}`}
           aria-label={`Information: ${title}`}
           aria-expanded={open}
           aria-haspopup="dialog"
@@ -499,30 +565,61 @@ export function InfoTip({
             left: `${coords.left}px`,
             zIndex: 99999,
           }}
-          className="w-72 sm:w-80 bg-card border border-border rounded-xl shadow-2xl p-4 space-y-2.5 st-dropdown-in text-left"
+          className="font-sans antialiased w-[min(21rem,calc(100vw-2rem))] rounded-2xl border border-border/80 bg-card p-4 space-y-3 shadow-[0_18px_48px_-12px_rgba(15,23,42,0.22),0_4px_16px_-4px_rgba(15,23,42,0.08)] dark:shadow-[0_20px_54px_-12px_rgba(0,0,0,0.68)] st-dropdown-in text-left"
         >
-          <div className="flex items-start justify-between gap-2 border-b border-border/50 pb-2">
-            <p className="text-xs font-semibold text-foreground leading-snug flex items-center gap-1.5">
-              <Info size={13} className="text-primary shrink-0 stroke-[2.2]" />
-              {title}
-            </p>
+          <div className="flex items-center justify-between gap-2.5 pb-2.5 border-b border-border/50">
+            <div className="flex items-center gap-2 min-w-0">
+              <span className={`inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-lg ${tone.badge}`}>
+                <Info size={13} strokeWidth={2.25} />
+              </span>
+              <p className="text-[13px] font-semibold tracking-tight text-foreground leading-snug">
+                {title}
+              </p>
+            </div>
             <button
               type="button"
               onClick={() => setOpen(false)}
-              className="text-muted-foreground hover:text-foreground text-xs p-1 rounded hover:bg-muted cursor-pointer leading-none"
+              className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-muted/60 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors cursor-pointer"
               aria-label="Close"
             >
-              ✕
+              <X size={12.5} strokeWidth={2.25} />
             </button>
           </div>
-          <div className="space-y-1.5 max-h-64 overflow-y-auto pr-1">
-            {lines.map((line, i) =>
-              typeof line === "string" ? (
-                <p key={i} className="text-[11px] text-muted-foreground leading-relaxed">{line}</p>
+          <div className="space-y-2.5 max-h-68 overflow-y-auto pr-0.5">
+            {segments.map((seg, i) =>
+              seg.kind === "text" ? (
+                <p
+                  key={i}
+                  className={
+                    seg.isLead
+                      ? "text-[12px] text-foreground/85 leading-[1.52] font-normal"
+                      : "text-[11.5px] text-muted-foreground leading-[1.5] font-normal"
+                  }
+                >
+                  {seg.text}
+                </p>
               ) : (
-                <div key={i} className="flex items-start justify-between gap-2 bg-muted/30 px-2.5 py-1.5 rounded-lg text-[10px]">
-                  <span className="text-muted-foreground shrink-0 font-medium">{line.label}</span>
-                  <span className="font-semibold text-foreground text-right font-mono">{line.value}</span>
+                <div
+                  key={i}
+                  className="rounded-xl border border-border/60 bg-muted/35 dark:bg-white/[0.04] divide-y divide-border/50 overflow-hidden"
+                >
+                  {seg.rows.map((row, j) => {
+                    const isCompact =
+                      row.label.length <= 16 &&
+                      row.value.length <= 24 &&
+                      row.label.length + row.value.length <= 34;
+                    return isCompact ? (
+                      <div key={j} className="flex items-baseline justify-between gap-3 px-3 py-2">
+                        <span className="text-[11.5px] font-medium text-muted-foreground shrink-0">{row.label}</span>
+                        <span className="text-[12px] font-semibold text-foreground text-right tabular-nums">{row.value}</span>
+                      </div>
+                    ) : (
+                      <div key={j} className="px-3 py-2.5 space-y-0.5">
+                        <div className="text-[11.5px] font-semibold text-foreground leading-snug">{row.label}</div>
+                        <div className="text-[11.5px] font-normal text-muted-foreground leading-[1.48]">{row.value}</div>
+                      </div>
+                    );
+                  })}
                 </div>
               )
             )}
@@ -534,18 +631,298 @@ export function InfoTip({
   );
 }
 
-export function Modal({
-  title, onClose, children, wide, compact = false, hideCloseButton = false, closeOnOverlay = true,
+function parseNumericMetric(raw: string): { prefix: string; number: number; decimals: number; suffix: string } | null {
+  const trimmed = raw.trim();
+  const match = /^([^\d]*?)(-?[\d,]+(?:\.\d+)?)(.*)$/.exec(trimmed);
+  if (!match) return null;
+  const [, prefix, rawNumber, suffix] = match;
+  if (/\d/.test(suffix)) return null;
+  const parsed = Number(rawNumber.replace(/,/g, ""));
+  if (!Number.isFinite(parsed)) return null;
+  const decimals = rawNumber.includes(".") ? rawNumber.split(".")[1].length : 0;
+  return { prefix, number: parsed, decimals, suffix };
+}
+
+const enPhNumberFormatters = new Map<number, Intl.NumberFormat>();
+function getEnPhFormatter(decimals: number): Intl.NumberFormat {
+  let formatter = enPhNumberFormatters.get(decimals);
+  if (!formatter) {
+    formatter = new Intl.NumberFormat("en-PH", {
+      minimumFractionDigits: decimals,
+      maximumFractionDigits: decimals,
+    });
+    enPhNumberFormatters.set(decimals, formatter);
+  }
+  return formatter;
+}
+
+/**
+ * Lightweight GPU-friendly KPI number roll-up on live updates (240ms ease-out).
+ * Renders immediately on initial mount to keep page transitions at 60fps.
+ */
+export function AnimatedMetricText({ value, className }: { value: string; className?: string }) {
+  const [rendered, setRendered] = React.useState(value);
+  const currentNumRef = React.useRef<number | null>(null);
+
+  React.useEffect(() => {
+    const parsed = parseNumericMetric(value);
+    const reduced =
+      typeof window !== "undefined" &&
+      typeof window.matchMedia === "function" &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+    if (!parsed || reduced || currentNumRef.current === null) {
+      currentNumRef.current = parsed?.number ?? null;
+      setRendered(value);
+      return;
+    }
+
+    const from = currentNumRef.current;
+    const to = parsed.number;
+    if (Math.abs(to - from) < 0.005) {
+      currentNumRef.current = to;
+      setRendered(value);
+      return;
+    }
+
+    const duration = 220;
+    const startTime = performance.now();
+    const formatter = getEnPhFormatter(parsed.decimals);
+    let rafId = 0;
+
+    const step = (now: number) => {
+      const progress = Math.min(1, (now - startTime) / duration);
+      const eased = 1 - Math.pow(1 - progress, 3);
+      const val = from + (to - from) * eased;
+      currentNumRef.current = val;
+
+      if (progress >= 1) {
+        currentNumRef.current = to;
+        setRendered(value);
+        return;
+      }
+
+      setRendered(`${parsed.prefix}${formatter.format(val)}${parsed.suffix}`);
+      rafId = window.requestAnimationFrame(step);
+    };
+
+    rafId = window.requestAnimationFrame(step);
+    return () => window.cancelAnimationFrame(rafId);
+  }, [value]);
+
+  return <span className={className}>{rendered}</span>;
+}
+
+export interface SegmentedTabItem<T extends string = string> {
+  id: T;
+  label: React.ReactNode;
+  icon?: React.ReactNode;
+  badge?: React.ReactNode;
+  disabled?: boolean;
+}
+
+/**
+ * Apple-style sliding segmented control / underline tabs with zero layout thrash.
+ * Uses offsetLeft/offsetWidth only on change/resize and transforms on the GPU layer.
+ */
+export function SegmentedTabs<T extends string = string>({
+  items,
+  value,
+  onChange,
+  ariaLabel,
+  variant = "pill",
+  tone = "card",
+  size = "md",
+  fullWidth = false,
+  wrap = false,
+  className = "",
+  buttonClassName = "",
 }: {
-  title: string; onClose: () => void; children: React.ReactNode; wide?: boolean; compact?: boolean; hideCloseButton?: boolean; closeOnOverlay?: boolean;
+  items: readonly SegmentedTabItem<T>[];
+  value: T;
+  onChange: (id: T) => void;
+  ariaLabel?: string;
+  variant?: "pill" | "underline";
+  tone?: "card" | "primary";
+  size?: "sm" | "md";
+  fullWidth?: boolean;
+  wrap?: boolean;
+  className?: string;
+  buttonClassName?: string;
 }) {
+  const containerRef = React.useRef<HTMLDivElement>(null);
+  const btnRefs = React.useRef<Record<string, HTMLButtonElement | null>>({});
+  const [animateIndicator, setAnimateIndicator] = React.useState(false);
+  const [indicator, setIndicator] = React.useState({ left: 0, top: 0, width: 0, height: 0, ready: false });
+
+  const itemsKey = items.map(item => String(item.id)).join("|");
+
+  React.useEffect(() => {
+    const frame = window.requestAnimationFrame(() => setAnimateIndicator(true));
+    return () => window.cancelAnimationFrame(frame);
+  }, []);
+
+  React.useLayoutEffect(() => {
+    const measure = () => {
+      const btn = btnRefs.current[value];
+      if (!btn) {
+        setIndicator(prev => (prev.ready ? { ...prev, ready: false } : prev));
+        return;
+      }
+      const left = btn.offsetLeft;
+      const top = btn.offsetTop;
+      const width = btn.offsetWidth;
+      const height = btn.offsetHeight;
+      setIndicator(prev =>
+        prev.ready && prev.left === left && prev.top === top && prev.width === width && prev.height === height
+          ? prev
+          : { left, top, width, height, ready: width > 0 }
+      );
+    };
+
+    measure();
+
+    const node = containerRef.current;
+    if (!node || typeof ResizeObserver === "undefined") return;
+    let rafId = 0;
+    const ro = new ResizeObserver(() => {
+      if (rafId) return;
+      rafId = window.requestAnimationFrame(() => {
+        rafId = 0;
+        measure();
+      });
+    });
+    ro.observe(node);
+    return () => {
+      if (rafId) window.cancelAnimationFrame(rafId);
+      ro.disconnect();
+    };
+  }, [value, itemsKey]);
+
+  const isUnderline = variant === "underline";
+  const baseTrackClass = isUnderline
+    ? `relative flex items-center gap-5 border-b border-border/80 ${className}`
+    : `relative ${fullWidth ? "flex w-full" : "inline-flex"} ${wrap ? "flex-wrap" : ""} items-center gap-1 rounded-xl border border-slate-300/75 dark:border-white/12 bg-slate-200/85 dark:bg-[#08101d] p-1 shadow-[inset_0_1px_2px_rgba(15,23,42,0.08)] dark:shadow-[inset_0_1px_3px_rgba(0,0,0,0.45)] ${className}`;
+
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center p-4 pt-16 sm:items-center sm:pt-4">
+    <div ref={containerRef} role="tablist" aria-label={ariaLabel} className={baseTrackClass}>
+      {indicator.ready && (
+        <span
+          aria-hidden="true"
+          className={
+            isUnderline
+              ? "pointer-events-none absolute -bottom-[1px] left-0 h-[3px] rounded-full bg-primary shadow-[0_1px_8px_rgba(37,99,235,0.42)] motion-reduce:transition-none"
+              : `pointer-events-none absolute top-0 left-0 rounded-lg motion-reduce:transition-none ${
+                  tone === "primary"
+                    ? "bg-primary border border-primary/90 shadow-[0_2px_10px_rgba(37,99,235,0.34)]"
+                    : "bg-white dark:bg-[#1a3154] border border-blue-500/35 dark:border-blue-400/55 shadow-[0_2px_8px_-1px_rgba(37,99,235,0.18),0_1px_3px_rgba(15,23,42,0.12)] dark:shadow-[0_2px_10px_rgba(37,99,235,0.28),0_1px_2px_rgba(0,0,0,0.45)]"
+                }`
+          }
+          style={
+            isUnderline
+              ? {
+                  width: `${indicator.width}px`,
+                  transform: `translate3d(${indicator.left}px, 0, 0)`,
+                  transition: animateIndicator
+                    ? "transform 250ms cubic-bezier(0.22, 1.12, 0.36, 1), width 220ms cubic-bezier(0.16, 1, 0.3, 1)"
+                    : "none",
+                }
+              : {
+                  width: `${indicator.width}px`,
+                  height: `${indicator.height}px`,
+                  transform: `translate3d(${indicator.left}px, ${indicator.top}px, 0)`,
+                  transition: animateIndicator
+                    ? "transform 250ms cubic-bezier(0.22, 1.12, 0.36, 1), width 220ms cubic-bezier(0.16, 1, 0.3, 1)"
+                    : "none",
+                }
+          }
+        />
+      )}
+      {items.map(item => {
+        const isActive = item.id === value;
+        const fallbackActiveBg = !indicator.ready
+          ? tone === "primary"
+            ? "bg-primary text-primary-foreground shadow-sm"
+            : "bg-white dark:bg-[#1a3154] text-blue-700 dark:text-blue-100 shadow-xs border border-blue-500/30"
+          : "";
+        const activeTextClass = isUnderline
+          ? "font-semibold text-primary"
+          : tone === "primary"
+            ? "text-primary-foreground"
+            : "text-blue-700 dark:text-blue-100";
+        const idleClass = isUnderline
+          ? "font-medium text-muted-foreground hover:text-foreground"
+          : "text-slate-600 dark:text-slate-400 hover:text-foreground";
+        const pillSizeClass = size === "sm"
+          ? "rounded-lg px-2.5 py-1 text-[11px] font-semibold"
+          : "rounded-lg px-3 py-1.5 text-xs font-semibold";
+
+        return (
+          <button
+            key={item.id}
+            ref={el => { btnRefs.current[item.id] = el; }}
+            type="button"
+            role="tab"
+            aria-selected={isActive}
+            disabled={item.disabled}
+            onClick={() => onChange(item.id)}
+            className={`relative z-10 inline-flex items-center justify-center gap-1.5 whitespace-nowrap cursor-pointer transition-colors duration-150 disabled:opacity-40 disabled:cursor-not-allowed ${
+              fullWidth ? "flex-1" : ""
+            } ${
+              isUnderline
+                ? `px-0.5 py-3 text-sm ${isActive ? activeTextClass : idleClass}`
+                : `${pillSizeClass} ${isActive ? `${activeTextClass} ${fallbackActiveBg}` : idleClass}`
+            } ${buttonClassName}`}
+          >
+            {item.icon}
+            <span>{item.label}</span>
+            {item.badge}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+export function Modal({
+  title, onClose, children, wide, compact = false, maxWidthClass, hideCloseButton = false, closeOnOverlay = true,
+}: {
+  title: string; onClose: () => void; children: React.ReactNode; wide?: boolean; compact?: boolean; maxWidthClass?: string; hideCloseButton?: boolean; closeOnOverlay?: boolean;
+}) {
+  const modalRef = React.useRef<HTMLDivElement>(null);
+  const onCloseRef = React.useRef(onClose);
+  onCloseRef.current = onClose;
+
+  React.useEffect(() => {
+    if (hideCloseButton || !closeOnOverlay) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || e.defaultPrevented) return;
+      if (currentConfirmConfig !== null || document.querySelector('[data-st-confirm="true"]')) return;
+      const openModals = document.querySelectorAll('[data-st-modal="true"]');
+      if (openModals.length === 0 || openModals[openModals.length - 1] !== modalRef.current) return;
+      onCloseRef.current();
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [hideCloseButton, closeOnOverlay]);
+
+  return (
+    <div ref={modalRef} data-st-modal="true" className="fixed inset-0 z-50 flex items-start justify-center p-4 pt-16 sm:items-center sm:pt-4">
       <div className="absolute inset-0 bg-black/50 st-overlay-in" onClick={closeOnOverlay ? onClose : undefined} />
-      <div className={`relative bg-card border border-border/80 rounded-2xl shadow-[0_20px_50px_-15px_rgba(13,148,136,0.15),0_10px_25px_-5px_rgba(0,0,0,0.06)] w-full ${wide ? compact ? "max-w-4xl" : "max-w-6xl" : "max-w-md"} max-h-[90vh] flex flex-col overflow-hidden st-modal-in`}>
-        <div className="flex items-center justify-between px-6 py-4 border-b border-border/60 flex-shrink-0 bg-card/50">
+      <div className={`relative bg-card border border-border/80 ring-1 ring-black/[0.04] dark:ring-white/[0.08] rounded-2xl shadow-[0_24px_60px_-15px_rgba(15,23,42,0.22),0_10px_25px_-5px_rgba(0,0,0,0.08)] w-full ${maxWidthClass ?? (wide ? compact ? "max-w-4xl" : "max-w-6xl" : "max-w-md")} max-h-[90vh] flex flex-col overflow-hidden st-modal-in`}>
+        <div className="flex items-center justify-between px-6 py-4 border-b border-border/60 flex-shrink-0 bg-card">
           <h2 className="text-sm font-bold text-foreground">{title}</h2>
-          {!hideCloseButton && <button onClick={onClose} aria-label="Close dialog" className="w-7 h-7 rounded-lg flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors st-btn-ghost"><X size={15} /></button>}
+          {!hideCloseButton && (
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Close dialog"
+              title="Close (Esc)"
+              className="w-7 h-7 rounded-lg flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors st-btn-ghost"
+            >
+              <X size={15} />
+            </button>
+          )}
         </div>
         <div className="p-6 overflow-y-auto space-y-4">{children}</div>
       </div>
@@ -609,7 +986,7 @@ export function StatCard({
   tip?: { title: string; lines: (string | { label: string; value: string })[] };
 }) {
   return (
-    <div className="bg-card border border-border/80 rounded-2xl p-5 shadow-[0_2px_12px_-4px_rgba(13,148,136,0.06),0_1px_3px_rgba(0,0,0,0.02)] flex flex-col gap-3 hover:shadow-[0_8px_24px_-6px_rgba(13,148,136,0.12),0_2px_6px_rgba(0,0,0,0.03)] transition-all duration-200 st-card">
+    <div className="bg-card border border-border/80 rounded-2xl p-5 shadow-[0_2px_12px_-4px_rgba(13,148,136,0.06),0_1px_3px_rgba(0,0,0,0.02)] flex flex-col gap-3 transition-colors duration-150 st-card">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-1.5">
           <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">{label}</span>
@@ -620,7 +997,9 @@ export function StatCard({
         </div>
       </div>
       <div>
-        <p className="text-2xl font-bold text-foreground tracking-tight tabular-nums">{value}</p>
+        <p className="text-2xl font-bold text-foreground tracking-tight tabular-nums">
+          <AnimatedMetricText value={value} />
+        </p>
         <p className="text-[11px] text-muted-foreground mt-0.5">{sub}</p>
       </div>
       {trend && (
@@ -668,14 +1047,15 @@ export function TablePager({
         Showing <span className="font-semibold text-foreground">{start}–{end}</span> of{" "}
         <span className="font-semibold text-foreground">{total}</span> results
       </span>
-      <div className="flex items-center gap-1">
+      <div className="flex items-center gap-1.5">
         <button
           type="button"
           onClick={() => onPage(page - 1)}
           disabled={page === 1}
-          className="px-2.5 py-1 rounded-lg text-[11px] font-semibold border border-border/80 bg-card/90 hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer shadow-2xs"
+          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold border border-border/80 bg-card/90 text-foreground hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed transition-[background-color,transform] active:scale-95 cursor-pointer shadow-2xs"
         >
-          ← Prev
+          <ChevronLeft size={12} />
+          <span>Prev</span>
         </button>
         {pages.map((p, i) =>
           p === "…" ? (
@@ -685,9 +1065,9 @@ export function TablePager({
               key={p}
               type="button"
               onClick={() => onPage(p as number)}
-              className={`w-7 h-7 rounded-lg text-[11px] font-semibold border transition-colors cursor-pointer ${
+              className={`w-7 h-7 rounded-full text-[11px] font-semibold border transition-[background-color,transform] active:scale-95 cursor-pointer ${
                 p === page
-                  ? "bg-primary text-primary-foreground border-primary shadow-2xs"
+                  ? "bg-primary text-primary-foreground border-primary shadow-sm shadow-primary/25"
                   : "bg-card/90 border-border/80 hover:bg-muted text-foreground"
               }`}
             >
@@ -699,9 +1079,10 @@ export function TablePager({
           type="button"
           onClick={() => onPage(page + 1)}
           disabled={page === totalPages}
-          className="px-2.5 py-1 rounded-lg text-[11px] font-semibold border border-border/80 bg-card/90 hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed transition-colors cursor-pointer shadow-2xs"
+          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold border border-border/80 bg-card/90 text-foreground hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed transition-[background-color,transform] active:scale-95 cursor-pointer shadow-2xs"
         >
-          Next →
+          <span>Next</span>
+          <ChevronRight size={12} />
         </button>
       </div>
     </div>
@@ -732,7 +1113,7 @@ export function ViewReasonModal({ tx, onClose }: { tx: Transaction; onClose: () 
 
 // ─── Notification Panel ───────────────────────────────────────────────────────
 import { useRef, useEffect, useState, useMemo } from "react";
-import { AlertTriangle as _AlertTriangle, ArrowRight as _ArrowRight, BellRing as _BellRing, FileText as _FileText, Check as _Check, CheckCheck, RefreshCw, X as _X, ShoppingCart } from "lucide-react";
+import { AlertTriangle as _AlertTriangle, BellRing as _BellRing, FileText as _FileText, Check as _Check, CheckCheck, RefreshCw, X as _X, ShoppingCart } from "lucide-react";
 import { sortBatchesFIFO, sortBatchesByExpiry, deductFIFO, getTotalStock, getEarliestExpiry, parseExpiry, formatExpiryString, ROLE_LABELS, computeTax, VAT_RATE_LABEL, type Notification, type ProductBatch } from "./data";
 
 function formatNotificationTime(value: string): string {
@@ -790,27 +1171,43 @@ export function NotificationPanel({
           <CheckCheck size={14} />Mark all read
         </button>
       </div>
-      <div role="group" aria-label="Filter notifications" className="mx-3 mb-2 flex rounded-lg border border-border bg-muted/40 p-1">
-        {([
-          { key: "all", label: "All", count: notifs.length },
-          { key: "unread", label: "Unread", count: unreadCount },
-          { key: "alerts", label: "Alerts", count: alertCount },
-        ] as const).map(item => (
-          <button
-            key={item.key}
-            type="button"
-            aria-pressed={filter === item.key}
-            onClick={() => setFilter(item.key)}
-            className={`flex min-w-0 flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-xs transition-colors ${
-              filter === item.key
-                ? "bg-card font-semibold text-foreground shadow-sm"
-                : "font-medium text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            {item.label}
-            <span className={`tabular-nums ${filter === item.key ? "text-muted-foreground" : "text-muted-foreground/75"}`}>{item.count}</span>
-          </button>
-        ))}
+      <div className="mx-3 mb-2">
+        <SegmentedTabs<"all" | "unread" | "alerts">
+          size="sm"
+          fullWidth
+          ariaLabel="Filter notifications"
+          value={filter}
+          onChange={setFilter}
+          items={[
+            {
+              id: "all",
+              label: "All",
+              badge: (
+                <span className={`rounded-full px-1.5 py-0.2 text-[10px] tabular-nums ${filter === "all" ? "bg-primary/12 text-primary dark:bg-blue-400/20 dark:text-blue-100" : "text-muted-foreground/80"}`}>
+                  {notifs.length}
+                </span>
+              ),
+            },
+            {
+              id: "unread",
+              label: "Unread",
+              badge: (
+                <span className={`rounded-full px-1.5 py-0.2 text-[10px] tabular-nums ${filter === "unread" ? "bg-primary/12 text-primary dark:bg-blue-400/20 dark:text-blue-100" : "text-muted-foreground/80"}`}>
+                  {unreadCount}
+                </span>
+              ),
+            },
+            {
+              id: "alerts",
+              label: "Alerts",
+              badge: (
+                <span className={`rounded-full px-1.5 py-0.2 text-[10px] tabular-nums ${filter === "alerts" ? "bg-primary/12 text-primary dark:bg-blue-400/20 dark:text-blue-100" : "text-muted-foreground/80"}`}>
+                  {alertCount}
+                </span>
+              ),
+            },
+          ]}
+        />
       </div>
 
       <div className="max-h-[min(65vh,420px)] overflow-y-auto border-y border-border/70">
@@ -842,10 +1239,9 @@ export function NotificationPanel({
                       </span>
                       <span className="mt-1 block text-xs leading-relaxed text-muted-foreground">{n.body}</span>
                       {linkedProduct && (
-                        <span className="mt-2 inline-flex max-w-full items-center gap-1.5 rounded-full border border-border bg-muted/40 px-2.5 py-1 text-[11px] font-medium text-primary">
+                        <span className="mt-2 inline-flex max-w-full items-center gap-1.5 rounded-full border border-primary/20 bg-primary/8 px-2.5 py-1 text-[11px] font-semibold text-primary">
                           <Package size={12} className="flex-shrink-0" />
                           <span className="truncate">{linkedProduct}</span>
-                          <_ArrowRight size={11} className="flex-shrink-0" />
                         </span>
                       )}
                       <span className="mt-2 block text-[11px] text-muted-foreground">{formatNotificationTime(n.time)}</span>
@@ -885,16 +1281,16 @@ export function NotificationPanel({
         )}
       </div>
 
-      <div className="p-2">
+      <div className="p-2.5">
         <button
           type="button"
           onClick={() => {
             window.dispatchEvent(new CustomEvent("smarttrack:navigate", { detail: "stock-alerts" }));
             onClose();
           }}
-          className="flex w-full items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
+          className="st-chip-btn w-full py-2 justify-center"
         >
-          View all Stock &amp; Expiry Alerts <_ArrowRight size={13} />
+          View All Stock &amp; Expiry Alerts
         </button>
       </div>
     </div>
@@ -1386,31 +1782,44 @@ export function ExpiryBlockDialog({
 
 const CUSTOMER_EXEMPTION_TYPES = ["Senior Citizen", "PWD", "Other Qualified ID"] as const;
 type CustomerExemptionType = typeof CUSTOMER_EXEMPTION_TYPES[number];
-type SaleCartItem = { product: Product; qty: number; saleQty: number; saleUnit: "unit" | "pack" };
+export type SaleCartItem = { product: Product; qty: number; saleQty: number; saleUnit: "unit" | "pack" };
+export type SaleDraftState = {
+  cart: SaleCartItem[];
+  selectedProduct: Product | null;
+  qty: string;
+  saleUnit: "unit" | "pack";
+  applyDiscount: boolean;
+  customerExemptionType: CustomerExemptionType;
+  customerIdNumber: string;
+};
 const roundCurrency = (value: number) => Math.round(value * 100) / 100;
 
 export function NewSaleModal({
   onClose, onAdd, inventory, currentUser, onGoToInventory,
+  initialDraft = null, onMinimize, onDiscardDraft,
 }: {
   onClose: () => void;
   onAdd: (t: Transaction, productId: string, qty: number, saleQty?: number, saleUnit?: string, items?: Array<{ product_id: string; qty: number; sale_qty?: number; sale_unit?: string }>) => void;
   inventory: Product[];
   currentUser: import("./data").AuthUser;
   onGoToInventory: () => void;
+  initialDraft?: SaleDraftState | null;
+  onMinimize?: (draft: SaleDraftState) => void;
+  onDiscardDraft?: () => void;
 }) {
   const canManage = hasUserRole(currentUser, "inventory_manager");
-  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
-  const [qty, setQty] = useState("");
-  const [saleUnit, setSaleUnit] = useState<"unit" | "pack">("unit");
-  const [cart, setCart] = useState<SaleCartItem[]>([]);
+  const [selectedProduct, setSelectedProduct] = useState<Product | null>(initialDraft?.selectedProduct ?? null);
+  const [qty, setQty] = useState(initialDraft?.qty ?? "");
+  const [saleUnit, setSaleUnit] = useState<"unit" | "pack">(initialDraft?.saleUnit ?? "unit");
+  const [cart, setCart] = useState<SaleCartItem[]>(initialDraft?.cart ?? []);
   const [editingCartKey, setEditingCartKey] = useState<string | null>(null);
   const [editingCartQty, setEditingCartQty] = useState("");
   const [expiryBlock, setExpiryBlock] = useState<{ batchId: string; daysLeft: number } | null>(null);
   const [stockLimit, setStockLimit] = useState<{ product: Product; requested: number; available: number } | null>(null);
   const [confirmDialog, setConfirmDialog] = useState(false);
-  const [applyDiscount, setApplyDiscount] = useState(false);
-  const [customerExemptionType, setCustomerExemptionType] = useState<CustomerExemptionType>("Senior Citizen");
-  const [customerIdNumber, setCustomerIdNumber] = useState("");
+  const [applyDiscount, setApplyDiscount] = useState(initialDraft?.applyDiscount ?? false);
+  const [customerExemptionType, setCustomerExemptionType] = useState<CustomerExemptionType>(initialDraft?.customerExemptionType ?? "Senior Citizen");
+  const [customerIdNumber, setCustomerIdNumber] = useState(initialDraft?.customerIdNumber ?? "");
 
   const qtyNum = parseInt(qty) || 0;
   const quantityInputRef = React.useRef<HTMLInputElement>(null);
@@ -1420,7 +1829,15 @@ export function NewSaleModal({
   const packPrice = selectedProduct?.packPrice ?? null;
   const selectedPrice = saleUnit === "pack" && packPrice != null ? packPrice : saleUnit === "pack" ? unitPrice * unitsPerPack : unitPrice;
   const shelfTotal = roundCurrency(selectedPrice * qtyNum);
-  const taxBreakdown = selectedProduct ? computeTax(shelfTotal, false) : null;
+  const singleDiscountBase = applyDiscount ? roundCurrency(shelfTotal / 1.12) : 0;
+  const singleVatRemoved = applyDiscount ? roundCurrency(shelfTotal - singleDiscountBase) : 0;
+  const singleDiscountAmount = applyDiscount ? roundCurrency(singleDiscountBase * 0.2) : 0;
+  const singleNetTotal = applyDiscount ? roundCurrency(singleDiscountBase - singleDiscountAmount) : shelfTotal;
+  const taxBreakdown = selectedProduct
+    ? (applyDiscount
+        ? { preTax: singleDiscountBase, tax: 0, total: singleNetTotal, rate: 0, isExempt: true }
+        : computeTax(shelfTotal, false))
+    : null;
   const customerVatExempt = applyDiscount;
   const customerExemptionMissing = applyDiscount && customerIdNumber.trim() === "";
 
@@ -1562,10 +1979,39 @@ export function NewSaleModal({
       status: "completed", productId: first.product.id, note,
     };
     onAdd(tx, first.product.id, salePayload[0]?.qty ?? 0, first.saleQty, first.saleUnit, salePayload);
+    onDiscardDraft?.();
+    onClose();
+  };
+
+  const hasDraftContent = cart.length > 0 || (selectedProduct !== null && qtyNum > 0);
+  const buildDraft = (): SaleDraftState => ({
+    cart,
+    selectedProduct,
+    qty,
+    saleUnit,
+    applyDiscount,
+    customerExemptionType,
+    customerIdNumber,
+  });
+
+  const handleMinimizeToHub = () => {
+    if (onMinimize && hasDraftContent) {
+      onMinimize(buildDraft());
+    } else {
+      onDiscardDraft?.();
+    }
+    onClose();
+  };
+
+  const handleCancelSale = () => {
+    onDiscardDraft?.();
     onClose();
   };
 
   const handleGoToInventory = () => {
+    if (onMinimize && hasDraftContent) {
+      onMinimize(buildDraft());
+    }
     onClose();
     onGoToInventory();
   };
@@ -1577,7 +2023,7 @@ export function NewSaleModal({
           title="Confirm Sale?"
           message={
             <span>
-              {cart.length > 0 ? `${cart.length} product${cart.length !== 1 ? "s" : ""}` : "1 product"} · Total <span className="font-semibold text-foreground">{fmt(cart.length > 0 ? cartTotal : shelfTotal)}</span>. Stock will be deducted once confirmed.
+              {cart.length > 0 ? `${cart.length} product${cart.length !== 1 ? "s" : ""}` : "1 product"} · Total <span className="font-semibold text-foreground">{fmt(cart.length > 0 ? cartTotal : singleNetTotal)}</span>. Stock will be deducted once confirmed.
             </span>
           }
           confirmLabel="Complete Sale"
@@ -1585,7 +2031,6 @@ export function NewSaleModal({
           variant="info"
           onConfirm={doSubmit}
           onCancel={() => setConfirmDialog(false)}
-          forceModal
         />
       )}
       {stockLimit && (
@@ -1621,21 +2066,23 @@ export function NewSaleModal({
           canManage={canManage}
         />
       )}
-    <Modal title="New Sale" onClose={onClose} wide hideCloseButton>
+    <Modal title="New Sale" onClose={handleMinimizeToHub} wide hideCloseButton>
       <form noValidate onSubmit={handleSubmit} className="space-y-4">
         <div className="grid gap-4 lg:grid-cols-[minmax(0,1.6fr)_minmax(260px,0.9fr)] lg:items-start">
           <div className="space-y-4">
             <ProductSearchWidget inventory={inventory} onSelect={handleSelect} selectedProduct={selectedProduct} />
             {selectedProduct && (
-              <div className="grid grid-cols-2 gap-2">
-                {(["unit", "pack"] as const).map(mode => (
-                  <button key={mode} type="button" disabled={mode === "pack" && unitsPerPack <= 1}
-                    onClick={() => setSaleUnit(mode)}
-                    className={`rounded-lg border px-3 py-2 text-sm font-semibold transition-colors ${saleUnit === mode ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground"} disabled:opacity-40`}>
-                    {mode === "unit" ? `1 ${selectedProduct.unitLabel ?? "unit"}` : `1 pack/box (${unitsPerPack} units)`}
-                  </button>
-                ))}
-              </div>
+              <SegmentedTabs
+                fullWidth
+                ariaLabel="Sale unit mode"
+                value={saleUnit}
+                onChange={setSaleUnit}
+                buttonClassName="py-2 text-sm"
+                items={[
+                  { id: "unit", label: `1 ${selectedProduct.unitLabel ?? "unit"}` },
+                  { id: "pack", label: `1 pack/box (${unitsPerPack} units)`, disabled: unitsPerPack <= 1 },
+                ]}
+              />
             )}
             <div>
               <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Quantity</label>
@@ -1658,15 +2105,15 @@ export function NewSaleModal({
             {cart.length > 0 && (
               <div className="space-y-2 rounded-xl border border-border bg-muted/20 p-3">
                 <div className="flex items-center justify-between">
-                  <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Sale cart</p>
-                  <p className="text-xs font-semibold text-foreground">{fmt(cartTotal)}</p>
+                  <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Sale cart · {cart.length} {cart.length === 1 ? "item" : "items"}</p>
+                  <p className="text-xs font-semibold tabular-nums text-foreground">{fmt(cartTotal)}</p>
                 </div>
                 {cart.map(item => {
                   const key = `${item.product.id}-${item.saleUnit}`;
                   const line = getCartLineAmounts(item);
                   const isEditing = editingCartKey === key;
                   return (
-                    <div key={key} className="space-y-1.5 rounded-lg border border-border bg-background px-3 py-2.5">
+                    <div key={key} className="st-cart-item-in space-y-1.5 rounded-lg border border-border bg-background px-3 py-2.5 transition-shadow hover:shadow-xs">
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
                           {item.product.barcode && <p className="truncate text-[10px] font-semibold text-primary">{item.product.barcode}</p>}
@@ -1727,7 +2174,20 @@ export function NewSaleModal({
             <div className="border border-border rounded-xl px-4 py-3 space-y-3 bg-muted/20">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-xs font-semibold text-foreground">SC / PWD Discount</p>
+                  <div className="flex items-center gap-1.5">
+                    <p className="text-xs font-semibold text-foreground">SC / PWD Discount</p>
+                    <InfoTip
+                      title="SC / PWD Discount Rule"
+                      color="amber"
+                      lines={[
+                        "Applies Philippine Senior Citizen and PWD VAT-exemption pricing to all items in this sale.",
+                        { label: "Formula", value: "(Price ÷ 1.12) × 0.80" },
+                        { label: "Step 1 · Less VAT", value: "Removes 12% standard VAT from shelf price" },
+                        { label: "Step 2 · 20% Off", value: "Applies 20% discount on the VAT-exempt base" },
+                        { label: "Requirement", value: "Valid SC or PWD ID number must be recorded" },
+                      ]}
+                    />
+                  </div>
                   <p className="mt-0.5 text-[10px] text-muted-foreground">Removes VAT + 20% off for all products in this sale.</p>
                 </div>
                 <button type="button" onClick={() => { setApplyDiscount(v => !v); if (applyDiscount) setCustomerIdNumber(""); }}
@@ -1737,7 +2197,7 @@ export function NewSaleModal({
                 </button>
               </div>
               {applyDiscount && (
-                <div className="space-y-2">
+                <div className="st-reveal-in space-y-2">
                   <div>
                     <label className="block text-[10px] text-muted-foreground mb-1">ID Type</label>
                     <select value={customerExemptionType} onChange={e => setCustomerExemptionType(e.target.value as CustomerExemptionType)}
@@ -1761,16 +2221,29 @@ export function NewSaleModal({
             </div>
 
             {selectedProduct && (
-              <button type="button" onClick={addCurrentToCart} className="w-full py-2.5 bg-amber-500 text-white rounded-xl text-sm font-bold hover:opacity-90 transition-opacity disabled:opacity-50" disabled={qtyNum <= 0 || !!expiryBlock}>
+              <button type="button" onClick={addCurrentToCart} className="w-full py-2.5 bg-amber-500 text-white rounded-xl text-sm font-bold hover:opacity-90 transition-all disabled:opacity-50 st-btn" disabled={qtyNum <= 0 || !!expiryBlock}>
                 Add to sale cart
               </button>
             )}
 
             {shelfTotal > 0 && taxBreakdown && (
-              <div className="bg-sky-50 dark:bg-sky-500/10 border border-sky-200 dark:border-sky-500/20 rounded-xl px-4 py-3 space-y-1.5">
-                <p className="text-[10px] font-bold text-sky-700 dark:text-sky-400 uppercase tracking-wide">
-                  Price Breakdown — {applyDiscount ? "SC/PWD Discount Applied" : `${VAT_RATE_LABEL} VAT Inclusive`}
-                </p>
+              <div className={`rounded-xl px-4 py-3 space-y-1.5 border transition-colors duration-200 ${
+                applyDiscount
+                  ? "bg-amber-50/90 dark:bg-amber-500/10 border-amber-200 dark:border-amber-500/25"
+                  : "bg-sky-50 dark:bg-sky-500/10 border-sky-200 dark:border-sky-500/20"
+              }`}>
+                <div className="flex items-center justify-between gap-2">
+                  <p className={`text-[10px] font-bold uppercase tracking-wide ${
+                    applyDiscount ? "text-amber-700 dark:text-amber-300" : "text-sky-700 dark:text-sky-400"
+                  }`}>
+                    Price Breakdown — {applyDiscount ? "SC/PWD Discount Applied" : `${VAT_RATE_LABEL} VAT Inclusive`}
+                  </p>
+                  {applyDiscount && (
+                    <span className="st-reveal-in rounded-full bg-amber-500/15 border border-amber-500/30 px-2 py-0.5 text-[9.5px] font-bold tabular-nums text-amber-700 dark:text-amber-300">
+                      VAT Exempt · −20%
+                    </span>
+                  )}
+                </div>
                 <div className="space-y-1 text-xs">
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">{saleUnit === "pack" ? "Pack/Box Price" : "Unit Price"} × {qtyNum}</span>
@@ -1786,6 +2259,18 @@ export function NewSaleModal({
                       {fmt(taxBreakdown.tax)}
                     </span>
                   </div>
+                  {applyDiscount && (
+                    <>
+                      <div className="flex justify-between text-amber-600 dark:text-amber-400">
+                        <span>VAT Removed</span>
+                        <span className="tabular-nums">-{fmt(singleVatRemoved)}</span>
+                      </div>
+                      <div className="flex justify-between text-amber-600 dark:text-amber-400">
+                        <span>SC/PWD Discount (20%)</span>
+                        <span className="tabular-nums">-{fmt(singleDiscountAmount)}</span>
+                      </div>
+                    </>
+                  )}
                   <div className="border-t border-sky-200 dark:border-sky-500/30 pt-1.5 flex justify-between font-bold">
                     <span className="text-foreground">Total</span>
                     <span className="tabular-nums text-primary text-base">{fmt(taxBreakdown.total)}</span>
@@ -1797,10 +2282,16 @@ export function NewSaleModal({
         </div>
 
         <div className="flex gap-3 pt-2">
-          <button type="button" onClick={onClose} className="flex-1 py-2.5 border border-border rounded-xl text-sm font-semibold text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-all">Cancel</button>
+          <button type="button" onClick={handleCancelSale} className="flex-1 py-2.5 border border-border rounded-xl text-sm font-semibold text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-all">Cancel</button>
+          {onMinimize && hasDraftContent && (
+            <button type="button" onClick={handleMinimizeToHub}
+              className="px-4 py-2.5 border border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 rounded-xl text-sm font-semibold hover:bg-emerald-500/15 transition-all">
+              Pause in Hub
+            </button>
+          )}
           <button type="submit"
             disabled={!canConfirmSale}
-            className="flex-1 py-2.5 bg-primary text-primary-foreground rounded-xl text-sm font-bold hover:opacity-90 transition-opacity disabled:opacity-50">
+            className="flex-1 py-2.5 bg-primary text-primary-foreground rounded-xl text-sm font-bold hover:opacity-90 transition-all disabled:opacity-50 st-btn">
             Confirm Sale
           </button>
         </div>
@@ -1924,7 +2415,6 @@ export function ReturnModal({
         variant="warning"
         onConfirm={() => void doSubmitReturn()}
         onCancel={() => setConfirmReturn(false)}
-        forceModal
       />
     )}
     </>
@@ -2016,11 +2506,18 @@ export function UserFormModal({
     password: "",
   });
   const [showPassword, setShowPassword] = React.useState(false);
-  const set = (k: "name" | "email" | "status" | "password") => (v: string) => setForm(f => ({ ...f, [k]: v }));
-  const toggleRole = (role: string) => setForm(f => ({
-    ...f,
-    roles: f.roles.includes(role) ? f.roles.filter(r => r !== role) : [...f.roles, role],
-  }));
+  const [formError, setFormError] = React.useState("");
+  const set = (k: "name" | "email" | "status" | "password") => (v: string) => {
+    setFormError("");
+    setForm(f => ({ ...f, [k]: v }));
+  };
+  const toggleRole = (role: string) => {
+    setFormError("");
+    setForm(f => ({
+      ...f,
+      roles: f.roles.includes(role) ? f.roles.filter(r => r !== role) : [...f.roles, role],
+    }));
+  };
 
   // Dynamically map all role labels (system + custom roles from database)
   const roleLabelsMap = React.useMemo(() => {
@@ -2043,30 +2540,65 @@ export function UserFormModal({
   }, [currentUserRoles, initial]);
 
   const roleOptions = (
-    <div className="space-y-2 rounded-lg border border-border p-3">
-      {availableRoleIds.map(role => (
-        <label key={role} className="flex items-center gap-2 text-sm text-foreground">
-          <input
-            type="checkbox"
-            checked={form.roles.includes(role)}
-            onChange={() => toggleRole(role)}
-            className="h-4 w-4 rounded border-border accent-primary"
-          />
-          <span>{roleLabelsMap[role] ?? role}</span>
-          {role === "admin" && <span className="text-[10px] text-muted-foreground">Owner only</span>}
-        </label>
-      ))}
+    <div className="rounded-2xl border border-border/70 bg-card divide-y divide-border/50 overflow-hidden">
+      {availableRoleIds.map(role => {
+        const selected = form.roles.includes(role);
+        return (
+          <label
+            key={role}
+            className={`flex items-center justify-between gap-3 px-3.5 py-2.5 cursor-pointer transition-colors ${
+              selected ? "bg-primary/5" : "hover:bg-muted/25"
+            }`}
+          >
+            <div className="flex items-center gap-2 min-w-0">
+              <span className="text-xs font-semibold text-foreground">{roleLabelsMap[role] ?? role}</span>
+              {role === "admin" && (
+                <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+                  Owner only
+                </span>
+              )}
+            </div>
+            <div className="relative shrink-0">
+              <input
+                type="checkbox"
+                checked={selected}
+                onChange={() => toggleRole(role)}
+                className="sr-only"
+              />
+              <div
+                aria-hidden="true"
+                className={`w-9 h-5 rounded-full p-0.5 transition-colors ${
+                  selected ? "bg-primary" : "bg-muted-foreground/30"
+                }`}
+              >
+                <div
+                  className={`w-4 h-4 rounded-full bg-white shadow-sm transition-transform ${
+                    selected ? "translate-x-4" : "translate-x-0"
+                  }`}
+                />
+              </div>
+            </div>
+          </label>
+        );
+      })}
     </div>
   );
+
+  const errorNotice = formError ? (
+    <div className="flex items-center gap-2 rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs text-red-600 dark:text-red-400">
+      <AlertTriangle size={13} className="shrink-0" />
+      <span>{formError}</span>
+    </div>
+  ) : null;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (form.roles.length === 0) {
-      alert("Select at least one role.");
+      setFormError("Select at least one role.");
       return;
     }
     if (!isEdit && form.password.trim().length < 6) {
-      alert("Password must be at least 6 characters.");
+      setFormError("Password must be at least 6 characters.");
       return;
     }
     const updated: import("./data").StaffMember = {
@@ -2088,26 +2620,24 @@ export function UserFormModal({
     return (
       <Modal title="Edit User" onClose={onClose} hideCloseButton>
         <form onSubmit={handleSubmit} className="space-y-4">
-          {/* Read-only info */}
-          {[
-            { label: "Full Name",     value: initial.name },
-            { label: "Email Address", value: initial.email },
-          ].map(({ label, value }) => (
-            <div key={label}>
-              <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">{label}</label>
-              <div className="w-full bg-muted/40 border border-border rounded-lg px-3 py-2.5 text-sm text-foreground/60 select-text">
-                {value}
-              </div>
+          {/* Contact summary header */}
+          <div className="flex items-center gap-3 rounded-2xl border border-border/70 bg-muted/25 p-3.5">
+            <div className="w-10 h-10 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center text-xs font-semibold text-primary shrink-0">
+              {initial.initials}
             </div>
-          ))}
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-foreground truncate">{initial.name}</p>
+              <p className="text-xs text-muted-foreground truncate">{initial.email}</p>
+            </div>
+          </div>
 
-          <div>
-            <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">Roles</label>
+          <div className="space-y-1.5">
+            <label className="block text-[11px] font-medium text-muted-foreground">Assigned Roles</label>
             {roleOptions}
           </div>
 
           <FieldSelect
-            label="Status"
+            label="Account Status"
             value={form.status}
             onChange={set("status")}
             options={["active", "inactive"]}
@@ -2115,13 +2645,15 @@ export function UserFormModal({
             placeholder="Select status"
           />
 
-          <div className="flex gap-3 pt-2">
+          {errorNotice}
+
+          <div className="flex items-center justify-end gap-2 pt-2">
             <button type="button" onClick={onClose}
-              className="flex-1 py-2.5 border border-border rounded-xl text-sm font-semibold text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-all">
+              className="rounded-full border border-border/80 px-4 py-2 text-xs font-semibold text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-all">
               Cancel
             </button>
             <button type="submit"
-              className="flex-1 py-2.5 bg-primary text-primary-foreground rounded-xl text-sm font-bold hover:opacity-90 transition-opacity">
+              className="rounded-full bg-primary px-5 py-2 text-xs font-semibold text-primary-foreground shadow-sm hover:opacity-95 transition-opacity">
               Save Changes
             </button>
           </div>
@@ -2135,15 +2667,15 @@ export function UserFormModal({
     <Modal title="Add New User" onClose={onClose} hideCloseButton>
       <form onSubmit={handleSubmit} className="space-y-4">
         <FieldInput label="Full Name" value={form.name} onChange={set("name")} placeholder="e.g. Juan Dela Cruz" required />
-        
-        <div>
-          <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">Roles</label>
+
+        <div className="space-y-1.5">
+          <label className="block text-[11px] font-medium text-muted-foreground">Assigned Roles</label>
           {roleOptions}
-          <p className="mt-1 text-[11px] text-muted-foreground">The user receives access from all selected roles.</p>
+          <p className="text-[11px] text-muted-foreground">The user receives access from all selected roles.</p>
         </div>
 
         <FieldInput label="Email Address" type="email" value={form.email} onChange={set("email")} placeholder="user@tangub.ph" required />
-        <FieldSelect label="Status" value={form.status} onChange={set("status")} options={["active", "inactive"]} required placeholder="Select status" />
+        <FieldSelect label="Account Status" value={form.status} onChange={set("status")} options={["active", "inactive"]} required placeholder="Select status" />
 
         {/* Password */}
         <div className="space-y-1.5">
@@ -2158,7 +2690,7 @@ export function UserFormModal({
               placeholder="Min. 6 characters"
               required
               minLength={6}
-              className="w-full rounded-xl border border-border bg-background px-3 py-2.5 pr-10 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all"
+              className="w-full rounded-xl border border-border/80 bg-background/80 px-3.5 py-2.5 pr-10 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/25 focus:border-primary transition-all"
             />
             <button
               type="button"
@@ -2173,13 +2705,15 @@ export function UserFormModal({
           <p className="text-[11px] text-muted-foreground">The user will log in with this password.</p>
         </div>
 
-        <div className="flex gap-3 pt-2">
+        {errorNotice}
+
+        <div className="flex items-center justify-end gap-2 pt-2">
           <button type="button" onClick={onClose}
-            className="flex-1 py-2.5 border border-border rounded-xl text-sm font-semibold text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-all">
+            className="rounded-full border border-border/80 px-4 py-2 text-xs font-semibold text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-all">
             Cancel
           </button>
           <button type="submit"
-            className="flex-1 py-2.5 bg-primary text-primary-foreground rounded-xl text-sm font-bold hover:opacity-90 transition-opacity">
+            className="rounded-full bg-primary px-5 py-2 text-xs font-semibold text-primary-foreground shadow-sm hover:opacity-95 transition-opacity">
             Add User
           </button>
         </div>
@@ -2616,8 +3150,8 @@ export function InvoiceModal({ tx, settings, inventory, onClose }: {
       <div class="center bold">${header}</div>
       <div class="dashes"></div>
       <div class="row"><span>OR No.:</span><span>${escapeReceiptHtml(receiptNumber)}</span></div>
-      <div class="row"><span>Date:</span><span>${tx.date}</span></div>
-      <div class="row"><span>Cashier:</span><span>${tx.staff}</span></div>
+      <div class="row"><span>Date:</span><span>${escapeReceiptHtml(tx.date)}</span></div>
+      <div class="row"><span>Cashier:</span><span>${escapeReceiptHtml(tx.staff)}</span></div>
       <div class="dashes"></div>
       <div class="row bold"><span>ITEM</span><span>AMT</span></div>
       <div class="dashes"></div>
@@ -2640,7 +3174,7 @@ export function InvoiceModal({ tx, settings, inventory, onClose }: {
       <div class="row bold"><span>${tx.type === "return" ? "TOTAL REFUND" : "TOTAL AMOUNT DUE"}</span><span>${P}${tx.amount.toFixed(2)}</span></div>
       <div class="dashes"></div>
       ${customerExemptionHtml}
-      ${tx.type === "return" && tx.note ? `<div class="bold">Return Reason:</div><div style="word-break:break-word">${tx.note}</div><div class="dashes"></div>` : ""}
+      ${tx.type === "return" && tx.note ? `<div class="bold">Return Reason:</div><div style="word-break:break-word">${escapeReceiptHtml(tx.note)}</div><div class="dashes"></div>` : ""}
       <div class="center small" style="margin-top:4px">This serves as your Official Receipt</div>
       <div class="center small">Thank you for your patronage!</div>
     </div></body></html>`);
@@ -2915,13 +3449,12 @@ export function YouTubeTopLoader({ active }: { active: boolean }) {
       aria-hidden="true"
     >
       <div
-        className="h-full bg-gradient-to-r from-blue-600 via-sky-400 to-teal-300 transition-all duration-200 ease-out relative"
+        className="h-full w-full origin-left bg-gradient-to-r from-blue-600 via-sky-400 to-teal-300 transition-transform duration-200 ease-out relative will-change-transform"
         style={{
-          width: `${progress}%`,
-          boxShadow: "0 0 10px #38bdf8, 0 0 5px #2563eb",
+          transform: `scaleX(${Math.max(0, Math.min(1, progress / 100))})`,
         }}
       >
-        <div className="absolute right-0 top-0 bottom-0 w-24 bg-gradient-to-r from-transparent to-white/90 shadow-[0_0_12px_#38bdf8]" />
+        <div className="absolute right-0 top-0 bottom-0 w-24 bg-gradient-to-r from-transparent to-white/90" />
       </div>
     </div>
   );
@@ -2934,7 +3467,7 @@ export function YouTubeAppSkeleton({ message = "Synchronizing pharmacy operation
       <YouTubeTopLoader active={true} />
 
       {/* Top Navbar Skeleton (YouTube/Island Header) */}
-      <header className="border-b border-border/70 bg-card/60 px-4 sm:px-8 py-3.5 flex items-center justify-between gap-4">
+      <header className="border-b border-border/70 bg-card/60 st-shell-px py-3.5 flex items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           <div className="yt-shimmer-box h-8 w-28 rounded-xl" />
           <div className="hidden sm:block yt-shimmer-box h-6 w-20 rounded-full" />
@@ -2950,7 +3483,7 @@ export function YouTubeAppSkeleton({ message = "Synchronizing pharmacy operation
       </header>
 
       {/* Main Skeleton Layout */}
-      <main className="flex-1 w-full max-w-[1400px] mx-auto p-4 sm:p-6 lg:p-8 space-y-6">
+      <main className="flex-1 w-full st-shell-px py-4 sm:py-6 lg:py-8 space-y-6">
         {/* Navigation Tabs Pill Skeleton */}
         <div className="flex flex-wrap items-center gap-2">
           {[80, 110, 95, 120, 85, 90].map((w, i) => (
@@ -3007,7 +3540,7 @@ export function YouTubeAppSkeleton({ message = "Synchronizing pharmacy operation
 
         {/* Bottom Status Indicator */}
         <div className="flex items-center justify-center gap-2 pt-2 text-xs text-muted-foreground">
-          <span className="h-2 w-2 rounded-full bg-primary animate-ping" />
+          <span className="h-2 w-2 rounded-full bg-primary animate-ping motion-reduce:animate-none" />
           <span>{message}</span>
         </div>
       </main>

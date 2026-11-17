@@ -1,12 +1,30 @@
-import { useState, useEffect, useMemo, useCallback, useRef } from "react";
+import { memo, startTransition, useState, useEffect, useLayoutEffect, useMemo, useCallback, useRef } from "react";
 import {
   LayoutDashboard, Package, ShoppingCart, BarChart2, Users,
   Bell, Search, Shield,
   Moon, Sun, Settings, BellRing, ClipboardList, Landmark,
-  X, ArrowRight, RefreshCw, Cloud, Copy, ClipboardCheck, Truck,
+  X, RefreshCw, ClipboardCheck, Truck,
   ChevronDown, ChevronLeft, ChevronRight, Menu, Activity, Trash2, AlertTriangle, Bot, Info, Maximize2,
-  Database,
+  Database, Plus, Check, PanelLeft, Type, Rows3, Sparkles, Palette,
 } from "lucide-react";
+import {
+  FONT_SCALE_OPTIONS,
+  TABLE_DENSITY_OPTIONS,
+  readFontScale,
+  saveFontScale,
+  readTableDensity,
+  saveTableDensity,
+  readReduceMotionPreference,
+  saveReduceMotionPreference,
+  readMutedColors,
+  saveMutedColors,
+  readShowAlertOrb,
+  saveShowAlertOrb,
+  applyDisplayPreferences,
+  type FontScale,
+  type TableDensity,
+  type ReduceMotionPreference,
+} from "./preferences";
 import {
   sortBatchesByExpiry, normalizeProduct, groupCartTransactions,
   hasUserRole, ROLE_LABELS,
@@ -17,11 +35,12 @@ import {
   Modal, DeleteConfirmModal, ConfirmDialog, useIslandConfirm,
   NotificationPanel, ProductFormModal, NewSaleModal, ReturnModal,
   InventoryAdjustmentModal, UserFormModal, InvoiceModal, UserInfoModal, ResetPasswordModal,
-  initials, InfoTip, YouTubeTopLoader, YouTubeAppSkeleton,
+  initials, InfoTip, YouTubeTopLoader, YouTubeAppSkeleton, fmt,
+  type SaleDraftState,
 } from "./shared";
 import {
   productsApi, categoriesApi, transactionsApi, returnRequestsApi, dashboardApi,
-  usersApi, notificationsApi, receiptSettingsApi, rolesApi, activeRoleStore,
+  usersApi, notificationsApi, receiptSettingsApi, rolesApi, activeRoleStore, clearApiCache,
   type CashierDashboardSummary,
   type ReceiptSettings,
 } from "./api";
@@ -40,6 +59,596 @@ import { DatabaseBackupModal } from "./database-backup-modal";
 
 const SMARTTRACK_LOGO_URL = `${import.meta.env.BASE_URL}smarttrack-mark.png`;
 
+const TRACKHUB_TILE_STYLE = {
+  box: "bg-blue-500/12 border-blue-400/22 group-hover:bg-blue-500/20 group-hover:border-blue-400/35",
+  activeBox: "bg-blue-500/25 border-blue-400/45 shadow-[0_0_12px_rgba(59,130,246,0.28)]",
+  icon: "text-blue-400 group-hover:text-blue-300",
+} as const;
+
+const SETTINGS_ROW_ICON_CLASS =
+  "flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg bg-foreground/[0.06] text-foreground/75";
+
+function SettingsSwitch({
+  checked,
+  label,
+  onToggle,
+}: {
+  checked: boolean;
+  label: string;
+  onToggle: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={label}
+      onClick={onToggle}
+      className={`relative h-6 w-11 flex-shrink-0 rounded-full shadow-inner transition-colors duration-200 ease-out active:scale-[0.98] motion-reduce:transition-none ${
+        checked ? "bg-primary shadow-[0_0_10px_rgba(59,130,246,0.22)]" : "bg-muted-foreground/30"
+      }`}
+    >
+      <span
+        className={`absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-white shadow-sm transition-transform duration-200 ease-out motion-reduce:transition-none ${
+          checked ? "translate-x-5" : "translate-x-0"
+        }`}
+      />
+    </button>
+  );
+}
+
+const TrackHubMiniaturePreview = memo(function TrackHubMiniaturePreview({ userInitials }: { userInitials: string }) {
+  return (
+    <div className="relative w-full aspect-[16/10] rounded-xl overflow-hidden border border-border/80 bg-[#f8fafc] dark:bg-[#0b1220] shadow-xs pointer-events-none select-none">
+      {/* Actual TrackHub Topbar */}
+      <div className="relative h-8 border-b border-slate-200/90 dark:border-slate-800 bg-white dark:bg-[#111827] px-2 flex items-center justify-between">
+        <div className="flex items-center gap-1 min-w-0">
+          <img src={SMARTTRACK_LOGO_URL} alt="" className="w-3.5 h-3.5 object-contain flex-shrink-0" />
+          <span className="flex h-3.5 w-3.5 items-center justify-center rounded-full border border-blue-500/45 bg-slate-50 dark:bg-slate-900">
+            <Search size={6.5} className="text-blue-500" />
+          </span>
+        </div>
+
+        {/* Centered Obsidian TrackHub Pill + Separated Store Monitor Orb */}
+        <div className="absolute left-1/2 -translate-x-1/2 flex items-center gap-1">
+          <div
+            className="flex items-center gap-1 rounded-full bg-black border border-white/20 px-1.5 py-0.5 shadow-md"
+            style={{ boxShadow: "inset 0 1px 0 rgba(255,255,255,0.28), 0 3px 10px rgba(0,0,0,0.3)" }}
+          >
+            <span className="flex items-center gap-0.5 rounded-full bg-white/[0.1] px-1 py-0.5 text-[6px] font-semibold text-white/90">
+              <Bot size={7} className="text-blue-300" />
+              <span>Assistant</span>
+            </span>
+            <span className="h-2.5 w-px bg-white/15" />
+            <span className="flex h-3.5 w-3.5 items-center justify-center rounded bg-blue-500/20 border border-blue-400/35">
+              <LayoutDashboard size={7} className="text-blue-400" />
+            </span>
+            <span className="text-[6.5px] font-semibold text-white leading-none pr-0.5">Dashboard</span>
+            <span className="flex h-2.5 w-2.5 items-center justify-center rounded-full bg-white/10 text-white/60">
+              <ChevronDown size={6} />
+            </span>
+          </div>
+
+          {/* Detached Store Stock Monitor Orb */}
+          <div
+            className="flex items-center gap-0.5 rounded-full bg-black border border-white/20 px-1.5 py-1 shadow-md"
+            style={{ boxShadow: "inset 0 1px 0 rgba(255,255,255,0.25), 0 3px 8px rgba(0,0,0,0.25)" }}
+          >
+            <AlertTriangle size={6.5} className="text-rose-400" />
+            <span className="text-[6px] font-bold text-rose-300 leading-none">Stock · 4</span>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-1">
+          <span className="w-3 h-3 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center">
+            <Bell size={6} className="text-slate-500" />
+          </span>
+          <span className="w-3.5 h-3.5 rounded-full bg-blue-500/15 text-blue-600 dark:text-blue-300 flex items-center justify-center text-[5.5px] font-bold">
+            {userInitials}
+          </span>
+        </div>
+      </div>
+
+      {/* Full-Width Workspace Canvas Below */}
+      <div className="p-2.5 space-y-2 h-[calc(100%-2rem)] flex flex-col">
+        <div className="flex items-center justify-between">
+          <div className="space-y-1">
+            <div className="h-2 w-20 rounded bg-slate-800/80 dark:bg-slate-200/80" />
+            <div className="h-1 w-28 rounded bg-slate-300 dark:bg-slate-700" />
+          </div>
+          <div className="h-3 w-12 rounded-md bg-blue-600/90" />
+        </div>
+        <div className="grid grid-cols-3 gap-1.5">
+          {[
+            { accent: "bg-blue-500", w: "w-10" },
+            { accent: "bg-emerald-500", w: "w-12" },
+            { accent: "bg-amber-500", w: "w-9" },
+          ].map((c, idx) => (
+            <div key={idx} className="rounded-lg border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-[#111827] p-1.5 space-y-1">
+              <div className="flex items-center justify-between">
+                <div className="h-1 w-8 rounded bg-slate-300 dark:bg-slate-700" />
+                <span className={`w-1.5 h-1.5 rounded-full ${c.accent}`} />
+              </div>
+              <div className={`h-2 ${c.w} rounded bg-slate-800/75 dark:bg-slate-200/80`} />
+              <div className="h-1 w-11 rounded bg-slate-200 dark:bg-slate-800" />
+            </div>
+          ))}
+        </div>
+        <div className="grid grid-cols-[1.5fr_1fr] gap-1.5 flex-1 min-h-0">
+          <div className="rounded-lg border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-[#111827] p-1.5 flex flex-col justify-between">
+            <div className="h-1.5 w-16 rounded bg-slate-400/60" />
+            <svg viewBox="0 0 120 32" className="w-full h-7 overflow-visible">
+              <path d="M2,24 C20,22 36,12 56,14 C72,16 82,22 92,20" fill="none" stroke="#2563eb" strokeWidth="2" strokeLinecap="round" />
+              <path d="M92,20 C102,17 110,12 118,11" fill="none" stroke="#0d9488" strokeWidth="1.8" strokeDasharray="3 2.5" strokeLinecap="round" />
+            </svg>
+          </div>
+          <div className="rounded-lg border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-[#111827] p-1.5 flex flex-col justify-center gap-1.5">
+            <div className="h-1.5 w-full rounded-full bg-teal-500/80" />
+            <div className="h-1.5 w-4/5 rounded-full bg-cyan-500/80" />
+            <div className="h-1.5 w-3/5 rounded-full bg-violet-500/80" />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+});
+
+const ClassicBarMiniaturePreview = memo(function ClassicBarMiniaturePreview({
+  userInitials,
+  roleLabel,
+}: {
+  userInitials: string;
+  roleLabel: string;
+}) {
+  return (
+    <div className="relative w-full aspect-[16/10] rounded-xl overflow-hidden border border-border/80 bg-[#f8fafc] dark:bg-[#0b1220] shadow-xs flex pointer-events-none select-none">
+      {/* Exact Dark Navy Gradient Sidebar */}
+      <div
+        className="w-[31%] h-full flex flex-col justify-between p-1.5 border-r border-white/[0.08]"
+        style={{ background: "linear-gradient(180deg, #0b1528 0%, #060b14 100%)" }}
+      >
+        <div>
+          <div className="flex items-center gap-1 pb-1.5 border-b border-white/[0.08]">
+            <img src={SMARTTRACK_LOGO_URL} alt="" className="w-3 h-3 object-contain flex-shrink-0" />
+            <span className="text-[7px] font-bold text-white truncate">SmartTrack</span>
+          </div>
+          <div className="mt-1.5 flex items-center gap-1 rounded bg-blue-500/15 border border-white/[0.06] px-1.5 py-0.5">
+            <Shield size={6.5} className="text-blue-300 flex-shrink-0" />
+            <span className="text-[5.5px] font-bold text-blue-200 truncate">{roleLabel}</span>
+          </div>
+          <div className="mt-1.5 space-y-0.5">
+            <div className="flex items-center gap-1 rounded-md bg-blue-600/25 border border-blue-400/35 px-1.5 py-0.5">
+              <LayoutDashboard size={6.5} className="text-blue-200" />
+              <span className="text-[6px] font-bold text-blue-200">Dashboard</span>
+            </div>
+            <div className="flex items-center justify-between px-1.5 py-0.5 text-white/55">
+              <span className="flex items-center gap-1"><Package size={6.5} /><span className="text-[6px]">Inventory</span></span>
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+            </div>
+            <div className="flex items-center gap-1 px-1.5 py-0.5 text-white/55">
+              <BellRing size={6.5} /><span className="text-[6px]">Stock Alerts</span>
+            </div>
+            <div className="flex items-center gap-1 px-1.5 py-0.5 text-white/55">
+              <ShoppingCart size={6.5} /><span className="text-[6px]">Transactions</span>
+            </div>
+            <div className="flex items-center gap-1 px-1.5 py-0.5 text-white/55">
+              <BarChart2 size={6.5} /><span className="text-[6px]">Analytics</span>
+            </div>
+          </div>
+        </div>
+
+        <div className="pt-1 border-t border-white/[0.08] space-y-1">
+          <div className="flex items-center gap-1 rounded bg-white/[0.04] px-1.5 py-0.5">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 flex-shrink-0" />
+            <span className="text-[5.5px] font-medium text-white/75 truncate">Active Station</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Right Content Panel */}
+      <div className="flex-1 min-w-0 flex flex-col">
+        <div className="h-7 border-b border-slate-200/90 dark:border-slate-800 bg-white dark:bg-[#111827] px-2 flex items-center justify-between">
+          <div className="flex items-center gap-1 rounded-full border border-blue-500/45 bg-slate-50 dark:bg-slate-900 px-1.5 py-0.5 w-24">
+            <Search size={6.5} className="text-blue-500" />
+            <span className="text-[6px] text-slate-400">Search…</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <span className="w-3 h-3 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center">
+              <Bell size={6} className="text-slate-500" />
+            </span>
+            <span className="w-3.5 h-3.5 rounded-full bg-blue-500/15 text-blue-600 dark:text-blue-300 flex items-center justify-center text-[5.5px] font-bold">
+              {userInitials}
+            </span>
+          </div>
+        </div>
+
+        <div className="p-2 space-y-1.5 flex-1 flex flex-col">
+          <div className="space-y-1">
+            <div className="h-1.5 w-16 rounded bg-slate-800/80 dark:bg-slate-200/80" />
+            <div className="h-1 w-24 rounded bg-slate-300 dark:bg-slate-700" />
+          </div>
+          <div className="grid grid-cols-3 gap-1">
+            {[
+              { accent: "bg-blue-500" },
+              { accent: "bg-emerald-500" },
+              { accent: "bg-amber-500" },
+            ].map((c, idx) => (
+              <div key={idx} className="rounded-md border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-[#111827] p-1 space-y-1">
+                <div className="flex justify-between items-center">
+                  <div className="h-1 w-6 rounded bg-slate-300 dark:bg-slate-700" />
+                  <span className={`w-1.5 h-1.5 rounded-full ${c.accent}`} />
+                </div>
+                <div className="h-1.5 w-7 rounded bg-slate-800/75 dark:bg-slate-200/80" />
+              </div>
+            ))}
+          </div>
+          <div className="grid grid-cols-[1.35fr_1fr] gap-1 flex-1 min-h-0">
+            <div className="rounded-md border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-[#111827] p-1 flex flex-col justify-between">
+              <div className="h-1 w-10 rounded bg-slate-400/60" />
+              <svg viewBox="0 0 100 28" className="w-full h-6 overflow-visible">
+                <path d="M2,21 C18,19 32,10 48,12 C62,14 70,19 80,17" fill="none" stroke="#2563eb" strokeWidth="2" strokeLinecap="round" />
+                <path d="M80,17 C88,14 93,10 98,9" fill="none" stroke="#0d9488" strokeWidth="1.8" strokeDasharray="3 2.5" strokeLinecap="round" />
+              </svg>
+            </div>
+            <div className="rounded-md border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-[#111827] p-1 flex flex-col justify-center gap-1">
+              <div className="h-1 w-full rounded-full bg-teal-500/80" />
+              <div className="h-1 w-4/5 rounded-full bg-cyan-500/80" />
+              <div className="h-1 w-3/5 rounded-full bg-violet-500/80" />
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+});
+
+function NavigationStyleChoiceModal({
+  open,
+  user,
+  currentMode,
+  askOnLogin,
+  onToggleAskOnLogin,
+  onPrepareTrackHub,
+  onConfirm,
+  onClose,
+}: {
+  open: boolean;
+  user: AuthUser;
+  currentMode: "island" | "sidebar";
+  askOnLogin: boolean;
+  onToggleAskOnLogin: (next: boolean) => void;
+  onPrepareTrackHub?: () => void;
+  onConfirm: (mode: "island" | "sidebar") => void;
+  onClose: () => void;
+}) {
+  const [selected, setSelected] = useState<"island" | "sidebar">(currentMode);
+  const cardRef = useRef<HTMLDivElement>(null);
+  const exitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [morphShell, setMorphShell] = useState<{
+    startTop: number;
+    startCenterX: number;
+    startWidth: number;
+    startHeight: number;
+    dx: number;
+    dy: number;
+    targetWidth: number;
+    active: boolean;
+    fading: boolean;
+  } | null>(null);
+  const [sidebarExitActive, setSidebarExitActive] = useState(false);
+
+  useEffect(() => {
+    if (open) {
+      setSelected(currentMode);
+      setMorphShell(null);
+      setSidebarExitActive(false);
+    }
+    return () => {
+      if (exitTimerRef.current) {
+        clearTimeout(exitTimerRef.current);
+        exitTimerRef.current = null;
+      }
+    };
+  }, [open, currentMode]);
+
+  const isExiting = morphShell !== null || sidebarExitActive;
+
+  const triggerConfirm = useCallback((mode: "island" | "sidebar") => {
+    if (isExiting) return;
+    const reduced = typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (reduced) {
+      onConfirm(mode);
+      return;
+    }
+
+    if (mode === "island") {
+      const rect = cardRef.current?.getBoundingClientRect();
+      onPrepareTrackHub?.();
+      const startTop = rect ? rect.top : Math.max(80, window.innerHeight / 2 - 260);
+      const startCenterX = rect ? rect.left + rect.width / 2 : window.innerWidth / 2;
+      const startWidth = rect ? rect.width : Math.min(790, window.innerWidth - 32);
+      const startHeight = rect ? rect.height : 520;
+
+      // Wait 1 frame so TrackHub mounts at top-center, then glide the morph shell cleanly into a 42px stadium pill
+      window.requestAnimationFrame(() => {
+        const hubEl = document.querySelector("[data-trackhub-target]") as HTMLElement | null;
+        const hubRect = hubEl?.getBoundingClientRect();
+        const targetTop = hubRect ? hubRect.top : 7;
+        const targetCenterX = hubRect ? hubRect.left + hubRect.width / 2 : window.innerWidth / 2;
+        const targetWidth = hubRect ? Math.round(hubRect.width) : 280;
+
+        setMorphShell({
+          startTop,
+          startCenterX,
+          startWidth,
+          startHeight,
+          dx: targetCenterX - startCenterX,
+          dy: targetTop - startTop,
+          targetWidth,
+          active: false,
+          fading: false,
+        });
+
+        window.requestAnimationFrame(() => {
+          setMorphShell(prev => (prev ? { ...prev, active: true } : prev));
+        });
+
+        exitTimerRef.current = setTimeout(() => {
+          setMorphShell(prev => (prev ? { ...prev, fading: true } : prev));
+          exitTimerRef.current = setTimeout(() => onConfirm("island"), 95);
+        }, 430);
+      });
+    } else {
+      setSidebarExitActive(true);
+      exitTimerRef.current = setTimeout(() => onConfirm("sidebar"), 200);
+    }
+  }, [isExiting, onConfirm, onPrepareTrackHub]);
+
+  useEffect(() => {
+    if (!open) return;
+    const handleKey = (e: KeyboardEvent) => {
+      if (isExiting) return;
+      if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+        e.preventDefault();
+        setSelected(e.key === "ArrowLeft" ? "island" : "sidebar");
+      } else if (e.key === "Enter") {
+        e.preventDefault();
+        triggerConfirm(selected);
+      } else if (e.key === "Escape") {
+        e.preventDefault();
+        onClose();
+      }
+    };
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [open, selected, isExiting, triggerConfirm, onClose]);
+
+  if (!open) return null;
+
+  const firstName = user.name.split(" ")[0];
+  const roleLabel = ROLE_LABELS[user.role] ?? user.role;
+
+  return (
+    <div
+      className="fixed inset-0 z-[10002] flex items-center justify-center p-3 sm:p-5 bg-slate-950/50 dark:bg-black/70"
+      style={{
+        opacity: morphShell?.active || sidebarExitActive ? 0 : 1,
+        transition: morphShell?.active ? "opacity 280ms ease" : sidebarExitActive ? "opacity 180ms ease" : "opacity 180ms ease",
+        pointerEvents: isExiting ? "none" : "auto",
+      }}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="nav-style-picker-title"
+    >
+      {/* Isolated childless Pill Morph Shell (gradually narrows & rounds into TrackHub's exact 42px obsidian pill) */}
+      {morphShell && (
+        <div
+          aria-hidden="true"
+          className="fixed pointer-events-none"
+          style={{
+            zIndex: 10003,
+            contain: "strict",
+            backfaceVisibility: "hidden",
+            top: `${morphShell.startTop}px`,
+            left: `${morphShell.startCenterX}px`,
+            width: `${morphShell.active ? morphShell.targetWidth : morphShell.startWidth}px`,
+            height: `${morphShell.active ? 42 : morphShell.startHeight}px`,
+            borderRadius: morphShell.active ? "21px" : "28px",
+            backgroundColor: morphShell.active ? "#000000" : "var(--card, #ffffff)",
+            border: morphShell.active
+              ? "1px solid rgba(255, 255, 255, 0.28)"
+              : "1px solid rgba(148, 163, 184, 0.3)",
+            boxShadow: morphShell.active
+              ? "inset 0 1px 0.5px 0 rgba(255, 255, 255, 0.38), 0 10px 28px rgba(0, 0, 0, 0.36)"
+              : "0 20px 50px rgba(15, 23, 42, 0.25)",
+            transform: morphShell.active
+              ? `translate3d(calc(-50% + ${morphShell.dx}px), ${morphShell.dy}px, 0)`
+              : "translate3d(-50%, 0, 0)",
+            opacity: morphShell.fading ? 0 : 1,
+            transition: [
+              "transform 430ms cubic-bezier(0.22, 1, 0.36, 1)",
+              "width 390ms cubic-bezier(0.2, 1, 0.34, 1)",
+              "height 420ms cubic-bezier(0.22, 1, 0.36, 1)",
+              "border-radius 360ms cubic-bezier(0.22, 1, 0.36, 1)",
+              "background-color 260ms 30ms ease",
+              "border-color 260ms ease",
+              "box-shadow 320ms ease",
+              "opacity 95ms ease",
+            ].join(", "),
+          }}
+        />
+      )}
+
+      <div
+        ref={cardRef}
+        className="relative w-full max-w-[720px] overflow-hidden rounded-[28px] border border-border/80 bg-card shadow-[0_24px_64px_rgba(15,23,42,0.28)] dark:shadow-[0_28px_72px_rgba(0,0,0,0.8)]"
+        style={{
+          transform: sidebarExitActive
+            ? "translate3d(-32px, 0, 0) scale3d(0.97, 0.97, 1)"
+            : "translate3d(0, 0, 0) scale3d(1, 1, 1)",
+          opacity: morphShell ? 0 : sidebarExitActive ? 0 : 1,
+          transition: morphShell
+            ? "opacity 60ms ease"
+            : sidebarExitActive
+            ? "transform 190ms cubic-bezier(0.22, 1, 0.36, 1), opacity 170ms ease"
+            : undefined,
+        }}
+      >
+        {/* Top Welcome Header */}
+        <div className="flex items-start justify-between gap-4 px-6 pt-6 pb-4">
+          <div className="flex items-center gap-3.5 min-w-0">
+            <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-2xl border border-border/70 bg-muted/40 shadow-2xs">
+              <img src={SMARTTRACK_LOGO_URL} alt="SmartTrack" className="h-7 w-7 object-contain" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-[11px] font-medium text-primary">
+                Welcome back, {firstName} · {roleLabel}
+              </p>
+              <h2 id="nav-style-picker-title" className="mt-0.5 text-[19px] font-semibold tracking-tight text-foreground">
+                How would you like to get around?
+              </h2>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                Pick what feels easiest for you — you can change this anytime in Settings.
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close layout picker"
+            title="Keep current layout"
+            className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-muted/60 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground cursor-pointer"
+          >
+            <X size={15} />
+          </button>
+        </div>
+
+        {/* Two Visual Choice Cards */}
+        <div className="grid grid-cols-1 gap-4 px-6 pb-6 sm:grid-cols-2">
+          {/* Option 1: TrackHub */}
+          <button
+            type="button"
+            onClick={() => setSelected("island")}
+            onDoubleClick={() => triggerConfirm("island")}
+            aria-pressed={selected === "island"}
+            style={{ contain: "layout style" }}
+            className={`group flex flex-col rounded-2xl border-2 p-4 text-left transition-colors duration-150 cursor-pointer ${
+              selected === "island"
+                ? "border-primary bg-primary/[0.04]"
+                : "border-border/70 bg-muted/15 hover:border-primary/40 hover:bg-muted/30"
+            }`}
+          >
+            <TrackHubMiniaturePreview userInitials={user.initials} />
+
+            <div className="mt-3.5 flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <span className="text-[15px] font-semibold tracking-tight text-foreground">TrackHub</span>
+                <span className="rounded-full bg-primary/10 px-2.5 py-0.5 text-[10px] font-medium text-primary">
+                  Clean &amp; Spacious
+                </span>
+              </div>
+              <span className={`flex h-5 w-5 items-center justify-center rounded-full border transition-colors duration-150 ${
+                selected === "island"
+                  ? "border-primary bg-primary text-primary-foreground"
+                  : "border-border bg-background text-transparent"
+              }`}>
+                <Check size={11} strokeWidth={3} />
+              </span>
+            </div>
+
+            <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
+              A tidy pill at the top that keeps your whole screen open for work.
+            </p>
+
+            <ul className="mt-3 space-y-1.5 border-t border-border/50 pt-3 text-[11.5px] text-foreground/80">
+              <li className="flex items-center gap-2">
+                <Check size={12} className="flex-shrink-0 text-primary" />
+                <span>Extra room for wide tables &amp; charts</span>
+              </li>
+              <li className="flex items-center gap-2">
+                <Check size={12} className="flex-shrink-0 text-primary" />
+                <span>Alerts &amp; Assistant float neatly on top</span>
+              </li>
+            </ul>
+          </button>
+
+          {/* Option 2: Classic Bar */}
+          <button
+            type="button"
+            onClick={() => setSelected("sidebar")}
+            onDoubleClick={() => triggerConfirm("sidebar")}
+            aria-pressed={selected === "sidebar"}
+            style={{ contain: "layout style" }}
+            className={`group flex flex-col rounded-2xl border-2 p-4 text-left transition-colors duration-150 cursor-pointer ${
+              selected === "sidebar"
+                ? "border-primary bg-primary/[0.04]"
+                : "border-border/70 bg-muted/15 hover:border-primary/40 hover:bg-muted/30"
+            }`}
+          >
+            <ClassicBarMiniaturePreview userInitials={user.initials} roleLabel={roleLabel} />
+
+            <div className="mt-3.5 flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <span className="text-[15px] font-semibold tracking-tight text-foreground">Classic Bar</span>
+                <span className="rounded-full bg-muted px-2.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+                  Familiar Menu
+                </span>
+              </div>
+              <span className={`flex h-5 w-5 items-center justify-center rounded-full border transition-colors duration-150 ${
+                selected === "sidebar"
+                  ? "border-primary bg-primary text-primary-foreground"
+                  : "border-border bg-background text-transparent"
+              }`}>
+                <Check size={11} strokeWidth={3} />
+              </span>
+            </div>
+
+            <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
+              A familiar side menu where every section stays right in view.
+            </p>
+
+            <ul className="mt-3 space-y-1.5 border-t border-border/50 pt-3 text-[11.5px] text-foreground/80">
+              <li className="flex items-center gap-2">
+                <Check size={12} className="flex-shrink-0 text-primary" />
+                <span>Jump to any page in one click</span>
+              </li>
+              <li className="flex items-center gap-2">
+                <Check size={12} className="flex-shrink-0 text-primary" />
+                <span>Can shrink into slim icons anytime</span>
+              </li>
+            </ul>
+          </button>
+        </div>
+
+        {/* Bottom Action Footer */}
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border/60 bg-muted/20 px-6 py-3.5">
+          <div className="flex items-center gap-2.5">
+            <SettingsSwitch
+              checked={askOnLogin}
+              label="Show this at every sign-in"
+              onToggle={() => onToggleAskOnLogin(!askOnLogin)}
+            />
+            <button
+              type="button"
+              onClick={() => onToggleAskOnLogin(!askOnLogin)}
+              className="text-xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer select-none"
+            >
+              Show this at every sign-in
+            </button>
+          </div>
+          <button
+            type="button"
+            onClick={() => triggerConfirm(selected)}
+            className="rounded-full bg-primary px-5 py-2 text-xs font-semibold text-primary-foreground shadow-sm transition-opacity hover:opacity-90 active:scale-[0.98] cursor-pointer"
+          >
+            Continue with {selected === "island" ? "TrackHub" : "Classic Bar"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrackHub = false }: {
   user: AuthUser;
   onLogout: () => void;
@@ -50,15 +659,17 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
   const isAdmin            = hasUserRole(user, "admin") || hasUserRole(user, "admin/owner");
   const isInventoryManager = hasUserRole(user, "inventory_manager");
   const isCashier          = hasUserRole(user, "cashier");
+  const userRoles          = useMemo(() => [user.role], [user.role]);
 
-  const defaultPage = (): Page =>
-    isAdmin ? "dashboard" : isInventoryManager ? "inventory" : "transactions";
+  const defaultPage = useCallback((): Page =>
+    isAdmin ? "dashboard" : isInventoryManager ? "inventory" : "transactions",
+  [isAdmin, isInventoryManager]);
 
-  const allowedPages = [...new Set<Page>([
+  const allowedPages = useMemo(() => [...new Set<Page>([
     ...(isAdmin ? ["dashboard", "inventory", "transactions", "analytics", "users", "stock-alerts", "reports", "returns", "financial", "purchases", "activity-log", "recycle-bin"] as Page[] : []),
     ...(isInventoryManager ? ["dashboard", "inventory", "stock-alerts", "analytics", "reports", "returns", "purchases", "recycle-bin", "activity-log"] as Page[] : []),
     ...(isCashier ? ["dashboard", "inventory", "stock-alerts", "transactions", "analytics", "reports", "activity-log"] as Page[] : []),
-  ])];
+  ])], [isAdmin, isInventoryManager, isCashier]);
   const pageStorageKey = `st_last_page_${user.id}`;
   const getInitialPage = (): Page => {
     try {
@@ -72,7 +683,11 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
     return defaultPage();
   };
   const [page, setPage] = useState<Page>(getInitialPage);
-  const [pageNavigating, setPageNavigating] = useState(false);
+  const navigateTo = useCallback((nextPage: Page) => {
+    startTransition(() => {
+      setPage(nextPage);
+    });
+  }, []);
 
   useEffect(() => {
     if (!allowedPages.includes(page)) return;
@@ -128,37 +743,93 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
     try { return (localStorage.getItem("st_nav_mode") as "island" | "sidebar") || "island"; }
     catch { return "island"; }
   });
+  const [showNavStyleModal, setShowNavStyleModal] = useState(() => {
+    try { return sessionStorage.getItem("st_nav_prompt_pending") === "1"; }
+    catch { return false; }
+  });
+  const [askNavOnLogin, setAskNavOnLogin] = useState<boolean>(() => {
+    try { return localStorage.getItem("st_nav_prompt_on_login") !== "false"; }
+    catch { return true; }
+  });
+  const toggleAskNavOnLogin = useCallback((val: boolean) => {
+    setAskNavOnLogin(val);
+    try { localStorage.setItem("st_nav_prompt_on_login", String(val)); } catch { /* ignore */ }
+  }, []);
   useEffect(() => {
     try { localStorage.setItem("st_nav_mode", navMode); } catch { /* ignore */ }
   }, [navMode]);
   const [trackHubOpen, setTrackHubOpen] = useState(false);
   const [trackHubAssistantOpen, setTrackHubAssistantOpen] = useState(false);
   const [trackHubAlertPeekOpen, setTrackHubAlertPeekOpen] = useState(false);
-  const [reduceTrackHubMotion, setReduceTrackHubMotion] = useState(() =>
+  const [trackHubActivitiesOpen, setTrackHubActivitiesOpen] = useState(false);
+  const [quietedAlertSignature, setQuietedAlertSignature] = useState<string | null>(null);
+  const [fontScale, setFontScaleState] = useState<FontScale>(() => readFontScale());
+  const [tableDensity, setTableDensityState] = useState<TableDensity>(() => readTableDensity());
+  const [reduceMotionPref, setReduceMotionPrefState] = useState<ReduceMotionPreference>(() => readReduceMotionPreference());
+  const [mutedColors, setMutedColorsState] = useState<boolean>(() => readMutedColors());
+  const [showAlertOrb, setShowAlertOrbState] = useState<boolean>(() => readShowAlertOrb());
+  const [osReduceMotion, setOsReduceMotion] = useState(() =>
     typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches
   );
+  const reduceTrackHubMotion = reduceMotionPref === "reduced" || osReduceMotion;
   const [showTrackHubSettings, setShowTrackHubSettings] = useState(false);
   const [showDatabaseModal, setShowDatabaseModal] = useState(false);
   const trackHubSettingsRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    applyDisplayPreferences({
+      fontScale,
+      tableDensity,
+      reduceMotion: reduceMotionPref,
+      mutedColors,
+    });
+  }, [fontScale, tableDensity, reduceMotionPref, mutedColors]);
+
+  const updateFontScale = useCallback((nextScale: FontScale) => {
+    setFontScaleState(nextScale);
+    saveFontScale(nextScale);
+  }, []);
+
+  const updateTableDensity = useCallback((nextDensity: TableDensity) => {
+    setTableDensityState(nextDensity);
+    saveTableDensity(nextDensity);
+  }, []);
+
+  const updateReduceMotionPref = useCallback((nextPref: ReduceMotionPreference) => {
+    setReduceMotionPrefState(nextPref);
+    saveReduceMotionPreference(nextPref);
+  }, []);
+
+  const updateMutedColors = useCallback((val: boolean) => {
+    setMutedColorsState(val);
+    saveMutedColors(val);
+  }, []);
+
+  const updateShowAlertOrb = useCallback((val: boolean) => {
+    setShowAlertOrbState(val);
+    saveShowAlertOrb(val);
+  }, []);
+
+  useEffect(() => {
     const mediaQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
-    const updatePreference = () => setReduceTrackHubMotion(mediaQuery.matches);
+    const updatePreference = () => setOsReduceMotion(mediaQuery.matches);
     updatePreference();
     mediaQuery.addEventListener("change", updatePreference);
     return () => mediaQuery.removeEventListener("change", updatePreference);
   }, []);
 
   // ── Dynamic Island Toast Notification ───────────────────────────────────────
-  const [hubToast, setHubToast] = useState<{ msg: string; type: "success" | "error" | "info" } | null>(null);
+  type HubToastAction = { label: string; onClick: () => void };
+  const [hubToast, setHubToast] = useState<{ msg: string; type: "success" | "error" | "info"; action?: HubToastAction } | null>(null);
   const hubToastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const showHubToast = useCallback((msg: string, type: "success" | "error" | "info" = "success") => {
+  const showHubToast = useCallback((msg: string, type: "success" | "error" | "info" = "success", action?: HubToastAction) => {
     if (hubToastTimer.current) clearTimeout(hubToastTimer.current);
     setTrackHubOpen(false);
     setTrackHubAssistantOpen(false);
     setTrackHubAlertPeekOpen(false);
-    setHubToast({ msg, type });
-    hubToastTimer.current = setTimeout(() => setHubToast(null), 3600);
+    setTrackHubActivitiesOpen(false);
+    setHubToast({ msg, type, action });
+    hubToastTimer.current = setTimeout(() => setHubToast(null), action ? 5500 : 3600);
   }, []);
 
   useEffect(() => {
@@ -177,18 +848,14 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
       if (e.key === "Escape") {
         setTrackHubOpen(false);
         setTrackHubAlertPeekOpen(false);
+        setTrackHubActivitiesOpen(false);
         setShowTrackHubSettings(false);
+        if (navMode === "island") setSystemAlert(null);
       }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, []);
-  const [shareStatus, setShareStatus] = useState<ShareStatus>({
-    state: "stopped",
-    url: null,
-    error: null,
-  });
-  const [shareMessage, setShareMessage] = useState("");
+  }, [navMode]);
 
   // ── Data state (loaded from API) ────────────────────────────────────────────
   const [inventory,     setInventory]     = useState<Product[]>([]);
@@ -201,6 +868,12 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
   const [receiptSettings, setReceiptSettings] = useState<ReceiptSettings | null>(null);
   const [loading,       setLoading]       = useState(true);
   const [refreshing,    setRefreshing]    = useState(false);
+  const [syncJustCompleted, setSyncJustCompleted] = useState(false);
+  const syncDoneTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => () => {
+    if (syncDoneTimerRef.current) clearTimeout(syncDoneTimerRef.current);
+  }, []);
 
   useEffect(() => {
     if (!loading) onReady?.();
@@ -212,6 +885,8 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
   const [suggestedBatchQty, setSuggestedBatchQty] = useState(0);
   const [deletingProduct,   setDeletingProduct]   = useState<Product | null>(null);
   const [showAddSale,       setShowAddSale]       = useState(false);
+  const [pausedSaleDraft,   setPausedSaleDraft]   = useState<SaleDraftState | null>(null);
+  const [alertPeekIdx,      setAlertPeekIdx]      = useState(0);
   const [returningTx,       setReturningTx]       = useState<Transaction | null>(null);
   const [showAddUser,       setShowAddUser]        = useState(false);
   const [editingUser,       setEditingUser]        = useState<StaffMember | null>(null);
@@ -223,6 +898,7 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
   const [hoveredNotifPid,   setHoveredNotifPid]   = useState<string | null>(null);
   const [showUserProfile,   setShowUserProfile]   = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const [confirmDiscardCart, setConfirmDiscardCart] = useState(false);
   const [roleToRemove, setRoleToRemove] = useState<string | null>(null);
   const [roleActionBusy, setRoleActionBusy] = useState(false);
 
@@ -236,6 +912,7 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
 
   // ── Initial data load ───────────────────────────────────────────────────────
   const loadAll = useCallback(async (showLoading = true) => {
+    clearApiCache();
     if (showLoading) setLoading(true);
     else setRefreshing(true);
     try {
@@ -263,6 +940,11 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
       setCategories(cats);
       setCashierDashboard(cashierSummary);
       setReceiptSettings(settings);
+      if (!showLoading) {
+        if (syncDoneTimerRef.current) clearTimeout(syncDoneTimerRef.current);
+        setSyncJustCompleted(true);
+        syncDoneTimerRef.current = setTimeout(() => setSyncJustCompleted(false), 1400);
+      }
     } catch (e) {
       console.error("Load failed:", e);
     } finally {
@@ -274,26 +956,9 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
   useEffect(() => { loadAll(); }, [loadAll]);
 
   useEffect(() => {
-    if (!window.smarttrack?.isElectron) return;
-    let active = true;
-    window.smarttrack.getShareStatus().then(status => {
-      if (active && status) setShareStatus(status);
-    });
-    const unsubscribe = window.smarttrack.onShareStatus(status => {
-      if (active) {
-        setShareStatus(status);
-        setShareMessage("");
-      }
-    });
-    return () => {
-      active = false;
-      unsubscribe();
-    };
-  }, []);
-
-  useEffect(() => {
     let active = true;
     const pollNotifications = async () => {
+      if (typeof document !== "undefined" && document.hidden) return;
       try {
         const latest = await notificationsApi.list();
         if (active) {
@@ -315,7 +980,7 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
         console.error("Notification refresh failed:", error);
       }
     };
-    const timer = window.setInterval(pollNotifications, 5000);
+    const timer = window.setInterval(pollNotifications, 12000);
     return () => {
       active = false;
       window.clearInterval(timer);
@@ -345,15 +1010,16 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
   // Listen for global navigation events (used by dashboard widgets)
   useEffect(() => {
     const handler = (e: Event) => {
-      const page = (e as CustomEvent<string>).detail;
-      if (page) setPage(page as Page);
+      const next = (e as CustomEvent<string>).detail;
+      if (next) navigateTo(next as Page);
     };
     window.addEventListener("smarttrack:navigate", handler);
     return () => window.removeEventListener("smarttrack:navigate", handler);
-  }, []);
+  }, [navigateTo]);
 
-  // ── Universal search: close on outside click ────────────────────────────────
+  // ── Universal search: close on outside click (attached only when open) ──────
   useEffect(() => {
+    if (!searchOpen) return;
     const handler = (e: MouseEvent) => {
       if (searchRef.current && !searchRef.current.contains(e.target as Node)) {
         setSearchOpen(false);
@@ -361,7 +1027,7 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
-  }, []);
+  }, [searchOpen]);
 
   // Ctrl+K / Cmd+K to focus search
   useEffect(() => {
@@ -381,12 +1047,10 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
     return () => document.removeEventListener("keydown", handler);
   }, []);
 
-  // Guard: redirect non-admin away from admin-only pages
+  // Guard: redirect away from any page not allowed for the active role
   useEffect(() => {
-    if (!isAdmin && (page === "users" || page === "financial")) setPage(defaultPage());
-    if (!isAdmin && !isInventoryManager && page === "returns") setPage(defaultPage());
-    if (isInventoryManager && page === "transactions") setPage("inventory");
-  }, [isAdmin, isCashier, isInventoryManager, page]);
+    if (!allowedPages.includes(page)) setPage(defaultPage());
+  }, [allowedPages, defaultPage, page]);
 
   // ── Computed alert counts ────────────────────────────────────────────────────
   const { lowStockCount, outOfStockCount, criticalStockCount, lowStockOnlyCount } = useMemo(() => {
@@ -425,33 +1089,27 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
   const pharmacyHealth = hasUrgentPharmacyAlerts
     ? {
         label: "Urgent pharmacy alerts",
-        dotClass: "bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.9)]",
+        dotClass: "bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.8)]",
         textClass: "text-rose-300",
-        pulse: true,
+        pulse: false,
       }
     : hasPharmacyWarnings
     ? {
         label: "Pharmacy stock needs review",
-        dotClass: "bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.9)]",
+        dotClass: "bg-amber-400 shadow-[0_0_6px_rgba(251,191,36,0.75)]",
         textClass: "text-amber-300",
-        pulse: true,
+        pulse: false,
       }
     : {
         label: "All stock healthy",
-        dotClass: "bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.9)]",
+        dotClass: "bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.75)]",
         textClass: "text-emerald-300",
-        pulse: true,
+        pulse: false,
       };
-  const pharmacyHealthSubtitle = hasUrgentPharmacyAlerts || hasPharmacyWarnings
-    ? [
-        outOfStockCount > 0 ? `${outOfStockCount} out` : null,
-        criticalStockCount > 0 ? `${criticalStockCount} crit` : null,
-        expiryAlerts.expired.length > 0 ? `${expiryAlerts.expired.length} expired` : null,
-        lowStockOnlyCount > 0 ? `${lowStockOnlyCount} low` : null,
-        expiryAlerts.within30.length > 0 ? `${expiryAlerts.within30.length} exp ≤30d` : null,
-        expiryAlerts.within90.length > 0 ? `${expiryAlerts.within90.length} exp ≤90d` : null,
-      ].filter((item): item is string => item !== null).slice(0, 2).join(" · ") || "Expiry alert"
-    : "All stock healthy";
+  const productMap = useMemo(
+    () => Object.fromEntries(inventory.map(p => [p.id, p.name])),
+    [inventory]
+  );
   const pharmacyAlertPeek = [
     outOfStockCount > 0 ? `${outOfStockCount} Out of Stock` : null,
     criticalStockCount > 0 ? `${criticalStockCount} Critical` : null,
@@ -461,7 +1119,61 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
     expiryAlerts.within90.length > 0 ? `${expiryAlerts.within90.length} Expiring ≤90d` : null,
   ].filter((item): item is string => item !== null).join(" · ") || "All stock and expiry dates are healthy";
   const totalAlertBadge   = lowStockCount + totalExpiryAlerts;
-  const unreadCount       = notifs.filter(n => !n.read).length;
+  const unreadCount = useMemo(() => notifs.filter(n => !n.read).length, [notifs]);
+
+  const urgentAlertItems = useMemo(() => {
+    const items: Array<{ product: Product; label: string; detail: string; tone: "danger" | "warning" }> = [];
+    const seen = new Set<string>();
+    const addItem = (product: Product, detail: string, tone: "danger" | "warning") => {
+      if (seen.has(product.id)) return;
+      seen.add(product.id);
+      items.push({ product, label: product.name, detail, tone });
+    };
+    inventory.filter(p => p.status === "out_of_stock").forEach(p => addItem(p, "Out of stock", "danger"));
+    expiryAlerts.expired.forEach(p => addItem(p, "Expired batch", "danger"));
+    expiryAlerts.within30.forEach(p => {
+      const nearest = sortBatchesByExpiry(p.batches)[0];
+      const days = nearest?.expiryDate ? Math.max(1, Math.ceil((new Date(nearest.expiryDate).getTime() - Date.now()) / 86400000)) : 30;
+      addItem(p, `Expires in ${days}d`, "warning");
+    });
+    inventory.filter(p => p.status === "critical").forEach(p => addItem(p, `Critical (${p.stock} left)`, "danger"));
+    inventory.filter(p => p.status === "low").forEach(p => addItem(p, `Low (${p.stock} left)`, "warning"));
+    return items.slice(0, 12);
+  }, [inventory, expiryAlerts]);
+
+  const activeAlertItem = urgentAlertItems.length > 0
+    ? urgentAlertItems[((alertPeekIdx % urgentAlertItems.length) + urgentAlertItems.length) % urgentAlertItems.length]
+    : null;
+
+  const canSell = isCashier;
+  const pausedCartSummary = useMemo(() => {
+    if (!canSell || !pausedSaleDraft) return null;
+    const calcAmount = (product: Product, saleQty: number, saleUnit: "unit" | "pack") => {
+      const price = product.salePrice ?? product.price;
+      const unitPrice = saleUnit === "pack" && product.packPrice != null
+        ? product.packPrice
+        : saleUnit === "pack"
+        ? price * (product.unitsPerPack ?? 1)
+        : price;
+      const shelfTotal = Math.round(unitPrice * saleQty * 100) / 100;
+      if (!pausedSaleDraft.applyDiscount) return shelfTotal;
+      const discountBase = Math.round((shelfTotal / 1.12) * 100) / 100;
+      const discountAmount = Math.round(discountBase * 0.2 * 100) / 100;
+      return Math.round((discountBase - discountAmount) * 100) / 100;
+    };
+    if (pausedSaleDraft.cart.length > 0) {
+      const total = pausedSaleDraft.cart.reduce((sum, item) => sum + calcAmount(item.product, item.saleQty, item.saleUnit), 0);
+      return { count: pausedSaleDraft.cart.length, total };
+    }
+    const pendingQty = parseInt(pausedSaleDraft.qty, 10) || 0;
+    if (pausedSaleDraft.selectedProduct && pendingQty > 0) {
+      return {
+        count: 1,
+        total: calcAmount(pausedSaleDraft.selectedProduct, pendingQty, pausedSaleDraft.saleUnit),
+      };
+    }
+    return null;
+  }, [canSell, pausedSaleDraft]);
 
   // ── Universal search results ─────────────────────────────────────────────────
   type SearchResult =
@@ -548,13 +1260,13 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
     }
   };
 
-  const handleAddCategory = async (cat: string) => {
+  const handleAddCategory = useCallback(async (cat: string) => {
     if (categories.includes(cat)) return;
     try {
       await categoriesApi.create(cat);
       setCategories(prev => [...prev, cat]);
     } catch (e) { console.error(e); }
-  };
+  }, [categories]);
 
   const handleSaveProduct = async (original: Product | null, updated: Product) => {
     try {
@@ -584,7 +1296,13 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
           ? prev.map(p => p.id === original.id ? norm : p)
           : [norm, ...prev]
       );
-      showHubToast(original ? "Product updated" : "Product added", "success");
+      showHubToast(original ? "Product updated" : "Product added", "success", {
+        label: "View",
+        onClick: () => {
+          setSelectedProductId(norm.id);
+          setPage("inventory");
+        },
+      });
     } catch (e: unknown) {
       showHubToast(e instanceof Error ? e.message : "Failed to save product.", "error");
     }
@@ -597,7 +1315,22 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
       setNotifs(prev => prev.filter(notification => notification.productId !== p.id));
       setSystemAlert(current => current?.productId === p.id ? null : current);
       setDeletingProduct(null);
-      showHubToast("Product moved to recycle bin", "info");
+      let restoring = false;
+      showHubToast("Product moved to recycle bin", "info", {
+        label: "Undo",
+        onClick: async () => {
+          if (restoring) return;
+          restoring = true;
+          try {
+            await productsApi.restore(p.id);
+            const refreshed = await productsApi.list();
+            setInventory(refreshed.map(normalizeProduct));
+            showHubToast(`Restored "${p.name}"`, "success");
+          } catch (err: unknown) {
+            showHubToast(err instanceof Error ? err.message : "Could not restore product.", "error");
+          }
+        },
+      });
     } catch (e: unknown) {
       showHubToast(e instanceof Error ? e.message : "Failed to delete product.", "error");
     }
@@ -640,7 +1373,10 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
         }
         const receiptTransaction = groupCartTransactions(res.transactions)[0];
         if (receiptTransaction) setViewingInvoice(receiptTransaction);
-        showHubToast("Sale complete", "success");
+        showHubToast("Sale complete", "success", receiptTransaction ? {
+          label: "Receipt",
+          onClick: () => setViewingInvoice(receiptTransaction),
+        } : undefined);
         return;
       }
 
@@ -648,7 +1384,11 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
       setTransactions(prev => [res.transaction!, ...prev]);
       setInventory(prev => prev.map(p => p.id === productId ? normalizeProduct(res.product!) : p));
       setViewingInvoice(res.transaction);
-      showHubToast("Sale complete", "success");
+      const completedTx = res.transaction;
+      showHubToast("Sale complete", "success", {
+        label: "Receipt",
+        onClick: () => setViewingInvoice(completedTx),
+      });
     } catch (e: unknown) {
       showHubToast(e instanceof Error ? e.message : "Sale failed.", "error");
     }
@@ -663,9 +1403,9 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
     setTransactions(prev => [res.transaction, ...prev]);
   };
 
-  const handleReturnDispositionComplete = async () => {
+  const handleReturnDispositionComplete = useCallback(async () => {
     await loadAll(false);
-  };
+  }, [loadAll]);
 
   const handleAdjustment = async (tx: Transaction, productId: string, qty: number) => {
     try {
@@ -703,7 +1443,7 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
     }
   };
 
-  const handleDeleteUser = async (target: StaffMember) => {
+  const handleDeleteUser = useCallback(async (target: StaffMember) => {
     try {
       await usersApi.delete(target.id);
       setStaff(prev => prev.filter(s => s.id !== target.id));
@@ -711,9 +1451,9 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
     } catch (e: unknown) {
       showHubToast(e instanceof Error ? e.message : "Failed to delete user.", "error");
     }
-  };
+  }, [showHubToast]);
 
-  const handleToggleStatus = async (target: StaffMember, newStatus: "active" | "inactive") => {
+  const handleToggleStatus = useCallback(async (target: StaffMember, newStatus: "active" | "inactive") => {
     try {
       const payload = {
         name: target.name, role: target.role, roles: target.roles ?? [target.role],
@@ -726,21 +1466,21 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
     } catch (e: unknown) {
       showHubToast(e instanceof Error ? e.message : "Failed to update user status.", "error");
     }
-  };
+  }, [showHubToast]);
 
   const handleResetPassword = async (newPassword: string) => {
     await usersApi.changePassword(user.id, newPassword);
   };
 
   // Admin resets another user's password (clears it)
-  const handleAdminResetPassword = async (target: StaffMember) => {
+  const handleAdminResetPassword = useCallback(async (target: StaffMember) => {
     await usersApi.resetPassword(target.id);
-  };
+  }, []);
 
   // Admin sets a new password for another user
-  const handleAdminCreatePassword = async (userId: string, password: string) => {
+  const handleAdminCreatePassword = useCallback(async (userId: string, password: string) => {
     await usersApi.createPassword(userId, password);
-  };
+  }, []);
 
   const handleUpdateProfile = async (name: string, email: string) => {
     const updated = await usersApi.update(user.id, {
@@ -758,11 +1498,12 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
     });
   };
 
-  const activateRole = (role: string) => {
+  const activateRole = useCallback((role: string) => {
+    clearApiCache();
     activeRoleStore.set(role);
     onUserUpdated?.({ ...user, role: role as AuthUser["role"] });
-    setPage(role === "admin" || role === "admin/owner" ? "dashboard" : role === "inventory_manager" ? "inventory" : "transactions");
-  };
+    navigateTo(role === "admin" || role === "admin/owner" ? "dashboard" : role === "inventory_manager" ? "inventory" : "transactions");
+  }, [user, onUserUpdated, navigateTo]);
 
   const handleRemoveOwnRole = async (role: string) => {
     setRoleActionBusy(true);
@@ -807,40 +1548,6 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
     loadAll(false);
   };
 
-  const handleStartShare = async () => {
-    setShareMessage("");
-    try {
-      const status = await window.smarttrack?.startShare();
-      if (!status) throw new Error("Unable to start the Cloudflare share link.");
-      setShareStatus(status);
-      if (status.error) setShareMessage(status.error);
-    } catch (error) {
-      setShareMessage(error instanceof Error ? error.message : "Unable to start the Cloudflare share link.");
-    }
-  };
-
-  const handleStopShare = async () => {
-    setShareMessage("");
-    try {
-      const status = await window.smarttrack?.stopShare();
-      if (!status) throw new Error("Unable to stop the Cloudflare share link.");
-      setShareStatus(status);
-    } catch (error) {
-      setShareMessage(error instanceof Error ? error.message : "Unable to stop the Cloudflare share link.");
-    }
-  };
-
-  const handleCopyShareLink = async () => {
-    if (!shareStatus.url) return;
-    try {
-      const result = await window.smarttrack?.copyText(shareStatus.url);
-      if (!result?.ok) throw new Error("Could not copy the share link.");
-      setShareMessage("Link copied to clipboard.");
-    } catch (error) {
-      setShareMessage(error instanceof Error ? error.message : "Could not copy the share link.");
-    }
-  };
-
   const handleToggleFullScreen = async () => {
     try {
       if (window.smarttrack?.isElectron) {
@@ -876,49 +1583,76 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
     return () => window.removeEventListener("keydown", handleKeyShortcut);
   }, []);
 
-  const handleStockAlertEditProduct = (product: Product, suggestedQty = 0) => {
-    setPage("inventory");
+  const handleStockAlertEditProduct = useCallback((product: Product, suggestedQty = 0) => {
+    navigateTo("inventory");
     setSelectedProductId(product.id);
     setSuggestedBatchQty(suggestedQty);
     setEditingProduct(product);
-  };
+  }, [navigateTo]);
+
+  const handleOpenAddProduct = useCallback(() => setShowAddProduct(true), []);
+  const handleEditInventoryProduct = useCallback((product: Product) => {
+    setSuggestedBatchQty(0);
+    setEditingProduct(product);
+  }, []);
+  const handleReloadAll = useCallback(() => { void loadAll(false); }, [loadAll]);
+  const handleGoToInventory = useCallback(() => navigateTo("inventory"), [navigateTo]);
+  const handleOpenAddSale = useCallback(() => setShowAddSale(true), []);
+  const handleRolesChanged = useCallback(() => { rolesApi.list().then(setRoles).catch(() => {}); }, []);
+  const handleCommandNavigate = useCallback((p: Page) => {
+    navigateTo(p);
+    setTrackHubAssistantOpen(false);
+  }, [navigateTo]);
+  const handleCommandOpenNewSale = useCallback(() => {
+    setShowAddSale(true);
+    setTrackHubAssistantOpen(false);
+  }, []);
+  const handleCommandOpenAddProduct = useCallback(() => {
+    setShowAddProduct(true);
+    setTrackHubAssistantOpen(false);
+  }, []);
 
   // ── Navigation ───────────────────────────────────────────────────────────────
-  const adminNav:     { id: Page; icon: any; label: string; badge?: number }[] = [
-    { id: "dashboard",    icon: LayoutDashboard, label: "Dashboard" },
-    { id: "inventory",    icon: Package,         label: "Inventory",    badge: lowStockCount },
-    { id: "stock-alerts", icon: BellRing,        label: "Stock Alerts", badge: totalAlertBadge },
-    { id: "transactions", icon: ShoppingCart,    label: "Transactions" },
-    { id: "analytics",    icon: BarChart2,       label: "Analytics" },
-    { id: "reports",      icon: ClipboardList,   label: "Reports" },
-    { id: "returns",      icon: ClipboardCheck,  label: "Returns & Broken" },
-    { id: "financial",    icon: Landmark,        label: "Financial" },
-    { id: "purchases",    icon: Truck,           label: "Supplier Orders" },
-    { id: "users",        icon: Users,           label: "Users" },
-  ];
-  const invNav: typeof adminNav = [
-    { id: "inventory",    icon: Package,         label: "Inventory",    badge: lowStockCount },
-    { id: "stock-alerts", icon: BellRing,        label: "Stock Alerts", badge: totalAlertBadge },
-    { id: "dashboard",    icon: LayoutDashboard, label: "Dashboard" },
-    { id: "analytics",    icon: BarChart2,       label: "Analytics" },
-    { id: "reports",      icon: ClipboardList,   label: "Reports" },
-    { id: "returns",      icon: ClipboardCheck,  label: "Returns & Broken" },
-    { id: "purchases",    icon: Truck,           label: "Supplier Orders" },
-  ];
-  const cashierNav: typeof adminNav = [
-    { id: "dashboard",    icon: LayoutDashboard, label: "Dashboard" },
-    { id: "inventory",    icon: Package,         label: "Inventory",    badge: lowStockCount },
-    { id: "stock-alerts", icon: BellRing,        label: "Stock Alerts", badge: totalAlertBadge },
-    { id: "transactions", icon: ShoppingCart,    label: "Transactions" },
-    { id: "analytics",    icon: BarChart2,       label: "Analytics" },
-    { id: "reports",      icon: ClipboardList,   label: "Reports" },
-  ];
-  const navItems = isAdmin ? adminNav : isInventoryManager ? invNav : cashierNav;
+  const navItems = useMemo(() => {
+    if (isAdmin) {
+      return [
+        { id: "dashboard" as Page,    icon: LayoutDashboard, label: "Dashboard" },
+        { id: "inventory" as Page,    icon: Package,         label: "Inventory",    badge: lowStockCount },
+        { id: "stock-alerts" as Page, icon: BellRing,        label: "Stock Alerts", badge: totalAlertBadge },
+        { id: "transactions" as Page, icon: ShoppingCart,    label: "Transactions" },
+        { id: "analytics" as Page,    icon: BarChart2,       label: "Analytics" },
+        { id: "reports" as Page,      icon: ClipboardList,   label: "Reports" },
+        { id: "returns" as Page,      icon: ClipboardCheck,  label: "Returns & Broken" },
+        { id: "financial" as Page,    icon: Landmark,        label: "Financial" },
+        { id: "purchases" as Page,    icon: Truck,           label: "Supplier Orders" },
+        { id: "users" as Page,        icon: Users,           label: "Users" },
+      ];
+    }
+    if (isInventoryManager) {
+      return [
+        { id: "inventory" as Page,    icon: Package,         label: "Inventory",    badge: lowStockCount },
+        { id: "stock-alerts" as Page, icon: BellRing,        label: "Stock Alerts", badge: totalAlertBadge },
+        { id: "dashboard" as Page,    icon: LayoutDashboard, label: "Dashboard" },
+        { id: "analytics" as Page,    icon: BarChart2,       label: "Analytics" },
+        { id: "reports" as Page,      icon: ClipboardList,   label: "Reports" },
+        { id: "returns" as Page,      icon: ClipboardCheck,  label: "Returns & Broken" },
+        { id: "purchases" as Page,    icon: Truck,           label: "Supplier Orders" },
+      ];
+    }
+    return [
+      { id: "dashboard" as Page,    icon: LayoutDashboard, label: "Dashboard" },
+      { id: "inventory" as Page,    icon: Package,         label: "Inventory",    badge: lowStockCount },
+      { id: "stock-alerts" as Page, icon: BellRing,        label: "Stock Alerts", badge: totalAlertBadge },
+      { id: "transactions" as Page, icon: ShoppingCart,    label: "Transactions" },
+      { id: "analytics" as Page,    icon: BarChart2,       label: "Analytics" },
+      { id: "reports" as Page,      icon: ClipboardList,   label: "Reports" },
+    ];
+  }, [isAdmin, isInventoryManager, lowStockCount, totalAlertBadge]);
 
   // ── TrackHub close-on-outside-click ────────────────────────────────────
   const trackHubRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    if (!trackHubOpen && !trackHubAssistantOpen && !trackHubAlertPeekOpen) return;
+    if (!trackHubOpen && !trackHubAssistantOpen && !trackHubAlertPeekOpen && !trackHubActivitiesOpen) return;
     const handler = (e: MouseEvent) => {
       const target = e.target as Node;
       // Also ignore clicks inside the portaled assistant modal (rendered outside trackHubRef in document.body)
@@ -930,15 +1664,19 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
         setTrackHubOpen(false);
         setTrackHubAssistantOpen(false);
         setTrackHubAlertPeekOpen(false);
+        setTrackHubActivitiesOpen(false);
       }
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
-  }, [trackHubOpen, trackHubAssistantOpen, trackHubAlertPeekOpen]);
+  }, [trackHubOpen, trackHubAssistantOpen, trackHubAlertPeekOpen, trackHubActivitiesOpen]);
 
   useEffect(() => {
-    if (navMode !== "island") setTrackHubAssistantOpen(false);
-    if (navMode !== "island") setTrackHubAlertPeekOpen(false);
+    if (navMode !== "island") {
+      setTrackHubAssistantOpen(false);
+      setTrackHubAlertPeekOpen(false);
+      setTrackHubActivitiesOpen(false);
+    }
   }, [navMode]);
 
   useEffect(() => {
@@ -963,56 +1701,251 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
   // Tactile press state for nav item tap feedback
   const [pressedItem, setPressedItem] = useState<string | null>(null);
 
+  // Horizontal Apple-style Launchpad paging (5x2 max 10 items per slide so standard roles stay on 1 crisp page)
+  const HUB_PAGE_SIZE = 10;
+  const hubPages = useMemo(() => {
+    const pages: typeof navItems[] = [];
+    for (let i = 0; i < navItems.length; i += HUB_PAGE_SIZE) {
+      pages.push(navItems.slice(i, i + HUB_PAGE_SIZE));
+    }
+    return pages.length > 0 ? pages : [[]];
+  }, [navItems]);
+  const [hubGridPage, setHubGridPage] = useState(0);
+  const safeHubGridPage = Math.min(hubGridPage, Math.max(0, hubPages.length - 1));
+  const hubWheelCooldownRef = useRef(0);
+
+  useEffect(() => {
+    const idx = navItems.findIndex(item => item.id === page);
+    if (idx >= 0) {
+      setHubGridPage(Math.floor(idx / HUB_PAGE_SIZE));
+    }
+  }, [page, navItems, trackHubOpen]);
+
   // Pill content (icon + label) slide-in when active page changes
   const prevPageRef = useRef(page);
   const [pillSlide,  setPillSlide]  = useState(false);
-  useEffect(() => {
-    if (prevPageRef.current !== page) {
-      prevPageRef.current = page;
-      setPillSlide(true);
-      setPageNavigating(true);
-      const t = setTimeout(() => setPillSlide(false), 360);
-      const tNav = setTimeout(() => setPageNavigating(false), 380);
-      return () => {
-        clearTimeout(t);
-        clearTimeout(tNav);
-      };
-    }
-  }, [page]);
 
   // ── TrackHub Navigation ──────────────────────────────────────────────────────
   // Collapsed pill width/height depends on whether a confirm dialog or toast is active
   const activeConfirm = useIslandConfirm();
   const confirmOpen   = activeConfirm !== null;
-  const toastOpen     = !confirmOpen && hubToast !== null && !trackHubOpen && !trackHubAssistantOpen && !trackHubAlertPeekOpen;
-  const collapsedPillWidth = smartBotEnabled ? "280px" : "228px";
+  const hasPausedCart = pausedCartSummary !== null && !showAddSale;
+  const urgentDangerSignature = useMemo(
+    () => urgentAlertItems.filter(item => item.tone === "danger").map(item => item.product.id).join(","),
+    [urgentAlertItems]
+  );
+  const hasActiveUrgentOrb =
+    showAlertOrb &&
+    page !== "stock-alerts" &&
+    hasUrgentPharmacyAlerts &&
+    urgentAlertItems.length > 0 &&
+    quietedAlertSignature !== urgentDangerSignature;
+
+  type LiveIslandActivity = {
+    id: "paused-cart" | "urgent-alert";
+    tone: "emerald" | "rose";
+    title: string;
+    subtitle: string;
+    pillText?: string;
+  };
+
+  const liveActivities = useMemo<LiveIslandActivity[]>(() => {
+    const items: LiveIslandActivity[] = [];
+    if (hasPausedCart && pausedCartSummary) {
+      items.push({
+        id: "paused-cart",
+        tone: "emerald",
+        title: "Paused POS Cart",
+        subtitle: `${pausedCartSummary.count} item${pausedCartSummary.count === 1 ? "" : "s"} · ${fmt(pausedCartSummary.total)}`,
+        pillText: `Cart · ${pausedCartSummary.count}`,
+      });
+    }
+    if (hasActiveUrgentOrb) {
+      const alertTotal = totalAlertBadge > 0 ? totalAlertBadge : urgentAlertItems.length;
+      items.push({
+        id: "urgent-alert",
+        tone: "rose",
+        title: "Store Stock Alerts",
+        subtitle: pharmacyAlertPeek,
+        pillText: `Stock · ${alertTotal}`,
+      });
+    }
+    return items;
+  }, [
+    hasPausedCart,
+    pausedCartSummary,
+    hasActiveUrgentOrb,
+    totalAlertBadge,
+    pharmacyAlertPeek,
+    urgentAlertItems.length,
+  ]);
+
+  useEffect(() => {
+    if (trackHubActivitiesOpen && liveActivities.length === 0) {
+      setTrackHubActivitiesOpen(false);
+    }
+  }, [trackHubActivitiesOpen, liveActivities.length]);
+
+  const collapsedMeasureRef = useRef<HTMLDivElement>(null);
+  const splitOrbMeasureRef = useRef<HTMLButtonElement>(null);
+  const [measuredPillWidth, setMeasuredPillWidth] = useState<number>(() => (smartBotEnabled ? 236 : 164));
+  const [measuredOrbWidth, setMeasuredOrbWidth] = useState<number>(102);
+
+  const toastOpen       = !showNavStyleModal && !confirmOpen && hubToast !== null && !trackHubOpen && !trackHubAssistantOpen && !trackHubAlertPeekOpen && !trackHubActivitiesOpen;
+  const systemAlertOpen = !showNavStyleModal && navMode === "island" && !confirmOpen && !trackHubOpen && !trackHubAssistantOpen && !trackHubAlertPeekOpen && !trackHubActivitiesOpen && !toastOpen && systemAlert !== null;
+  const baseCollapsedWidth = measuredPillWidth;
+  const collapsedPillWidth = `${baseCollapsedWidth}px`;
+  const activitiesHeight = `${Math.min(312, 86 + Math.max(1, liveActivities.length) * 66)}px`;
   const pillW         = confirmOpen
     ? "430px"
     : trackHubAssistantOpen
     ? "min(570px, calc(100vw - 24px))"
     : trackHubOpen
-    ? "570px"
+    ? "min(580px, calc(100vw - 24px))"
+    : trackHubActivitiesOpen
+    ? "min(520px, calc(100vw - 24px))"
     : trackHubAlertPeekOpen
-    ? "min(440px, calc(100vw - 24px))"
+    ? "min(520px, calc(100vw - 24px))"
     : toastOpen
-    ? "min(360px, calc(100vw - 32px))"
+    ? (hubToast?.action ? "min(430px, calc(100vw - 24px))" : "min(360px, calc(100vw - 32px))")
+    : systemAlertOpen
+    ? "min(490px, calc(100vw - 24px))"
     : collapsedPillWidth;
+  const expandedHubHeight = hasPausedCart
+    ? hubPages.length > 1
+      ? "min(310px, calc(100dvh - 80px))"
+      : "min(290px, calc(100dvh - 80px))"
+    : hubPages.length > 1
+    ? "min(268px, calc(100dvh - 80px))"
+    : "min(248px, calc(100dvh - 80px))";
+
   const pillH         = confirmOpen
     ? "148px"
     : trackHubAssistantOpen
     ? "min(520px, calc(100dvh - 80px))"
     : trackHubOpen
-    ? "226px"
+    ? expandedHubHeight
+    : trackHubActivitiesOpen
+    ? activitiesHeight
     : trackHubAlertPeekOpen
     ? "56px"
     : toastOpen
     ? "48px"
+    : systemAlertOpen
+    ? "76px"
     : "42px";
+
+  type IslandState = "collapsed" | "toast" | "alert-peek" | "system-alert" | "activities" | "hub" | "assistant" | "confirm";
+  const islandState: IslandState = confirmOpen
+    ? "confirm"
+    : trackHubAssistantOpen
+    ? "assistant"
+    : trackHubOpen
+    ? "hub"
+    : trackHubActivitiesOpen
+    ? "activities"
+    : trackHubAlertPeekOpen
+    ? "alert-peek"
+    : toastOpen
+    ? "toast"
+    : systemAlertOpen
+    ? "system-alert"
+    : "collapsed";
+
+  const prevIslandStateRef = useRef<IslandState>(islandState);
+  const islandStateRef = useRef<IslandState>(islandState);
+  islandStateRef.current = islandState;
+  const [islandMorph, setIslandMorph] = useState<{ kind: "expand" | "collapse" | "swap" | "nudge"; seq: number } | null>(null);
+
+  useEffect(() => {
+    const prev = prevIslandStateRef.current;
+    if (prev === islandState) return;
+    prevIslandStateRef.current = islandState;
+    if (reduceTrackHubMotion) return;
+    const kind: "expand" | "collapse" | "swap" =
+      prev === "collapsed"
+        ? "expand"
+        : islandState === "collapsed"
+        ? "collapse"
+        : "swap";
+    setIslandMorph(m => ({ kind, seq: (m?.seq ?? 0) + 1 }));
+  }, [islandState, reduceTrackHubMotion]);
+
+  useEffect(() => {
+    if (prevPageRef.current !== page) {
+      prevPageRef.current = page;
+      setPillSlide(true);
+      if (!reduceTrackHubMotion && islandStateRef.current === "collapsed") {
+        setIslandMorph(m => ({ kind: "nudge", seq: (m?.seq ?? 0) + 1 }));
+      }
+      const t = setTimeout(() => setPillSlide(false), 320);
+      return () => clearTimeout(t);
+    }
+  }, [page, reduceTrackHubMotion]);
+
+  const isExpandedIsland = islandState !== "collapsed";
+  const primaryActivity = liveActivities[0] ?? null;
+  const hasSplitOrb = primaryActivity !== null && !hideTrackHub;
+  const splitOrbActive = hasSplitOrb && !isExpandedIsland;
+
+  useLayoutEffect(() => {
+    const pillEl = collapsedMeasureRef.current;
+    if (!pillEl) return;
+    const width = Math.ceil(pillEl.offsetWidth) + 2;
+    if (width > 100) {
+      setMeasuredPillWidth(prev => (prev === width ? prev : width));
+    }
+  }, [loading, navMode, page, activeLabel, smartBotEnabled, refreshing, syncJustCompleted, fontScale]);
+
+  useLayoutEffect(() => {
+    const orbEl = splitOrbMeasureRef.current;
+    if (!orbEl) return;
+    const width = Math.ceil(orbEl.offsetWidth);
+    if (width > 60) {
+      setMeasuredOrbWidth(prev => (prev === width ? prev : width));
+    }
+  }, [loading, navMode, liveActivities.length, primaryActivity?.id, primaryActivity?.pillText, fontScale, showAlertOrb, hasPausedCart]);
+
+  const splitOrbWidth = measuredOrbWidth;
+  const SPLIT_GAP = 8;
+  const mainSplitShiftX = splitOrbActive ? -(SPLIT_GAP + splitOrbWidth) / 2 : 0;
+  const splitOrbRestX = (baseCollapsedWidth + SPLIT_GAP) / 2;
+  const splitOrbHiddenX = baseCollapsedWidth / 2 - splitOrbWidth / 2 - 4;
+
+  const handleSplitOrbClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!primaryActivity) return;
+    if (liveActivities.length === 1) {
+      if (primaryActivity.id === "paused-cart") {
+        setShowAddSale(true);
+        return;
+      }
+      if (primaryActivity.id === "urgent-alert") {
+        setTrackHubAlertPeekOpen(true);
+        return;
+      }
+    }
+    setTrackHubOpen(false);
+    setTrackHubAlertPeekOpen(false);
+    setTrackHubAssistantOpen(false);
+    setTrackHubActivitiesOpen(true);
+  };
+  const morphVariant = islandMorph ? (islandMorph.seq % 2 === 0 ? "a" : "b") : null;
+  const pillShellAnimation = reduceTrackHubMotion || !islandMorph || !morphVariant
+    ? "none"
+    : islandMorph.kind === "expand"
+    ? `th-squish-expand-${morphVariant} 380ms cubic-bezier(0.22, 1, 0.36, 1)`
+    : islandMorph.kind === "collapse"
+    ? `th-squish-collapse-${morphVariant} 310ms cubic-bezier(0.22, 1, 0.36, 1)`
+    : islandMorph.kind === "swap"
+    ? `th-squish-swap-${morphVariant} 330ms cubic-bezier(0.22, 1, 0.36, 1)`
+    : `th-squish-nudge-${morphVariant} 290ms cubic-bezier(0.22, 1, 0.36, 1)`;
 
   useEffect(() => {
     if (confirmOpen) {
       setTrackHubOpen(false);
       setTrackHubAlertPeekOpen(false);
+      setTrackHubActivitiesOpen(false);
     }
   }, [confirmOpen]);
 
@@ -1038,52 +1971,188 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
       {/* Anchor placeholder — keeps topbar items from shifting */}
       <div className="h-[42px] invisible pointer-events-none" style={{ width: collapsedPillWidth }} aria-hidden="true" />
 
-      {/* ── Physical pill shell (Pure CSS Spring Morph) ── */}
+      {/* ── Detached Apple Split Orb (pops out cleanly when 1+ live activities run) ── */}
+      {primaryActivity && (
+        <div
+          className="hidden sm:block absolute top-0 left-1/2"
+          style={{
+            zIndex: 1,
+            width: `${splitOrbWidth}px`,
+            height: "42px",
+            transform: splitOrbActive
+              ? `translate3d(calc(-50% + ${splitOrbRestX}px), 0, 0) scale(1)`
+              : `translate3d(calc(-50% + ${splitOrbHiddenX}px), 0, 0) scale(0.5)`,
+            opacity: splitOrbActive ? 1 : 0,
+            pointerEvents: splitOrbActive ? "auto" : "none",
+            transition: reduceTrackHubMotion
+              ? "none"
+              : splitOrbActive
+              ? "transform 340ms cubic-bezier(0.22, 1.24, 0.36, 1) 25ms, opacity 170ms 35ms ease"
+              : "transform 220ms cubic-bezier(0.22, 1, 0.36, 1), opacity 110ms ease",
+          }}
+        >
+          <button
+            ref={splitOrbMeasureRef}
+            type="button"
+            onClick={handleSplitOrbClick}
+            title={
+              liveActivities.length > 1
+                ? `${liveActivities.length} live activities (${liveActivities.map(a => a.title).join(", ")})`
+                : `${primaryActivity.title}: ${primaryActivity.subtitle}`
+            }
+            aria-label={
+              liveActivities.length > 1
+                ? `${liveActivities.length} live activities active. Click to inspect.`
+                : `${primaryActivity.title}. ${primaryActivity.subtitle}`
+            }
+            className="th-split-orb-face relative flex h-full w-max min-w-[88px] items-center justify-center gap-[6px] rounded-full px-[12px] cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60"
+            style={{
+              background: "#000000",
+              border: darkMode
+                ? "1px solid rgba(255, 255, 255, 0.28)"
+                : "1px solid rgba(255, 255, 255, 0.14)",
+              boxShadow: darkMode
+                ? "inset 0 1px 0.5px 0 rgba(255, 255, 255, 0.42), 0 0 8px 0 rgba(255, 255, 255, 0.10), 0 4px 16px rgba(0,0,0,0.38)"
+                : "0 4px 16px rgba(0,0,0,0.20)",
+            }}
+          >
+            {/* Matching top obsidian rim highlight */}
+            <span
+              aria-hidden="true"
+              className="pointer-events-none absolute inset-x-2 top-0 h-px rounded-full opacity-70"
+              style={{
+                background: "linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.28) 50%, rgba(255,255,255,0) 100%)",
+              }}
+            />
+
+            {primaryActivity.id === "paused-cart" && (
+              <>
+                <ShoppingCart size={13} className="text-emerald-400 flex-shrink-0" />
+                <span aria-hidden="true" className="flex items-end gap-[2px] h-2.5 flex-shrink-0">
+                  <span className={`w-[2px] h-full rounded-full bg-emerald-400 ${splitOrbActive && !reduceTrackHubMotion ? "th-beat-1" : ""}`} />
+                  <span className={`w-[2px] h-full rounded-full bg-emerald-300 ${splitOrbActive && !reduceTrackHubMotion ? "th-beat-2" : ""}`} />
+                  <span className={`w-[2px] h-full rounded-full bg-emerald-400 ${splitOrbActive && !reduceTrackHubMotion ? "th-beat-3" : ""}`} />
+                </span>
+                {primaryActivity.pillText && (
+                  <span className="text-[11px] font-semibold tabular-nums whitespace-nowrap text-emerald-300 leading-none">
+                    {primaryActivity.pillText}
+                  </span>
+                )}
+              </>
+            )}
+
+            {primaryActivity.id === "urgent-alert" && (
+              <>
+                <span aria-hidden="true" className="relative flex h-2.5 w-2.5 items-center justify-center flex-shrink-0">
+                  {hasUrgentPharmacyAlerts && splitOrbActive && !reduceTrackHubMotion && (
+                    <span className="th-radar-ring absolute inline-flex h-full w-full rounded-full bg-rose-400" />
+                  )}
+                  <span className={`relative inline-flex h-2 w-2 rounded-full ${hasUrgentPharmacyAlerts ? "bg-rose-400" : "bg-amber-400"}`} />
+                </span>
+                {primaryActivity.pillText && (
+                  <span className={`text-[11px] font-semibold tabular-nums whitespace-nowrap leading-none ${hasUrgentPharmacyAlerts ? "text-rose-300" : "text-amber-300"}`}>
+                    {primaryActivity.pillText}
+                  </span>
+                )}
+              </>
+            )}
+
+            {liveActivities.length > 1 && (
+              <span className="absolute -top-1 -right-1 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-blue-500 px-1 text-[9px] font-bold tabular-nums text-white ring-2 ring-background shadow-sm leading-none">
+                +{liveActivities.length - 1}
+              </span>
+            )}
+          </button>
+        </div>
+      )}
+
+      {/* ── Main Pill GPU Split Shift Wrapper (avoids CSS keyframe conflict) ── */}
+      <div
+        className="absolute inset-0 pointer-events-none"
+        style={{
+          zIndex: 2,
+          transform: `translate3d(${mainSplitShiftX}px, 0, 0)`,
+          transition: reduceTrackHubMotion
+            ? "none"
+            : "transform 300ms cubic-bezier(0.22, 1.18, 0.36, 1)",
+        }}
+      >
+      {/* ── Physical pill shell (Apple Dynamic Island GPU Spring Morph) ── */}
       <div
         ref={pillRef}
         data-trackhub-target
-        className="absolute top-0 left-1/2 -translate-x-1/2 overflow-hidden select-none cursor-default"
+        data-collapsed={islandState === "collapsed" ? "true" : "false"}
+        className="th-pill-shell pointer-events-auto absolute top-0 left-1/2 overflow-hidden select-none cursor-default"
         style={{
           background: "#000000",
           border: darkMode
             ? "1px solid rgba(255, 255, 255, 0.28)"
-            : "1px solid rgba(255, 255, 255, 0.12)",
+            : "1px solid rgba(255, 255, 255, 0.14)",
           boxShadow: darkMode
-            ? confirmOpen || trackHubOpen || trackHubAssistantOpen
-              ? "inset 0 1px 0.5px 0 rgba(255, 255, 255, 0.45), 0 0 12px 0 rgba(255, 255, 255, 0.12), 0 20px 60px rgba(0,0,0,0.85)"
-              : toastOpen
-              ? "inset 0 1px 0.5px 0 rgba(255, 255, 255, 0.45), 0 0 10px 0 rgba(255, 255, 255, 0.12), 0 8px 32px rgba(0,0,0,0.55)"
-              : "inset 0 1px 0.5px 0 rgba(255, 255, 255, 0.45), 0 0 10px 0 rgba(255, 255, 255, 0.12), 0 4px 18px rgba(0,0,0,0.40)"
-            : confirmOpen || trackHubOpen || trackHubAssistantOpen
-            ? "0 20px 60px rgba(0,0,0,0.45)"
-            : toastOpen
-            ? "0 8px 32px rgba(0,0,0,0.30)"
-            : "0 4px 18px rgba(0,0,0,0.22)",
+            ? confirmOpen || trackHubOpen || trackHubAssistantOpen || trackHubActivitiesOpen
+              ? "inset 0 1px 0.5px 0 rgba(255, 255, 255, 0.42), 0 0 10px 0 rgba(255, 255, 255, 0.10), 0 18px 44px rgba(0,0,0,0.78)"
+              : toastOpen || systemAlertOpen
+              ? "inset 0 1px 0.5px 0 rgba(255, 255, 255, 0.42), 0 0 8px 0 rgba(255, 255, 255, 0.10), 0 10px 30px rgba(0,0,0,0.58)"
+              : "inset 0 1px 0.5px 0 rgba(255, 255, 255, 0.42), 0 0 8px 0 rgba(255, 255, 255, 0.10), 0 4px 16px rgba(0,0,0,0.38)"
+            : confirmOpen || trackHubOpen || trackHubAssistantOpen || trackHubActivitiesOpen
+            ? "0 18px 42px rgba(0,0,0,0.42)"
+            : toastOpen || systemAlertOpen
+            ? "0 10px 30px rgba(0,0,0,0.30)"
+            : "0 4px 16px rgba(0,0,0,0.20)",
           width:        pillW,
           height:       pillH,
-          borderRadius: confirmOpen ? "24px" : (trackHubOpen || trackHubAssistantOpen) ? "24px" : "21px",
-          transition: reduceTrackHubMotion ? "none" : [
-            `width ${confirmOpen ? 280 : (trackHubOpen || trackHubAssistantOpen) ? 260 : toastOpen ? 280 : 200}ms cubic-bezier(0.16, 1, 0.3, 1)`,
-            `height ${confirmOpen ? 280 : (trackHubOpen || trackHubAssistantOpen) ? 260 : toastOpen ? 280 : 200}ms cubic-bezier(0.16, 1, 0.3, 1)`,
-            "box-shadow 240ms ease",
-            "opacity 160ms ease",
-          ].join(", "),
-          willChange: "width, height, box-shadow",
+          borderRadius: confirmOpen || trackHubOpen || trackHubAssistantOpen
+            ? "28px"
+            : trackHubActivitiesOpen
+            ? "26px"
+            : systemAlertOpen || trackHubAlertPeekOpen
+            ? "24px"
+            : toastOpen
+            ? "22px"
+            : "21px",
+          transition: reduceTrackHubMotion ? "none" : isExpandedIsland
+            ? [
+                "width 290ms cubic-bezier(0.16, 1, 0.3, 1)",
+                "height 310ms cubic-bezier(0.16, 1, 0.3, 1)",
+                "border-radius 290ms cubic-bezier(0.16, 1, 0.3, 1)",
+                "transform 240ms cubic-bezier(0.22, 1.16, 0.36, 1)",
+                "opacity 150ms ease",
+              ].join(", ")
+            : [
+                "height 240ms cubic-bezier(0.22, 1, 0.36, 1)",
+                "width 260ms cubic-bezier(0.22, 1, 0.36, 1) 10ms",
+                "border-radius 250ms cubic-bezier(0.22, 1, 0.36, 1)",
+                "transform 200ms cubic-bezier(0.22, 1.16, 0.36, 1)",
+                "opacity 140ms ease",
+              ].join(", "),
+          animation: pillShellAnimation,
+          willChange: reduceTrackHubMotion || (!isExpandedIsland && !pillSlide) ? "auto" : "transform, opacity",
           transformOrigin: "center top",
           opacity: hideTrackHub ? 0 : 1,
           pointerEvents: hideTrackHub ? "none" : "auto",
         }}
       >
+        {/* Subtle obsidian top rim light */}
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-x-3 top-0 h-px rounded-full opacity-70"
+          style={{
+            background: "linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.28) 50%, rgba(255,255,255,0) 100%)",
+          }}
+        />
+
         {/* ── Layer -1: Dynamic Island Confirm Dialog ─────────────────────── */}
         <div
-          className="absolute top-0 left-1/2 w-[430px] p-4 flex flex-col justify-between"
+          className="absolute top-0 left-1/2 w-[430px] max-w-[calc(100vw-24px)] p-4 flex flex-col justify-between"
           style={{
             height: "148px",
+            contain: "layout style paint",
+            visibility: confirmOpen ? "visible" : "hidden",
             opacity: confirmOpen ? 1 : 0,
-            transform: confirmOpen ? "translateX(-50%) scale(1)" : "translateX(-50%) scale(0.95)",
+            transform: confirmOpen ? "translate3d(-50%, 0, 0) scale(1)" : "translate3d(-50%, -8px, 0) scale(0.9)",
             transition: reduceTrackHubMotion ? "none" : confirmOpen
-              ? "opacity 160ms 40ms ease, transform 240ms cubic-bezier(0.16, 1, 0.3, 1)"
-              : "opacity 60ms ease, transform 60ms ease",
+              ? "opacity 180ms 55ms ease, transform 320ms 35ms cubic-bezier(0.22, 1.2, 0.36, 1), visibility 0s"
+              : "opacity 70ms ease, transform 90ms ease, visibility 0s 90ms",
             pointerEvents: confirmOpen ? "auto" : "none",
           }}
           onClick={e => e.stopPropagation()}
@@ -1136,14 +2205,18 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
 
         {/* ── Layer 0: Toast / Notification state (shown when hubToast active) ── */}
         <div
-          className="absolute inset-0 w-full h-full flex items-center gap-2.5 px-3.5"
+          className="absolute top-0 left-1/2 flex items-center gap-2.5 px-3.5"
           style={{
+            width: hubToast?.action ? "min(430px, calc(100vw - 24px))" : "min(360px, calc(100vw - 32px))",
+            height: "48px",
+            contain: "layout style paint",
+            visibility: toastOpen ? "visible" : "hidden",
             opacity:    toastOpen ? 1 : 0,
-            transform:  toastOpen ? "scale(1)" : "scale(0.95)",
+            transform:  toastOpen ? "translate3d(-50%, 0, 0) scale(1)" : "translate3d(-50%, -4px, 0) scale(0.9)",
             transition: reduceTrackHubMotion ? "none" : toastOpen
-              ? "opacity 160ms 60ms ease, transform 220ms 60ms cubic-bezier(0.16, 1, 0.3, 1)"
-              : "opacity 60ms ease, transform 60ms ease",
-            pointerEvents: "none",
+              ? "opacity 180ms 65ms ease, transform 300ms 45ms cubic-bezier(0.22, 1.2, 0.36, 1), visibility 0s"
+              : "opacity 65ms ease, transform 80ms ease, visibility 0s 80ms",
+            pointerEvents: toastOpen && hubToast?.action ? "auto" : "none",
           }}
         >
           {/* Icon dot */}
@@ -1160,142 +2233,536 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
           }`}>
             {hubToast?.type === "error" ? "✕" : hubToast?.type === "info" ? (hubToast.msg.toLowerCase().includes("dark") ? "🌙" : hubToast.msg.toLowerCase().includes("light") ? "☀️" : "ℹ") : "✓"}
           </span>
-          <span className="text-xs font-semibold text-white/95 leading-tight truncate">
+          <span className="min-w-0 flex-1 text-xs font-semibold text-white/95 leading-tight truncate">
             {hubToast?.msg}
           </span>
+          {hubToast?.action && (
+            <div className="flex items-center gap-1 flex-shrink-0">
+              <button
+                type="button"
+                onClick={e => {
+                  e.stopPropagation();
+                  const act = hubToast.action;
+                  if (hubToastTimer.current) clearTimeout(hubToastTimer.current);
+                  setHubToast(null);
+                  act?.onClick();
+                }}
+                className="rounded-full bg-white/15 hover:bg-white/25 px-2.5 py-1 text-[10px] font-bold text-white transition-colors"
+              >
+                {hubToast.action.label}
+              </button>
+              <button
+                type="button"
+                aria-label="Dismiss notification"
+                onClick={e => {
+                  e.stopPropagation();
+                  if (hubToastTimer.current) clearTimeout(hubToastTimer.current);
+                  setHubToast(null);
+                }}
+                className="flex h-5 w-5 items-center justify-center rounded-full text-white/45 hover:bg-white/10 hover:text-white transition-colors"
+              >
+                <X size={10} />
+              </button>
+            </div>
+          )}
         </div>
 
-        {/* ── Layer 1: Collapsed pill (Centrally locked) ───────────────────── */}
+        {/* ── Layer 0.5: Urgent System Alert (Out-of-stock / Critical) ────── */}
         <div
-          className="absolute top-0 left-1/2 h-[42px] flex items-center px-3 cursor-pointer hover:bg-white/[0.04] motion-reduce:transition-none"
+          role="alert"
+          aria-live="assertive"
+          className="absolute top-0 left-1/2 flex items-center gap-3 px-4"
           style={{
-            width: collapsedPillWidth,
-            opacity:    (confirmOpen || trackHubOpen || trackHubAssistantOpen || trackHubAlertPeekOpen || toastOpen) ? 0 : 1,
-            transform:  (confirmOpen || trackHubOpen || trackHubAssistantOpen || trackHubAlertPeekOpen || toastOpen) ? "translateX(-50%) scale(0.94)" : "translateX(-50%) scale(1)",
-            transition: reduceTrackHubMotion ? "none" : (confirmOpen || trackHubOpen || trackHubAssistantOpen || trackHubAlertPeekOpen || toastOpen)
-              ? "opacity 50ms ease, transform 60ms ease"
-              : "opacity 140ms 40ms ease, transform 180ms 40ms cubic-bezier(0.16, 1, 0.3, 1)",
-            pointerEvents: (confirmOpen || trackHubOpen || trackHubAssistantOpen || trackHubAlertPeekOpen || toastOpen) ? "none" : "auto",
+            width: "min(490px, calc(100vw - 24px))",
+            height: "76px",
+            contain: "layout style paint",
+            visibility: systemAlertOpen ? "visible" : "hidden",
+            opacity: systemAlertOpen ? 1 : 0,
+            transform: systemAlertOpen ? "translate3d(-50%, 0, 0) scale(1)" : "translate3d(-50%, -6px, 0) scale(0.9)",
+            transition: reduceTrackHubMotion ? "none" : systemAlertOpen
+              ? "opacity 180ms 55ms ease, transform 320ms 40ms cubic-bezier(0.22, 1.2, 0.36, 1), visibility 0s"
+              : "opacity 65ms ease, transform 80ms ease, visibility 0s 80ms",
+            pointerEvents: systemAlertOpen ? "auto" : "none",
+          }}
+          onClick={e => e.stopPropagation()}
+        >
+          <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-rose-500/20 border border-rose-500/35 text-rose-400">
+            <AlertTriangle size={17} />
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-xs font-bold text-white leading-tight">
+              {systemAlert?.title}
+            </p>
+            <p className="mt-0.5 truncate text-[11px] text-white/70 leading-tight">
+              {systemAlert?.body}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              setPage("stock-alerts");
+              setSystemAlert(null);
+              loadAll(false);
+            }}
+            className="flex-shrink-0 rounded-full bg-blue-600 hover:bg-blue-500 px-3 py-1.5 text-[11px] font-bold text-white shadow-md shadow-blue-600/30 transition-colors"
+          >
+            Reorder Now
+          </button>
+          <button
+            type="button"
+            aria-label="Dismiss alert"
+            onClick={() => setSystemAlert(null)}
+            className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full text-white/50 hover:bg-white/10 hover:text-white transition-colors"
+          >
+            <X size={13} />
+          </button>
+        </div>
+
+        {/* ── Layer 1: Collapsed pill (Concentric stadium padding: 6px all around 28px controls) ── */}
+        <div
+          ref={collapsedMeasureRef}
+          className="absolute top-0 left-1/2 h-full inline-flex w-max items-center px-[6px] cursor-pointer hover:bg-white/[0.04] motion-reduce:transition-none"
+          style={{
+            contain: "layout style paint",
+            visibility: (confirmOpen || trackHubOpen || trackHubAssistantOpen || trackHubAlertPeekOpen || trackHubActivitiesOpen || toastOpen || systemAlertOpen) ? "hidden" : "visible",
+            opacity:    (confirmOpen || trackHubOpen || trackHubAssistantOpen || trackHubAlertPeekOpen || trackHubActivitiesOpen || toastOpen || systemAlertOpen) ? 0 : 1,
+            transform:  (confirmOpen || trackHubOpen || trackHubAssistantOpen || trackHubAlertPeekOpen || trackHubActivitiesOpen || toastOpen || systemAlertOpen) ? "translate3d(-50%, 0, 0) scale(0.86)" : "translate3d(-50%, 0, 0) scale(1)",
+            transition: reduceTrackHubMotion ? "none" : (confirmOpen || trackHubOpen || trackHubAssistantOpen || trackHubAlertPeekOpen || trackHubActivitiesOpen || toastOpen || systemAlertOpen)
+              ? "opacity 70ms ease, transform 110ms ease, visibility 0s 110ms"
+              : "opacity 160ms 55ms ease, transform 240ms 40ms cubic-bezier(0.22, 1.2, 0.36, 1), visibility 0s",
+            pointerEvents: (confirmOpen || trackHubOpen || trackHubAssistantOpen || trackHubAlertPeekOpen || trackHubActivitiesOpen || toastOpen || systemAlertOpen) ? "none" : "auto",
           }}
           onClick={() => {
             setTrackHubAlertPeekOpen(false);
+            setTrackHubActivitiesOpen(false);
             setTrackHubOpen(true);
           }}
-          title="Click to open navigation"
+          title="Open TrackHub workspace switcher"
         >
-          {smartBotEnabled && <button
-            type="button"
-            onClick={e => {
-              e.stopPropagation();
-              setTrackHubOpen(false);
-              setTrackHubAlertPeekOpen(false);
-              setTrackHubAssistantOpen(true);
-            }}
-            className="mr-2 flex h-7 flex-shrink-0 items-center gap-1.5 rounded-full bg-white/[0.08] px-2 text-white/85 transition-colors hover:bg-white/[0.12]"
-            title="Open SmartTrack Assistant"
-            aria-label="Open SmartTrack Assistant"
-          >
-            <Bot size={14} className="text-blue-300" />
-            <span className="text-[10px] font-semibold leading-none">Assistant</span>
-          </button>}
+          {smartBotEnabled && (
+            <>
+              <button
+                type="button"
+                onClick={e => {
+                  e.stopPropagation();
+                  setTrackHubOpen(false);
+                  setTrackHubAlertPeekOpen(false);
+                  setTrackHubActivitiesOpen(false);
+                  setTrackHubAssistantOpen(true);
+                }}
+                className={`flex h-[28px] flex-shrink-0 items-center gap-[6px] rounded-full px-[10px] transition-colors ${
+                  trackHubAssistantOpen
+                    ? "bg-blue-500/25 border border-blue-400/35 text-blue-200"
+                    : "bg-white/[0.08] text-white/90 hover:bg-white/[0.14]"
+                }`}
+                title="Open SmartTrack Assistant"
+                aria-label="Open SmartTrack Assistant"
+              >
+                {trackHubAssistantOpen && !reduceTrackHubMotion ? (
+                  <span aria-hidden="true" className="flex items-end gap-[2px] h-[10px]">
+                    <span className="w-[2px] h-full rounded-full bg-blue-300 th-beat-1" />
+                    <span className="w-[2px] h-full rounded-full bg-indigo-300 th-beat-2" />
+                    <span className="w-[2px] h-full rounded-full bg-cyan-300 th-beat-3" />
+                  </span>
+                ) : (
+                  <Bot size={13} className="text-blue-300 flex-shrink-0" />
+                )}
+                <span className="text-[11px] font-semibold leading-none whitespace-nowrap">Assistant</span>
+              </button>
+              <span aria-hidden="true" className="mx-[8px] h-[16px] w-px flex-shrink-0 bg-white/[0.12]" />
+            </>
+          )}
 
-          <button
-            type="button"
-            aria-label={`${pharmacyHealth.label}. ${pharmacyHealthSubtitle}. Show alert summary`}
-            aria-expanded={trackHubAlertPeekOpen}
-            onClick={event => {
-              event.stopPropagation();
-              setTrackHubOpen(false);
-              setTrackHubAlertPeekOpen(open => !open);
-            }}
-            title="Show pharmacy health summary"
-            className="mr-2 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60"
-          >
-            <span className={`h-2 w-2 rounded-full ${pharmacyHealth.dotClass} ${pharmacyHealth.pulse ? "animate-pulse motion-reduce:animate-none" : ""}`} />
-          </button>
-
-          {/* Active page icon + label container */}
+          {/* Active section identity ONLY (stays static — no fake animation on page tabs) */}
           <div
             key={page}
-            className="flex items-center gap-2 flex-1 min-w-0"
+            className="flex items-center gap-[8px] min-w-0 max-w-[164px]"
             style={{
               animation: pillSlide && !reduceTrackHubMotion ? "th-pill-content-in 300ms cubic-bezier(0.16, 1, 0.3, 1) both" : "none",
             }}
           >
-            {/* Active page squircle icon (clean, no overlapping dot) */}
-            <span className="w-7 h-7 rounded-lg bg-blue-500/15 border border-blue-400/30 flex items-center justify-center flex-shrink-0">
+            <span className="w-[28px] h-[28px] rounded-[10px] border border-blue-400/30 bg-blue-500/15 flex items-center justify-center flex-shrink-0">
               <ActiveIcon size={14} className="text-blue-400" />
             </span>
-
-            {/* Page title + pharmacy health summary */}
-            <div className="flex flex-col min-w-0 justify-center">
-              <span className="text-[12.5px] font-semibold text-white/95 tracking-tight leading-tight truncate">
-                {activeLabel}
-              </span>
-              <span className={`text-[9px] font-medium leading-none mt-0.5 truncate ${pharmacyHealth.textClass}`}>
-                {pharmacyHealthSubtitle}
-              </span>
-            </div>
+            <span className="text-[12.5px] font-semibold text-white/95 tracking-tight leading-none whitespace-nowrap truncate">
+              {activeLabel}
+            </span>
           </div>
 
-          {/* Chevron */}
-          <div className="w-5 h-5 rounded-full bg-white/[0.08] flex items-center justify-center flex-shrink-0 ml-1.5 motion-reduce:transition-none"
-               style={{ transition: reduceTrackHubMotion ? "none" : "background-color 150ms ease" }}>
-            <ChevronDown size={11} className="text-white/50" />
+          {/* Switcher chevron / live Sync Arc -> Checkmark Draw morph */}
+          <div
+            className={`w-[28px] h-[28px] rounded-full flex items-center justify-center flex-shrink-0 ml-[14px] motion-reduce:transition-none ${
+              syncJustCompleted ? "bg-emerald-500/20" : refreshing ? "bg-sky-500/20" : "bg-white/[0.08]"
+            }`}
+            style={{ transition: reduceTrackHubMotion ? "none" : "background-color 150ms ease" }}
+          >
+            {refreshing ? (
+              <svg aria-label="Syncing" className={!reduceTrackHubMotion ? "th-arc-spin" : ""} width="13" height="13" viewBox="0 0 24 24" fill="none">
+                <circle cx="12" cy="12" r="9" stroke="rgba(255,255,255,0.22)" strokeWidth="2.8" />
+                <path d="M12 3a9 9 0 0 1 9 9" stroke="#38bdf8" strokeWidth="2.8" strokeLinecap="round" />
+              </svg>
+            ) : syncJustCompleted ? (
+              <svg aria-label="Synced" width="13" height="13" viewBox="0 0 24 24" fill="none">
+                <path className={!reduceTrackHubMotion ? "th-check-draw" : ""} d="M6 12.5l4 4 8-9" stroke="#34d399" strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            ) : (
+              <ChevronDown size={12} className="text-white/60" />
+            )}
           </div>
         </div>
 
-        {/* ── Layer 1.5: Compact pharmacy alert peek ─────────────────────── */}
+        {/* ── Layer 1.5: Compact pharmacy alert peek carousel ────────────── */}
         <div
           role="region"
           aria-label="Pharmacy alert summary"
-          className="absolute inset-0 flex items-center gap-2 px-3 motion-reduce:transition-none"
+          className="absolute top-0 left-1/2 flex items-center gap-1.5 px-3 motion-reduce:transition-none"
           style={{
-            opacity: !confirmOpen && trackHubAlertPeekOpen && !trackHubOpen && !trackHubAssistantOpen ? 1 : 0,
-            transform: !confirmOpen && trackHubAlertPeekOpen && !trackHubOpen && !trackHubAssistantOpen ? "scale(1)" : "scale(0.97)",
+            width: "min(520px, calc(100vw - 24px))",
+            height: "56px",
+            contain: "layout style paint",
+            visibility: !confirmOpen && trackHubAlertPeekOpen && !trackHubOpen && !trackHubAssistantOpen && !trackHubActivitiesOpen ? "visible" : "hidden",
+            opacity: !confirmOpen && trackHubAlertPeekOpen && !trackHubOpen && !trackHubAssistantOpen && !trackHubActivitiesOpen ? 1 : 0,
+            transform: !confirmOpen && trackHubAlertPeekOpen && !trackHubOpen && !trackHubAssistantOpen && !trackHubActivitiesOpen ? "translate3d(-50%, 0, 0) scale(1)" : "translate3d(-50%, -4px, 0) scale(0.9)",
             transition: reduceTrackHubMotion
               ? "none"
               : trackHubAlertPeekOpen
-              ? "opacity 120ms ease, transform 180ms cubic-bezier(0.16, 1, 0.3, 1)"
-              : "opacity 60ms ease, transform 60ms ease",
-            pointerEvents: !confirmOpen && trackHubAlertPeekOpen && !trackHubOpen && !trackHubAssistantOpen ? "auto" : "none",
+              ? "opacity 160ms 45ms ease, transform 290ms 30ms cubic-bezier(0.22, 1.2, 0.36, 1), visibility 0s"
+              : "opacity 65ms ease, transform 85ms ease, visibility 0s 85ms",
+            pointerEvents: !confirmOpen && trackHubAlertPeekOpen && !trackHubOpen && !trackHubAssistantOpen && !trackHubActivitiesOpen ? "auto" : "none",
           }}
         >
-          <span className={`h-2 w-2 flex-shrink-0 rounded-full ${pharmacyHealth.dotClass} ${pharmacyHealth.pulse ? "animate-pulse motion-reduce:animate-none" : ""}`} />
-          <span className="min-w-0 flex-1 truncate text-[11px] font-medium text-white/85" title={pharmacyAlertPeek}>
-            {pharmacyAlertPeek}
-          </span>
-          <button
-            type="button"
-            onClick={event => {
-              event.stopPropagation();
-              setTrackHubAlertPeekOpen(false);
-              setTrackHubOpen(false);
-              setPage("stock-alerts");
-            }}
-            className="flex flex-shrink-0 items-center gap-1 rounded-full bg-white/[0.1] px-2.5 py-1.5 text-[10px] font-semibold text-white/90 transition-colors hover:bg-white/[0.18] motion-reduce:transition-none"
-          >
-            Review Alerts <ArrowRight size={11} />
-          </button>
+          <span className={`h-2 w-2 flex-shrink-0 rounded-full ${
+            activeAlertItem
+              ? activeAlertItem.tone === "danger"
+                ? "bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.9)]"
+                : "bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.9)]"
+              : pharmacyHealth.dotClass
+          } ${pharmacyHealth.pulse && trackHubAlertPeekOpen ? "animate-pulse motion-reduce:animate-none" : ""}`} />
+          {activeAlertItem ? (
+            <>
+              {urgentAlertItems.length > 1 && (
+                <span className="flex-shrink-0 rounded-full bg-white/10 px-1.5 py-0.5 text-[9px] font-bold tabular-nums text-white/75">
+                  {((alertPeekIdx % urgentAlertItems.length) + urgentAlertItems.length) % urgentAlertItems.length + 1}/{urgentAlertItems.length}
+                </span>
+              )}
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-[11px] font-semibold text-white/95 leading-tight">{activeAlertItem.label}</p>
+                <p className={`truncate text-[9.5px] font-medium leading-tight ${activeAlertItem.tone === "danger" ? "text-rose-300" : "text-amber-300"}`}>
+                  {activeAlertItem.detail}
+                </p>
+              </div>
+              {urgentAlertItems.length > 1 && (
+                <div className="flex items-center gap-0.5 flex-shrink-0">
+                  <button
+                    type="button"
+                    aria-label="Previous alert"
+                    onClick={e => {
+                      e.stopPropagation();
+                      setAlertPeekIdx(i => (i - 1 + urgentAlertItems.length) % urgentAlertItems.length);
+                    }}
+                    className="flex h-6 w-6 items-center justify-center rounded-full bg-white/[0.07] text-white/70 hover:bg-white/15 hover:text-white transition-colors"
+                  >
+                    <ChevronLeft size={12} />
+                  </button>
+                  <button
+                    type="button"
+                    aria-label="Next alert"
+                    onClick={e => {
+                      e.stopPropagation();
+                      setAlertPeekIdx(i => (i + 1) % urgentAlertItems.length);
+                    }}
+                    className="flex h-6 w-6 items-center justify-center rounded-full bg-white/[0.07] text-white/70 hover:bg-white/15 hover:text-white transition-colors"
+                  >
+                    <ChevronRight size={12} />
+                  </button>
+                </div>
+              )}
+              <button
+                type="button"
+                onClick={event => {
+                  event.stopPropagation();
+                  setTrackHubAlertPeekOpen(false);
+                  setTrackHubOpen(false);
+                  if (isInventoryManager) {
+                    handleStockAlertEditProduct(activeAlertItem.product);
+                  } else {
+                    setPage("stock-alerts");
+                  }
+                }}
+                className="flex flex-shrink-0 items-center gap-1 rounded-full border border-white/15 bg-white/[0.14] px-3 py-1.5 text-[10px] font-semibold text-white transition-colors hover:bg-white/[0.24] active:scale-95 motion-reduce:transition-none"
+              >
+                {isInventoryManager ? "Restock" : "Review"}
+              </button>
+              <button
+                type="button"
+                onClick={event => {
+                  event.stopPropagation();
+                  setTrackHubAlertPeekOpen(false);
+                  setPage("stock-alerts");
+                }}
+                className="flex-shrink-0 rounded-full border border-white/10 bg-white/[0.06] px-2.5 py-1.5 text-[10px] font-medium text-white/80 hover:bg-white/[0.16] hover:text-white transition-colors active:scale-95"
+              >
+                All
+              </button>
+            </>
+          ) : (
+            <>
+              <span className="min-w-0 flex-1 truncate text-[11px] font-medium text-white/85" title={pharmacyAlertPeek}>
+                {pharmacyAlertPeek}
+              </span>
+              <button
+                type="button"
+                onClick={event => {
+                  event.stopPropagation();
+                  setTrackHubAlertPeekOpen(false);
+                  setTrackHubOpen(false);
+                  setPage("stock-alerts");
+                }}
+                className="flex flex-shrink-0 items-center gap-1 rounded-full border border-white/15 bg-white/[0.12] px-3 py-1.5 text-[10px] font-semibold text-white/95 transition-colors hover:bg-white/[0.22] active:scale-95 motion-reduce:transition-none"
+              >
+                Review Alerts
+              </button>
+            </>
+          )}
           <button
             type="button"
             onClick={() => setTrackHubAlertPeekOpen(false)}
             aria-label="Close alert summary"
-            className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full text-white/55 transition-colors hover:bg-white/10 hover:text-white motion-reduce:transition-none"
+            className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-white/[0.06] text-white/60 transition-colors hover:bg-white/[0.14] hover:text-white motion-reduce:transition-none"
           >
             <X size={12} />
           </button>
         </div>
 
+        {/* ── Layer 1.75: Multi-Activity Live Stack (Split Orb expanded) ──── */}
+        <div
+          role="region"
+          aria-label="Live pharmacy activities"
+          className="absolute top-0 left-1/2 px-3.5 pt-3 pb-3 flex flex-col justify-between overflow-hidden"
+          style={{
+            width: "min(520px, calc(100vw - 24px))",
+            height: activitiesHeight,
+            contain: "layout style paint",
+            backfaceVisibility: "hidden",
+            visibility: (!confirmOpen && trackHubActivitiesOpen && !trackHubOpen && !trackHubAssistantOpen) ? "visible" : "hidden",
+            opacity: (!confirmOpen && trackHubActivitiesOpen && !trackHubOpen && !trackHubAssistantOpen) ? 1 : 0,
+            transform: (!confirmOpen && trackHubActivitiesOpen && !trackHubOpen && !trackHubAssistantOpen)
+              ? "translate3d(-50%, 0, 0) scale(1)"
+              : "translate3d(-50%, -6px, 0) scale(0.95)",
+            transition: reduceTrackHubMotion ? "none" : (!confirmOpen && trackHubActivitiesOpen && !trackHubOpen && !trackHubAssistantOpen)
+              ? "opacity 170ms 40ms ease, transform 270ms 20ms cubic-bezier(0.16, 1, 0.3, 1), visibility 0s"
+              : "opacity 70ms ease, transform 85ms ease, visibility 0s 85ms",
+            pointerEvents: (!confirmOpen && trackHubActivitiesOpen && !trackHubOpen && !trackHubAssistantOpen) ? "auto" : "none",
+          }}
+          onClick={e => e.stopPropagation()}
+        >
+          <div className="flex items-center justify-between gap-2 pb-2 border-b border-white/[0.08]">
+            <div className="flex items-center gap-2 min-w-0">
+              <span className="h-2 w-2 flex-shrink-0 rounded-full bg-blue-400 animate-pulse motion-reduce:animate-none" />
+              <span className="text-[10.5px] font-bold uppercase tracking-wider text-white/85">
+                Live Activities
+              </span>
+              <span className="rounded-full bg-white/10 px-1.5 py-0.5 text-[9px] font-bold tabular-nums text-white/75">
+                {liveActivities.length}
+              </span>
+            </div>
+            <div className="flex items-center gap-1.5 flex-shrink-0">
+              <button
+                type="button"
+                onClick={() => {
+                  setTrackHubActivitiesOpen(false);
+                  setTrackHubOpen(true);
+                }}
+                className="rounded-full bg-white/[0.08] hover:bg-white/[0.16] px-2.5 py-0.5 text-[10px] font-medium text-white/80 hover:text-white transition-colors"
+              >
+                Navigation
+              </button>
+              <button
+                type="button"
+                onClick={() => setTrackHubActivitiesOpen(false)}
+                aria-label="Close live activities"
+                className="flex h-5 w-5 items-center justify-center rounded-full bg-white/10 hover:bg-white/20 text-white/60 hover:text-white transition-colors"
+              >
+                <X size={10} />
+              </button>
+            </div>
+          </div>
+
+          <div className="mt-2.5 space-y-2 flex-1 overflow-y-auto">
+            {liveActivities.map(act => {
+              if (act.id === "urgent-alert" && activeAlertItem) {
+                return (
+                  <div
+                    key={act.id}
+                    className="flex items-center gap-2 rounded-2xl border border-rose-400/20 bg-white/[0.05] px-3 py-2"
+                  >
+                    <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-xl bg-rose-500/20 border border-rose-400/30 text-rose-300">
+                      <AlertTriangle size={14} />
+                    </span>
+
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5">
+                        <p className="truncate text-xs font-semibold text-white/95 leading-tight">
+                          {activeAlertItem.label}
+                        </p>
+                        {urgentAlertItems.length > 1 && (
+                          <span className="flex-shrink-0 rounded-full bg-white/10 px-1.5 py-0.5 text-[9px] font-bold tabular-nums text-white/75 leading-none">
+                            {((alertPeekIdx % urgentAlertItems.length) + urgentAlertItems.length) % urgentAlertItems.length + 1}/{urgentAlertItems.length}
+                          </span>
+                        )}
+                      </div>
+                      <p className={`mt-0.5 truncate text-[10px] font-medium leading-tight ${
+                        activeAlertItem.tone === "danger" ? "text-rose-300" : "text-amber-300"
+                      }`}>
+                        {activeAlertItem.detail}
+                      </p>
+                    </div>
+
+                    <div className="flex items-center gap-1 flex-shrink-0">
+                      {urgentAlertItems.length > 1 && (
+                        <>
+                          <button
+                            type="button"
+                            aria-label="Previous alert"
+                            onClick={() => setAlertPeekIdx(i => (i - 1 + urgentAlertItems.length) % urgentAlertItems.length)}
+                            className="flex h-6 w-6 items-center justify-center rounded-full bg-white/[0.07] text-white/70 hover:bg-white/15 hover:text-white transition-colors"
+                          >
+                            <ChevronLeft size={12} />
+                          </button>
+                          <button
+                            type="button"
+                            aria-label="Next alert"
+                            onClick={() => setAlertPeekIdx(i => (i + 1) % urgentAlertItems.length)}
+                            className="flex h-6 w-6 items-center justify-center rounded-full bg-white/[0.07] text-white/70 hover:bg-white/15 hover:text-white transition-colors"
+                          >
+                            <ChevronRight size={12} />
+                          </button>
+                        </>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setTrackHubActivitiesOpen(false);
+                          if (isInventoryManager) {
+                            handleStockAlertEditProduct(activeAlertItem.product);
+                          } else {
+                            setPage("stock-alerts");
+                          }
+                        }}
+                        className="rounded-full bg-rose-500 hover:bg-rose-400 px-2.5 py-1 text-[10px] font-bold text-white transition-colors"
+                      >
+                        {isInventoryManager ? "Restock" : "Review"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setTrackHubActivitiesOpen(false);
+                          setPage("stock-alerts");
+                        }}
+                        className="rounded-full bg-white/10 hover:bg-white/20 px-2 py-1 text-[10px] font-medium text-white/80 hover:text-white transition-colors"
+                      >
+                        All
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setQuietedAlertSignature(urgentDangerSignature)}
+                        title="Mute alert orb until urgent items change"
+                        className="rounded-full bg-white/[0.07] hover:bg-white/15 px-2 py-1 text-[10px] font-medium text-white/60 hover:text-white transition-colors"
+                      >
+                        Quiet
+                      </button>
+                    </div>
+                  </div>
+                );
+              }
+
+              return (
+                <div
+                  key={act.id}
+                  className="flex items-center gap-2.5 rounded-2xl border border-white/10 bg-white/[0.05] px-3 py-2"
+                >
+                  <span className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-xl ${
+                    act.tone === "emerald"
+                      ? "bg-emerald-500/20 border border-emerald-400/30 text-emerald-300"
+                      : "bg-rose-500/20 border border-rose-400/30 text-rose-300"
+                  }`}>
+                    {act.id === "paused-cart" && <ShoppingCart size={14} />}
+                    {act.id === "urgent-alert" && <AlertTriangle size={14} />}
+                  </span>
+
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-xs font-semibold text-white/95 leading-tight">{act.title}</p>
+                    <p className="mt-0.5 truncate text-[10px] text-white/60 leading-tight">{act.subtitle}</p>
+                  </div>
+
+                  {act.id === "paused-cart" && (
+                    <div className="flex items-center gap-1.5 flex-shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setTrackHubActivitiesOpen(false);
+                          setShowAddSale(true);
+                        }}
+                        className="rounded-full bg-emerald-500 hover:bg-emerald-400 px-2.5 py-1 text-[10px] font-bold text-black transition-colors"
+                      >
+                        Resume
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setTrackHubActivitiesOpen(false);
+                          setConfirmDiscardCart(true);
+                        }}
+                        className="rounded-full bg-white/10 hover:bg-white/20 px-2 py-1 text-[10px] font-medium text-white/75 hover:text-white transition-colors"
+                      >
+                        Discard
+                      </button>
+                    </div>
+                  )}
+
+                  {act.id === "urgent-alert" && (
+                    <div className="flex items-center gap-1.5 flex-shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setTrackHubActivitiesOpen(false);
+                          setPage("stock-alerts");
+                        }}
+                        className="rounded-full bg-rose-500 hover:bg-rose-400 px-2.5 py-1 text-[10px] font-bold text-white transition-colors"
+                      >
+                        View All
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setQuietedAlertSignature(urgentDangerSignature)}
+                        title="Hide alert orb until stockouts/expiries change"
+                        className="rounded-full bg-white/10 hover:bg-white/20 px-2 py-1 text-[10px] font-medium text-white/75 hover:text-white transition-colors"
+                      >
+                        Quiet
+                      </button>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
         {/* TrackHub expands into the assistant itself, embedded in the island pill. */}
         <div
-          className="absolute inset-0 flex flex-col overflow-hidden"
+          className="absolute top-0 left-1/2 flex flex-col overflow-hidden"
           style={{
+            width: "min(570px, calc(100vw - 24px))",
+            height: "min(520px, calc(100dvh - 80px))",
+            contain: "strict",
+            backfaceVisibility: "hidden",
+            visibility: (!confirmOpen && trackHubAssistantOpen) ? "visible" : "hidden",
             opacity: (!confirmOpen && trackHubAssistantOpen) ? 1 : 0,
-            transform: (!confirmOpen && trackHubAssistantOpen) ? "scale(1)" : "scale(0.97)",
+            transform: (!confirmOpen && trackHubAssistantOpen) ? "translate3d(-50%, 0, 0) scale(1)" : "translate3d(-50%, -6px, 0) scale(0.97)",
+            willChange: (!confirmOpen && trackHubAssistantOpen) ? "transform, opacity" : "auto",
             transition: reduceTrackHubMotion ? "none" : (!confirmOpen && trackHubAssistantOpen)
-              ? "opacity 160ms ease, transform 220ms cubic-bezier(0.16, 1, 0.3, 1)"
-              : "opacity 60ms ease, transform 60ms ease",
+              ? "opacity 180ms 45ms ease, transform 260ms 20ms cubic-bezier(0.16, 1, 0.3, 1), visibility 0s"
+              : "opacity 80ms ease, transform 90ms ease, visibility 0s 90ms",
             pointerEvents: (!confirmOpen && trackHubAssistantOpen) ? "auto" : "none",
           }}
         >
@@ -1304,134 +2771,390 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
             inventory={inventory}
             transactions={transactions}
             allowedPages={allowedPages}
-            onNavigate={p => {
-              setPage(p);
-              setTrackHubAssistantOpen(false);
-            }}
-            onOpenNewSale={() => {
-              setShowAddSale(true);
-              setTrackHubAssistantOpen(false);
-            }}
-            onOpenAddProduct={() => {
-              setShowAddProduct(true);
-              setTrackHubAssistantOpen(false);
-            }}
+            onNavigate={handleCommandNavigate}
+            onOpenNewSale={handleCommandOpenNewSale}
+            onOpenAddProduct={handleCommandOpenAddProduct}
             enabled={smartBotEnabled}
             mode="trackhub"
             open={trackHubAssistantOpen}
             onOpenChange={next => {
               setTrackHubAssistantOpen(next);
-              if (next) setTrackHubOpen(false);
+              if (next) {
+                setTrackHubOpen(false);
+                setTrackHubActivitiesOpen(false);
+              }
             }}
           />
         </div>
 
-        {/* ── Layer 2: Expanded hub (Centrally locked, blooms gracefully) ──── */}
+        {/* ── Layer 2: Expanded hub (Compact Apple Control Center + Horizontal Pages) ── */}
         <div
-          className="absolute top-0 left-1/2 w-[570px] px-3.5 pt-3 pb-5 flex flex-col"
+          className="absolute top-0 left-1/2 px-[16px] pt-[12px] pb-[12px] flex flex-col"
           style={{
-            opacity:    (!confirmOpen && trackHubOpen && !trackHubAssistantOpen) ? 1 : 0,
-            transform:  (!confirmOpen && trackHubOpen && !trackHubAssistantOpen) ? "translateX(-50%) scale(1)" : "translateX(-50%) scale(0.97)",
-            transition: reduceTrackHubMotion ? "none" : (!confirmOpen && trackHubOpen && !trackHubAssistantOpen)
-              ? "opacity 150ms ease, transform 220ms cubic-bezier(0.16, 1, 0.3, 1)"
-              : "opacity 60ms ease, transform 60ms ease",
-            pointerEvents: (!confirmOpen && trackHubOpen && !trackHubAssistantOpen) ? "auto" : "none",
+            width: "min(580px, calc(100vw - 24px))",
+            height: expandedHubHeight,
+            contain: "strict",
+            backfaceVisibility: "hidden",
+            visibility: (!confirmOpen && trackHubOpen && !trackHubAssistantOpen && !trackHubActivitiesOpen) ? "visible" : "hidden",
+            opacity:    (!confirmOpen && trackHubOpen && !trackHubAssistantOpen && !trackHubActivitiesOpen) ? 1 : 0,
+            transform:  (!confirmOpen && trackHubOpen && !trackHubAssistantOpen && !trackHubActivitiesOpen) ? "translate3d(-50%, 0, 0) scale(1)" : "translate3d(-50%, -6px, 0) scale(0.96)",
+            willChange: (!confirmOpen && trackHubOpen && !trackHubAssistantOpen && !trackHubActivitiesOpen) ? "transform, opacity" : "auto",
+            transition: reduceTrackHubMotion ? "none" : (!confirmOpen && trackHubOpen && !trackHubAssistantOpen && !trackHubActivitiesOpen)
+              ? "opacity 170ms 40ms ease, transform 260ms 20ms cubic-bezier(0.16, 1, 0.3, 1), visibility 0s"
+              : "opacity 70ms ease, transform 85ms ease, visibility 0s 85ms",
+            pointerEvents: (!confirmOpen && trackHubOpen && !trackHubAssistantOpen && !trackHubActivitiesOpen) ? "auto" : "none",
           }}
         >
-          {/* Header */}
-          <div className="flex items-center justify-between pb-2 mb-2 border-b border-white/[0.06] px-1">
-            <div className="flex items-center gap-2">
-              <span className={`w-1.5 h-1.5 rounded-full ${pharmacyHealth.dotClass} ${pharmacyHealth.pulse ? "animate-pulse motion-reduce:animate-none" : ""}`} />
-              <span className="text-[10px] font-bold text-white/80 tracking-wider uppercase">Navigation</span>
-              <span className="text-[9px] font-medium px-1.5 py-0.5 rounded-full bg-white/[0.07] border border-white/10 text-white/55">
-                {isAdmin ? "Admin / Owner" : isInventoryManager ? "Inventory Manager" : "Cashier"}
-              </span>
+          {/* Compact Top Bar: Role Switcher + Unified Store Stock Pill + Close */}
+          <div className="flex items-center justify-between gap-[8px] pb-[8px] border-b border-white/[0.07] px-[2px]">
+            <div className="flex items-center gap-1.5 min-w-0">
+              {(user.roles?.length ?? 0) > 1 ? (
+                <div className="flex items-center gap-1 overflow-x-auto" role="group" aria-label="Quick role switch">
+                  {(user.roles ?? [user.role]).map(role => {
+                    const active = user.role === role;
+                    return (
+                      <button
+                        key={role}
+                        type="button"
+                        disabled={roleActionBusy}
+                        onClick={e => {
+                          e.stopPropagation();
+                          if (!active) activateRole(role);
+                          setTrackHubOpen(false);
+                        }}
+                        className={`rounded-full px-2 py-0.5 text-[9.5px] font-semibold transition-colors flex-shrink-0 ${
+                          active
+                            ? "bg-blue-500/25 border border-blue-400/40 text-blue-200"
+                            : "bg-white/[0.06] border border-white/10 text-white/55 hover:bg-white/[0.12] hover:text-white"
+                        }`}
+                      >
+                        {ROLE_LABELS[role] ?? role}
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : (
+                <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-white/[0.08] border border-white/10 text-white/80 flex-shrink-0">
+                  {isAdmin ? "Admin / Owner" : isInventoryManager ? "Inventory Manager" : "Cashier"}
+                </span>
+              )}
+
+              {/* Compact interactive Store Stock Monitor pill (completely distinct from nav modules) */}
+              <button
+                type="button"
+                title={pharmacyAlertPeek}
+                onClick={e => {
+                  e.stopPropagation();
+                  setTrackHubOpen(false);
+                  if (urgentAlertItems.length > 0) {
+                    setTrackHubAlertPeekOpen(true);
+                  } else {
+                    navigateTo("stock-alerts");
+                  }
+                }}
+                className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[9.5px] font-semibold transition-colors flex-shrink-0 ${
+                  hasUrgentPharmacyAlerts
+                    ? "border-rose-400/30 bg-rose-500/15 text-rose-200 hover:bg-rose-500/25"
+                    : hasPharmacyWarnings
+                    ? "border-amber-400/30 bg-amber-500/15 text-amber-200 hover:bg-amber-500/25"
+                    : "border-emerald-400/25 bg-emerald-500/12 text-emerald-200 hover:bg-emerald-500/20"
+                }`}
+              >
+                <span className="relative flex h-2 w-2 items-center justify-center flex-shrink-0">
+                  {hasUrgentPharmacyAlerts && trackHubOpen && !reduceTrackHubMotion && (
+                    <span className="th-radar-ring absolute inline-flex h-full w-full rounded-full bg-rose-400" />
+                  )}
+                  <span className={`relative h-1.5 w-1.5 rounded-full ${pharmacyHealth.dotClass}`} />
+                </span>
+                <span>
+                  {totalAlertBadge > 0 ? `Stock · ${totalAlertBadge} alerts` : "Stock · Healthy"}
+                </span>
+              </button>
             </div>
-            <button
-              type="button"
-              onClick={(e) => { e.stopPropagation(); setTrackHubOpen(false); }}
-              className="w-5 h-5 rounded-full bg-white/10 hover:bg-white/20 text-white/60 hover:text-white flex items-center justify-center motion-reduce:transition-none"
-              style={{ transition: reduceTrackHubMotion ? "none" : "background-color 150ms ease, color 150ms ease" }}
-              title="Close (Esc)"
-            >
-              <X size={10} />
-            </button>
+
+            <div className="flex items-center gap-1.5 flex-shrink-0">
+              {hubPages.length > 1 && (
+                <div className="flex items-center gap-0.5 mr-0.5">
+                  <button
+                    type="button"
+                    aria-label="Previous modules page"
+                    disabled={safeHubGridPage === 0}
+                    onClick={e => {
+                      e.stopPropagation();
+                      setHubGridPage(p => Math.max(0, p - 1));
+                    }}
+                    className="flex h-5 w-5 items-center justify-center rounded-full bg-white/[0.07] text-white/70 hover:bg-white/15 hover:text-white disabled:opacity-30 transition-colors"
+                  >
+                    <ChevronLeft size={11} />
+                  </button>
+                  <button
+                    type="button"
+                    aria-label="Next modules page"
+                    disabled={safeHubGridPage >= hubPages.length - 1}
+                    onClick={e => {
+                      e.stopPropagation();
+                      setHubGridPage(p => Math.min(hubPages.length - 1, p + 1));
+                    }}
+                    className="flex h-5 w-5 items-center justify-center rounded-full bg-white/[0.07] text-white/70 hover:bg-white/15 hover:text-white disabled:opacity-30 transition-colors"
+                  >
+                    <ChevronRight size={11} />
+                  </button>
+                </div>
+              )}
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); setTrackHubOpen(false); }}
+                className="w-5 h-5 flex-shrink-0 rounded-full bg-white/10 hover:bg-white/20 text-white/60 hover:text-white flex items-center justify-center motion-reduce:transition-none"
+                style={{ transition: reduceTrackHubMotion ? "none" : "background-color 150ms ease, color 150ms ease" }}
+                title="Close (Esc)"
+              >
+                <X size={10} />
+              </button>
+            </div>
           </div>
 
-          {/* Nav grid */}
-          <div className={`grid gap-1.5 ${navItems.length > 8 ? "grid-cols-5" : navItems.length > 5 ? "grid-cols-4" : "grid-cols-3"}`}>
-            {navItems.map((item) => {
-              const isActive  = item.id === page;
-              const isPressed = pressedItem === item.id;
-              return (
-                <button
-                  key={item.id}
-                  type="button"
-                  onPointerDown={() => setPressedItem(item.id)}
-                  onPointerUp={()   => setPressedItem(null)}
-                  onPointerLeave={() => setPressedItem(null)}
-                  onClick={() => {
-                    setPressedItem(item.id);
-                    // Immediate tactile feedback, then smooth retract & route
-                    setTimeout(() => {
-                      setPage(item.id);
-                      setTrackHubOpen(false);
-                      setTrackHubAlertPeekOpen(false);
-                      setPressedItem(null);
-                    }, 85);
-                  }}
-                  className={`group relative flex flex-col items-center justify-center py-2 px-1 rounded-2xl focus:outline-none select-none ${
-                    isActive
-                      ? "bg-blue-500/15 border border-blue-400/30"
-                      : "border border-transparent hover:bg-white/[0.05]"
-                  } motion-reduce:transition-none`}
-                  style={{
-                    transform:  isPressed ? "scale(0.92)" : "scale(1)",
-                    transition: reduceTrackHubMotion ? "none" : isPressed
-                      ? "transform 70ms cubic-bezier(0.32, 0.72, 0, 1), background-color 70ms ease"
-                      : "transform 240ms cubic-bezier(0.16, 1, 0.3, 1), background-color 150ms ease, border-color 150ms ease",
-                  }}
-                >
-                  <div className="relative mb-1">
-                    <div
-                      className={`w-9 h-9 rounded-xl flex items-center justify-center ${
-                        isPressed
-                          ? "bg-blue-600 text-white shadow-[0_0_15px_rgba(59,130,246,0.6)]"
-                          : isActive
-                          ? "bg-blue-500/25 border border-blue-400/40 text-blue-400 shadow-[0_0_12px_rgba(59,130,246,0.3)]"
-                          : "bg-blue-500/10 border border-blue-400/20 text-blue-400 group-hover:bg-blue-500/20 group-hover:text-blue-300"
-                      }`}
-                      style={{
-                        transform: isPressed ? "scale(0.88)" : "scale(1)",
-                        transition: reduceTrackHubMotion ? "none" : isPressed
-                          ? "transform 70ms cubic-bezier(0.32, 0.72, 0, 1)"
-                          : "transform 260ms cubic-bezier(0.16, 1, 0.3, 1), background-color 150ms ease",
-                      }}
-                    >
-                      <item.icon size={16} className={isPressed ? "text-white" : "text-blue-400 group-hover:text-blue-300"} />
-                    </div>
-                    {(item.badge ?? 0) > 0 && (
-                      <span className="absolute -top-1 -right-1.5 min-w-[15px] h-3.5 px-0.5 bg-amber-400 rounded-full text-[8px] text-black flex items-center justify-center font-bold shadow-xs leading-none">
-                        {item.badge}
-                      </span>
-                    )}
-                  </div>
-                  <span
-                    className={`text-[10px] leading-tight text-center line-clamp-1 w-full px-0.5 ${
-                      isActive ? "text-blue-300 font-bold" : "text-white/65 group-hover:text-white font-medium"
-                    }`}
-                    style={{ transition: reduceTrackHubMotion ? "none" : "color 150ms ease" }}
-                  >
-                    {item.label}
-                  </span>
-                  {isActive && (
-                    <span className="w-1 h-1 rounded-full bg-blue-400 mt-1 shadow-[0_0_6px_rgba(96,165,250,0.9)]" />
-                  )}
-                </button>
+          {/* Horizontal Paged 4x2 Module Deck (fixed height regardless of total module count) */}
+          <div
+            className="mt-[8px] overflow-hidden flex-shrink-0"
+            onWheel={e => {
+              if (hubPages.length <= 1) return;
+              const delta = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
+              if (Math.abs(delta) < 16) return;
+              const now = Date.now();
+              if (now - hubWheelCooldownRef.current < 260) return;
+              hubWheelCooldownRef.current = now;
+              setHubGridPage(p =>
+                delta > 0 ? Math.min(hubPages.length - 1, p + 1) : Math.max(0, p - 1)
               );
-            })}
+            }}
+          >
+            <div
+              className="flex"
+              style={{
+                transform: `translate3d(-${safeHubGridPage * 100}%, 0, 0)`,
+                transition: reduceTrackHubMotion ? "none" : "transform 280ms cubic-bezier(0.22, 1, 0.36, 1)",
+              }}
+            >
+              {hubPages.map((pageSlice, sliceIdx) => (
+                <div
+                  key={sliceIdx}
+                  className={`w-full flex-shrink-0 grid gap-[6px] ${
+                    navItems.length > 8 ? "grid-cols-5" : navItems.length <= 6 ? "grid-cols-3" : "grid-cols-4"
+                  }`}
+                >
+                  {pageSlice.map((item, idx) => {
+                    const isActive  = item.id === page;
+                    const isPressed = pressedItem === item.id;
+                    const showBadge = item.id === "stock-alerts" && (item.badge ?? 0) > 0;
+                    return (
+                      <div
+                        key={item.id}
+                        className={!confirmOpen && trackHubOpen && !trackHubAssistantOpen && !trackHubActivitiesOpen && !reduceTrackHubMotion && sliceIdx === safeHubGridPage ? "th-hub-tile-open" : ""}
+                        style={{ "--th-delay": `${25 + Math.min(idx, 7) * 12}ms` } as React.CSSProperties}
+                      >
+                        <button
+                          type="button"
+                          onPointerDown={() => setPressedItem(item.id)}
+                          onPointerUp={()   => setPressedItem(null)}
+                          onPointerLeave={() => setPressedItem(null)}
+                          onClick={() => {
+                            setPressedItem(null);
+                            setTrackHubOpen(false);
+                            setTrackHubAlertPeekOpen(false);
+                            setTrackHubActivitiesOpen(false);
+                            navigateTo(item.id);
+                          }}
+                          className={`w-full group relative flex flex-col items-center justify-center py-[6px] px-[4px] rounded-2xl focus:outline-none select-none ${
+                            isActive
+                              ? "bg-white/[0.11] border border-white/[0.20]"
+                              : "border border-transparent hover:bg-white/[0.06]"
+                          } motion-reduce:transition-none`}
+                          style={{
+                            transform:  isPressed ? "scale(0.92)" : "scale(1)",
+                            transition: reduceTrackHubMotion ? "none" : isPressed
+                              ? "transform 70ms cubic-bezier(0.32, 0.72, 0, 1), background-color 70ms ease"
+                              : "transform 220ms cubic-bezier(0.22, 1.2, 0.36, 1), background-color 150ms ease, border-color 150ms ease",
+                          }}
+                        >
+                          <div className="relative mb-[4px]">
+                            <div
+                              className={`w-[32px] h-[32px] rounded-xl border flex items-center justify-center ${
+                                isPressed
+                                  ? "bg-blue-600 border-blue-400 text-white shadow-[0_0_15px_rgba(59,130,246,0.6)]"
+                                  : isActive
+                                  ? TRACKHUB_TILE_STYLE.activeBox
+                                  : TRACKHUB_TILE_STYLE.box
+                              }`}
+                              style={{
+                                transform: isPressed ? "scale(0.88)" : "scale(1)",
+                                transition: reduceTrackHubMotion ? "none" : isPressed
+                                  ? "transform 70ms cubic-bezier(0.32, 0.72, 0, 1)"
+                                  : "transform 240ms cubic-bezier(0.22, 1.2, 0.36, 1), background-color 150ms ease",
+                              }}
+                            >
+                              <item.icon size={15} className={isPressed ? "text-white" : TRACKHUB_TILE_STYLE.icon} />
+                            </div>
+                            {showBadge && (
+                              <span className="absolute -top-1 -right-1.5 min-w-[15px] h-3.5 px-1 bg-amber-400 rounded-full text-[8px] text-black flex items-center justify-center font-bold shadow-xs leading-none tabular-nums">
+                                {item.badge}
+                              </span>
+                            )}
+                          </div>
+                          <span
+                            className={`text-[10px] leading-tight text-center line-clamp-1 w-full px-0.5 ${
+                              isActive ? "text-white font-semibold" : "text-white/65 group-hover:text-white font-medium"
+                            }`}
+                            style={{ transition: reduceTrackHubMotion ? "none" : "color 150ms ease" }}
+                          >
+                            {item.label}
+                          </span>
+                          {isActive && (
+                            <span className="w-1 h-1 rounded-full bg-white/90 mt-0.5 shadow-[0_0_6px_rgba(255,255,255,0.8)]" />
+                          )}
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Apple Page Dots (when modules span >1 slide) */}
+          {hubPages.length > 1 && (
+            <div className="mt-[4px] flex items-center justify-center gap-[6px]">
+              {hubPages.map((_, dotIdx) => (
+                <button
+                  key={dotIdx}
+                  type="button"
+                  aria-label={`Go to modules page ${dotIdx + 1}`}
+                  onClick={e => {
+                    e.stopPropagation();
+                    setHubGridPage(dotIdx);
+                  }}
+                  className={`h-1.5 rounded-full transition-[width,background-color] duration-200 ${
+                    safeHubGridPage === dotIdx
+                      ? "w-4 bg-white/90"
+                      : "w-1.5 bg-white/25 hover:bg-white/50"
+                  }`}
+                />
+              ))}
+            </div>
+          )}
+
+          {hasPausedCart && pausedCartSummary && (
+            <div className="mt-1.5 flex items-center justify-between gap-2 rounded-xl border border-emerald-400/25 bg-emerald-500/15 px-3 py-1.5">
+              <div className="flex items-center gap-2 min-w-0">
+                <ShoppingCart size={12} className="text-emerald-300 flex-shrink-0" />
+                <span className="truncate text-[10.5px] font-semibold text-emerald-100">
+                  Paused POS Cart · {pausedCartSummary.count} item{pausedCartSummary.count === 1 ? "" : "s"} ({fmt(pausedCartSummary.total)})
+                </span>
+              </div>
+              <div className="flex items-center gap-1.5 flex-shrink-0">
+                <button
+                  type="button"
+                  onClick={e => {
+                    e.stopPropagation();
+                    setTrackHubOpen(false);
+                    setShowAddSale(true);
+                  }}
+                  className="rounded-full bg-emerald-500 hover:bg-emerald-400 px-2.5 py-0.5 text-[10px] font-bold text-black transition-colors"
+                >
+                  Resume
+                </button>
+                <button
+                  type="button"
+                  onClick={e => {
+                    e.stopPropagation();
+                    setTrackHubOpen(false);
+                    setConfirmDiscardCart(true);
+                  }}
+                  className="rounded-full bg-white/10 hover:bg-white/20 px-2 py-0.5 text-[10px] font-medium text-white/75 hover:text-white transition-colors"
+                >
+                  Discard
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Compact Utilities & Quick Actions Dock */}
+          <div className="mt-1.5 pt-2 border-t border-white/[0.07] flex items-center justify-between gap-2 px-0.5">
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => {
+                  setTrackHubOpen(false);
+                  navigateTo("activity-log");
+                }}
+                className={`flex items-center gap-1 rounded-full border px-2.5 py-1 text-[10px] font-medium transition-colors ${
+                  page === "activity-log"
+                    ? "bg-white/15 border-white/25 text-white"
+                    : "bg-white/[0.06] border-white/10 text-white/70 hover:bg-white/[0.12] hover:text-white"
+                }`}
+              >
+                <Activity size={10} /> Activity
+              </button>
+              {(isAdmin || isInventoryManager) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTrackHubOpen(false);
+                    navigateTo("recycle-bin");
+                  }}
+                  className={`flex items-center gap-1 rounded-full border px-2.5 py-1 text-[10px] font-medium transition-colors ${
+                    page === "recycle-bin"
+                      ? "bg-rose-500/20 border-rose-400/35 text-rose-200"
+                      : "bg-white/[0.06] border-white/10 text-white/70 hover:bg-white/[0.12] hover:text-white"
+                  }`}
+                >
+                  <Trash2 size={10} /> Recycle Bin
+                </button>
+              )}
+            </div>
+
+            <div className="flex items-center gap-1.5 overflow-x-auto">
+              {canSell && (
+                <button
+                  type="button"
+                  onClick={e => {
+                    e.stopPropagation();
+                    setTrackHubOpen(false);
+                    setShowAddSale(true);
+                  }}
+                  className="flex items-center gap-1 rounded-full bg-emerald-500/15 border border-emerald-400/25 px-2.5 py-1 text-[10px] font-semibold text-emerald-300 hover:bg-emerald-500/25 transition-colors flex-shrink-0"
+                >
+                  <Plus size={11} /> New Sale
+                </button>
+              )}
+              {isInventoryManager && (
+                <button
+                  type="button"
+                  onClick={e => {
+                    e.stopPropagation();
+                    setTrackHubOpen(false);
+                    setShowAddProduct(true);
+                  }}
+                  className="flex items-center gap-1 rounded-full bg-blue-500/15 border border-blue-400/25 px-2.5 py-1 text-[10px] font-semibold text-blue-300 hover:bg-blue-500/25 transition-colors flex-shrink-0"
+                >
+                  <Plus size={11} /> Add Product
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={e => {
+                  e.stopPropagation();
+                  setTrackHubOpen(false);
+                  setSearchOpen(true);
+                  setTimeout(() => searchInputRef.current?.focus(), 60);
+                }}
+                className="flex items-center gap-1 rounded-full bg-white/[0.08] border border-white/10 px-2.5 py-1 text-[10px] font-medium text-white/80 hover:bg-white/[0.15] hover:text-white transition-colors flex-shrink-0"
+              >
+                <Search size={10} /> Find
+              </button>
+            </div>
           </div>
         </div>
+      </div>
       </div>
     </div>
   );
@@ -1439,333 +3162,393 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
   // ── Sidebar ──────────────────────────────────────────────────────────────────
   // Shared settings panel content (used in both TrackHub and sidebar topbars)
   const settingsPanelContent = useMemo(() => (
-    <div className="space-y-3.5">
-      <section className="overflow-hidden rounded-2xl border border-border/60 bg-muted/20 divide-y divide-border/40">
-        <div className="flex items-center justify-between gap-3 px-3.5 py-3">
-          <div className="flex min-w-0 items-center gap-2.5">
-            <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-purple-500/15 text-purple-600 shadow-2xs dark:text-purple-400">
-              <Shield size={15} />
-            </span>
-            <div className="min-w-0">
-              <p className="text-xs font-semibold text-foreground">Account &amp; Roles</p>
-              <p className="text-[10px] text-muted-foreground">Choose which role is active.</p>
-            </div>
-          </div>
+    <div className="space-y-4">
+      {/* ── Account & Active Role (Apple ID Banner Style) ── */}
+      <div>
+        <div className="mb-1.5 flex items-center justify-between px-1.5">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">Account</p>
           <InfoTip
-            title="Account roles"
+            title="Account Roles"
             lines={[
-              "Switching roles changes your permissions and which navigation items are available without signing out.",
-              "Removing a role updates the account; at least one role must remain.",
+              "Switch active roles to adjust available navigation and permissions without signing out.",
+              { label: "Minimum role", value: "At least one role must remain assigned to your account" },
             ]}
           />
         </div>
-        <div className="flex items-center gap-3 px-3.5 py-3">
-          <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl border border-primary/15 bg-primary/10 text-xs font-semibold text-primary">
-            {user.initials}
-          </span>
-          <div className="min-w-0">
-            <p className="truncate text-sm font-medium text-foreground">{user.name}</p>
-            <p className="text-[10px] text-muted-foreground">Signed-in account</p>
-          </div>
-        </div>
-        <div role="group" aria-label="Available account roles" className="px-2.5 py-2">
-          {(user.roles?.length ? user.roles : [user.role]).map(role => (
-            <div key={role} className="flex items-center gap-2 rounded-xl px-1.5 py-1 transition-colors hover:bg-muted/50">
-              <button
-                type="button"
-                aria-pressed={user.role === role}
-                disabled={roleActionBusy}
-                onClick={() => activateRole(role)}
-                className="flex min-w-0 flex-1 items-center gap-2.5 rounded-lg px-2 py-2 text-left transition-transform active:scale-[0.98] disabled:cursor-wait"
-              >
-                <span className={`flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full border ${
-                  user.role === role ? "border-primary" : "border-muted-foreground/50"
-                }`}>
-                  {user.role === role && <span className="h-2 w-2 rounded-full bg-primary" />}
-                </span>
-                <span className="min-w-0 flex-1 truncate text-xs font-medium text-foreground">{ROLE_LABELS[role] ?? role}</span>
-                {user.role === role && <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[9px] font-semibold text-primary">Active</span>}
-              </button>
-              <button
-                type="button"
-                disabled={roleActionBusy || (user.roles?.length ?? 1) <= 1}
-                onClick={() => setRoleToRemove(role)}
-                className="shrink-0 rounded-lg px-2 py-1.5 text-[10px] font-medium text-muted-foreground transition-colors hover:bg-rose-500/10 hover:text-rose-600 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40 dark:hover:text-rose-400"
-                title={(user.roles?.length ?? 1) <= 1 ? "Your account must keep at least one role" : `Remove ${ROLE_LABELS[role] ?? role}`}
-              >
-                Remove
-              </button>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      <section className="overflow-hidden rounded-2xl border border-border/60 bg-muted/20 divide-y divide-border/40">
-        <div className="flex items-center justify-between gap-3 px-3.5 py-3">
-          <div className="flex min-w-0 items-center gap-2.5">
-            <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-slate-700/10 text-slate-600 shadow-2xs dark:bg-slate-700/30 dark:text-teal-400">
-              <Settings size={15} />
+        <section className="overflow-hidden rounded-2xl border border-border/60 bg-muted/20 divide-y divide-border/40">
+          <div className="flex items-center gap-3 px-3.5 py-3">
+            <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full border border-primary/20 bg-primary/12 text-xs font-semibold text-primary">
+              {user.initials}
             </span>
-            <div>
-              <p className="text-xs font-semibold text-foreground">Appearance &amp; Layout</p>
-              <p className="text-[10px] text-muted-foreground">Personalize how SmartTrack looks.</p>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-[13px] font-semibold text-foreground leading-tight">{user.name}</p>
+              <p className="mt-0.5 truncate text-[11px] text-muted-foreground">
+                {ROLE_LABELS[user.role] ?? user.role}
+              </p>
             </div>
           </div>
-          <InfoTip title="Appearance and layout" lines={["These preferences change the appearance and navigation layout on this device."]} />
-        </div>
-        <div className="flex items-center justify-between gap-3 px-3.5 py-3">
-          <div className="flex min-w-0 items-center gap-2.5">
-            <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg bg-amber-500/15 text-amber-500 shadow-2xs">
-              {darkMode ? <Moon size={14} /> : <Sun size={14} />}
-            </span>
-            <div className="min-w-0">
-              <p className="text-xs font-medium text-foreground">Dark Mode</p>
-              <p className="text-[10px] text-muted-foreground">Use a darker appearance.</p>
-            </div>
-          </div>
-          <button
-            type="button"
-            role="switch"
-            aria-checked={darkMode}
-            aria-label="Dark Mode"
-            onClick={() => {
-              const nextMode = !darkMode;
-              setDarkMode(nextMode);
-              showHubToast(nextMode ? "Dark mode enabled" : "Light mode enabled", "info");
-            }}
-            className={`relative h-6 w-11 flex-shrink-0 rounded-full shadow-inner transition-colors duration-300 ease-[cubic-bezier(0.2,0.8,0.2,1)] active:scale-[0.98] motion-reduce:transition-none ${
-              darkMode ? "bg-primary shadow-[0_0_10px_rgba(59,130,246,0.22)]" : "bg-muted-foreground/30"
-            }`}
-          >
-            <span className={`absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-white shadow-sm transition-transform duration-300 ease-[cubic-bezier(0.2,0.8,0.2,1)] motion-reduce:transition-none ${
-              darkMode ? "translate-x-5" : "translate-x-0"
-            }`} />
-          </button>
-        </div>
-        <div className="px-3.5 py-3">
-          <div className="mb-2 flex items-start justify-between gap-3">
-            <div className="flex min-w-0 items-center gap-2.5">
-              <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg bg-teal-500/15 text-teal-500 shadow-2xs">
-                <Menu size={14} />
-              </span>
-              <div>
-                <p className="text-xs font-medium text-foreground">Navigation Style</p>
-                <p className="text-[10px] text-muted-foreground">Choose your preferred navigation.</p>
-              </div>
-            </div>
-            <InfoTip
-              title="Navigation style"
-              lines={[
-                "TrackHub is the compact floating navigation pill. Classic Sidebar keeps navigation visible along the side of the window.",
-                "Changing styles does not change your account permissions.",
-              ]}
-            />
-          </div>
-          <div className="relative grid grid-cols-2 rounded-xl bg-muted/80 p-1">
-            <span
-              aria-hidden="true"
-              className="pointer-events-none absolute inset-y-1 left-1 rounded-lg border border-border/50 bg-card shadow-sm transition-transform duration-200 ease-out motion-reduce:transition-none"
-              style={{ width: "calc(50% - 0.25rem)", transform: `translateX(${navMode === "island" ? 0 : 100}%)` }}
-            />
-            <button
-              type="button"
-              aria-pressed={navMode === "island"}
-              onClick={() => { setNavMode("island"); setShowTrackHubSettings(false); }}
-              className={`relative z-10 rounded-lg px-2 py-2 text-xs transition-colors active:scale-[0.98] motion-reduce:transition-none ${
-                navMode === "island" ? "font-semibold text-foreground" : "font-medium text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              TrackHub
-            </button>
-            <button
-              type="button"
-              aria-pressed={navMode === "sidebar"}
-              onClick={() => { setNavMode("sidebar"); setShowTrackHubSettings(false); }}
-              className={`relative z-10 rounded-lg px-2 py-2 text-xs transition-colors active:scale-[0.98] motion-reduce:transition-none ${
-                navMode === "sidebar" ? "font-semibold text-foreground" : "font-medium text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              Classic Sidebar
-            </button>
-          </div>
-        </div>
-      </section>
-
-      <section className="overflow-hidden rounded-2xl border border-border/60 bg-muted/20 divide-y divide-border/40">
-        <div className="flex items-center justify-between gap-3 px-3.5 py-3">
-          <div className="flex min-w-0 items-center gap-2.5">
-            <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-indigo-500/15 text-indigo-500 shadow-2xs">
-              <Bot size={15} />
-            </span>
-            <div>
-              <p className="text-xs font-semibold text-foreground">Features &amp; Workspace</p>
-              <p className="text-[10px] text-muted-foreground">Quick actions and sharing.</p>
-            </div>
-          </div>
-          <InfoTip title="Workspace features" lines={["Show or hide the assistant, change the window display mode, or create a temporary share link when running the Electron app."]} />
-        </div>
-        <div className="flex items-center justify-between gap-3 px-3.5 py-3">
-          <div className="flex min-w-0 items-center gap-2.5">
-            <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg bg-indigo-500/15 text-indigo-500 shadow-2xs">
-              <Bot size={14} />
-            </span>
-            <div className="min-w-0">
-              <p className="text-xs font-medium text-foreground">SmartTrack Assistant</p>
-              <p className="text-[10px] text-muted-foreground">Show assistant in navigation.</p>
-            </div>
-          </div>
-          <button
-            type="button"
-            role="switch"
-            aria-checked={smartBotEnabled}
-            aria-label="SmartTrack Assistant"
-            onClick={() => toggleSmartBot(!smartBotEnabled)}
-            className={`relative h-6 w-11 flex-shrink-0 rounded-full shadow-inner transition-colors duration-300 ease-[cubic-bezier(0.2,0.8,0.2,1)] active:scale-[0.98] motion-reduce:transition-none ${
-              smartBotEnabled ? "bg-primary shadow-[0_0_10px_rgba(99,102,241,0.22)]" : "bg-muted-foreground/30"
-            }`}
-          >
-            <span className={`absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-white shadow-sm transition-transform duration-300 ease-[cubic-bezier(0.2,0.8,0.2,1)] motion-reduce:transition-none ${
-              smartBotEnabled ? "translate-x-5" : "translate-x-0"
-            }`} />
-          </button>
-        </div>
-        <button
-          type="button"
-          onClick={handleToggleFullScreen}
-          className="flex w-full items-center gap-2.5 px-3.5 py-3 text-left transition-colors hover:bg-muted/35 active:scale-[0.98]"
-        >
-          <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg bg-blue-500/15 text-blue-500 shadow-2xs">
-            <Maximize2 size={14} />
-          </span>
-          <span className="min-w-0 flex-1">
-            <span className="block text-xs font-medium text-foreground">Full Screen</span>
-            <span className="block text-[10px] text-muted-foreground">Expand SmartTrack to fill your display.</span>
-          </span>
-          <span className="rounded-md border border-border/70 bg-background/70 px-2 py-1 text-[10px] font-mono font-medium text-muted-foreground">
-            {isMac ? "⌃⌘F" : "F11"}
-          </span>
-        </button>
-
-        {window.smarttrack?.isElectron && (
-          <div className="space-y-2.5 px-3.5 py-3">
-            <div className="flex items-start justify-between gap-3">
-              <div className="flex min-w-0 items-center gap-2.5">
-                <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg bg-sky-500/15 text-sky-500 shadow-2xs">
-                  <Cloud size={14} />
-                </span>
-                <div>
-                  <p className="text-xs font-medium text-foreground">Share SmartTrack</p>
-                  <p className="text-[10px] text-muted-foreground">Create a temporary Cloudflare Tunnel link.</p>
-                </div>
-              </div>
-              <InfoTip
-                title="Cloudflare sharing"
-                lines={[
-                  "This creates a temporary Cloudflare Tunnel URL to reach SmartTrack; it is not peer-to-peer sharing.",
-                  "Anyone with the link can reach the login page. Share it only with trusted people and stop the tunnel when finished.",
-                  "Keep your account credentials private and do not post the link publicly.",
-                ]}
-              />
-            </div>
-            {shareStatus.url && (
-              <div className="flex min-w-0 items-center gap-1.5 rounded-xl border border-border/60 bg-background/60 px-2.5 py-2">
-                <span className="min-w-0 flex-1 truncate text-[10px] text-sky-600 font-mono dark:text-sky-400" title={shareStatus.url}>{shareStatus.url}</span>
+          <div role="group" aria-label="Available account roles" className="px-2 py-2">
+            {(user.roles?.length ? user.roles : [user.role]).map(role => (
+              <div key={role} className="flex items-center gap-2 rounded-xl px-1.5 py-0.5 transition-colors hover:bg-muted/50">
                 <button
                   type="button"
-                  onClick={handleCopyShareLink}
-                  title="Copy share link"
-                  aria-label="Copy share link"
-                  className="flex-shrink-0 rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground active:scale-[0.98]"
+                  aria-pressed={user.role === role}
+                  disabled={roleActionBusy}
+                  onClick={() => activateRole(role)}
+                  className="flex min-w-0 flex-1 items-center gap-2.5 rounded-lg px-2 py-1.5 text-left transition-transform active:scale-[0.98] disabled:cursor-wait"
                 >
-                  <Copy size={13} />
+                  <span className={`flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full border ${
+                    user.role === role ? "border-primary" : "border-muted-foreground/50"
+                  }`}>
+                    {user.role === role && <span className="h-2 w-2 rounded-full bg-primary" />}
+                  </span>
+                  <span className="min-w-0 flex-1 truncate text-xs font-medium text-foreground">{ROLE_LABELS[role] ?? role}</span>
+                  {user.role === role && <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[9px] font-semibold text-primary">Active</span>}
+                </button>
+                <button
+                  type="button"
+                  disabled={roleActionBusy || (user.roles?.length ?? 1) <= 1}
+                  onClick={() => setRoleToRemove(role)}
+                  className="shrink-0 rounded-lg px-2 py-1 text-[10px] font-medium text-muted-foreground transition-colors hover:bg-rose-500/10 hover:text-rose-600 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40 dark:hover:text-rose-400"
+                  title={(user.roles?.length ?? 1) <= 1 ? "Your account must keep at least one role" : `Remove ${ROLE_LABELS[role] ?? role}`}
+                >
+                  Remove
                 </button>
               </div>
-            )}
-            {shareStatus.state === "running" ? (
+            ))}
+          </div>
+        </section>
+      </div>
+
+      {/* ── Appearance & Accessibility ── */}
+      <div>
+        <p className="mb-1.5 px-1.5 text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">Appearance</p>
+        <section className="overflow-hidden rounded-2xl border border-border/60 bg-muted/20 divide-y divide-border/40">
+          <div className="flex items-center justify-between gap-3 px-3.5 py-2.5">
+            <div className="flex min-w-0 items-center gap-2.5">
+              <span className={SETTINGS_ROW_ICON_CLASS}>
+                {darkMode ? <Moon size={14} /> : <Sun size={14} />}
+              </span>
+              <div className="min-w-0">
+                <p className="text-xs font-medium text-foreground">Dark Mode</p>
+                <p className="text-[10px] text-muted-foreground">Use a darker surface palette.</p>
+              </div>
+            </div>
+            <SettingsSwitch
+              checked={darkMode}
+              label="Dark Mode"
+              onToggle={() => {
+                const nextMode = !darkMode;
+                setDarkMode(nextMode);
+                showHubToast(nextMode ? "Dark mode enabled" : "Light mode enabled", "info");
+              }}
+            />
+          </div>
+
+          <div className="flex items-center justify-between gap-3 px-3.5 py-2.5">
+            <div className="flex min-w-0 items-center gap-2.5">
+              <span className={SETTINGS_ROW_ICON_CLASS}>
+                <Palette size={14} />
+              </span>
+              <div className="min-w-0">
+                <p className="text-xs font-medium text-foreground">Muted Colors</p>
+                <p className="text-[10px] text-muted-foreground">Soften bright accents app-wide.</p>
+              </div>
+            </div>
+            <SettingsSwitch
+              checked={mutedColors}
+              label="Muted Colors"
+              onToggle={() => {
+                const nextVal = !mutedColors;
+                updateMutedColors(nextVal);
+                showHubToast(nextVal ? "Muted colors enabled" : "Standard colors restored", "info");
+              }}
+            />
+          </div>
+
+          <div className="px-3.5 py-2.5">
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <div className="flex min-w-0 items-center gap-2.5">
+                <span className={SETTINGS_ROW_ICON_CLASS}>
+                  <Type size={14} />
+                </span>
+                <div className="min-w-0">
+                  <p className="text-xs font-medium text-foreground">Text Size</p>
+                  <p className="text-[10px] text-muted-foreground">Scale interface typography.</p>
+                </div>
+              </div>
+              <span className="flex-shrink-0 rounded-full border border-border/70 bg-background/70 px-2 py-0.5 text-[10px] font-mono font-medium text-muted-foreground">
+                {(FONT_SCALE_OPTIONS.find(opt => opt.id === fontScale) ?? FONT_SCALE_OPTIONS[1]).sizePx}
+              </span>
+            </div>
+            <div className="relative grid grid-cols-4 rounded-xl bg-muted/80 p-1">
+              <span
+                aria-hidden="true"
+                className="pointer-events-none absolute inset-y-1 left-1 rounded-lg border border-border/50 bg-card shadow-sm transition-transform duration-200 ease-out motion-reduce:transition-none"
+                style={{
+                  width: "calc(25% - 0.125rem)",
+                  transform: `translateX(${Math.max(0, FONT_SCALE_OPTIONS.findIndex(opt => opt.id === fontScale)) * 100}%)`,
+                }}
+              />
+              {FONT_SCALE_OPTIONS.map(opt => {
+                const active = fontScale === opt.id;
+                return (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    aria-pressed={active}
+                    onClick={() => updateFontScale(opt.id)}
+                    className={`relative z-10 flex flex-col items-center justify-center rounded-lg px-1.5 py-1.5 transition-colors active:scale-[0.98] motion-reduce:transition-none ${
+                      active ? "text-foreground" : "text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    <span
+                      className={`leading-none ${active ? "font-semibold" : "font-medium"}`}
+                      style={{ fontSize: `${opt.samplePx}px` }}
+                    >
+                      Aa
+                    </span>
+                    <span className={`mt-1 text-[9px] leading-none ${active ? "font-semibold" : "font-medium"}`}>
+                      {opt.label}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between gap-3 px-3.5 py-2.5">
+            <div className="flex min-w-0 items-center gap-2.5">
+              <span className={SETTINGS_ROW_ICON_CLASS}>
+                <Rows3 size={14} />
+              </span>
+              <div className="min-w-0">
+                <p className="text-xs font-medium text-foreground">Row Density</p>
+                <p className="text-[10px] text-muted-foreground">Adjust table spacing.</p>
+              </div>
+            </div>
+            <div className="relative grid w-[134px] flex-shrink-0 grid-cols-2 rounded-xl bg-muted/80 p-0.5">
+              <span
+                aria-hidden="true"
+                className="pointer-events-none absolute inset-y-0.5 left-0.5 rounded-[9px] border border-border/50 bg-card shadow-sm transition-transform duration-200 ease-out motion-reduce:transition-none"
+                style={{ width: "calc(50% - 0.125rem)", transform: `translateX(${tableDensity === "default" ? 0 : 100}%)` }}
+              />
+              {TABLE_DENSITY_OPTIONS.map(opt => {
+                const active = tableDensity === opt.id;
+                return (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    aria-pressed={active}
+                    onClick={() => updateTableDensity(opt.id)}
+                    className={`relative z-10 rounded-[9px] px-2 py-1.5 text-[11px] transition-colors active:scale-[0.98] motion-reduce:transition-none ${
+                      active ? "font-semibold text-foreground" : "font-medium text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between gap-3 px-3.5 py-2.5">
+            <div className="flex min-w-0 items-center gap-2.5">
+              <span className={SETTINGS_ROW_ICON_CLASS}>
+                <Sparkles size={14} />
+              </span>
+              <div className="min-w-0">
+                <p className="text-xs font-medium text-foreground">Reduce Motion</p>
+                <p className="text-[10px] text-muted-foreground">
+                  {osReduceMotion && reduceMotionPref === "system"
+                    ? "Following system preference."
+                    : "Minimize animations across UI."}
+                </p>
+              </div>
+            </div>
+            <SettingsSwitch
+              checked={reduceMotionPref === "reduced"}
+              label="Reduce Motion"
+              onToggle={() => updateReduceMotionPref(reduceMotionPref === "reduced" ? "system" : "reduced")}
+            />
+          </div>
+        </section>
+      </div>
+
+      {/* ── Navigation & Hub ── */}
+      <div>
+        <p className="mb-1.5 px-1.5 text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">Navigation</p>
+        <section className="overflow-hidden rounded-2xl border border-border/60 bg-muted/20 divide-y divide-border/40">
+          <div className="px-3.5 py-2.5">
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <div className="flex min-w-0 items-center gap-2.5">
+                <span className={SETTINGS_ROW_ICON_CLASS}>
+                  <PanelLeft size={14} />
+                </span>
+                <div className="min-w-0">
+                  <p className="text-xs font-medium text-foreground">Layout Style</p>
+                  <p className="text-[10px] text-muted-foreground">Choose how you browse pages.</p>
+                </div>
+              </div>
               <button
                 type="button"
-                onClick={handleStopShare}
-                className="w-full rounded-xl border border-rose-500/20 bg-rose-500/10 px-3 py-2 text-xs font-semibold text-rose-600 transition-colors hover:bg-rose-500/15 active:scale-[0.98] dark:text-rose-400"
+                onClick={() => {
+                  setShowTrackHubSettings(false);
+                  setShowNavStyleModal(true);
+                }}
+                className="flex-shrink-0 rounded-full border border-border/80 bg-background/80 px-2.5 py-1 text-[10px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground cursor-pointer"
               >
-                Stop sharing
+                Compare
               </button>
-            ) : (
+            </div>
+            <div className="relative grid grid-cols-2 rounded-xl bg-muted/80 p-1">
+              <span
+                aria-hidden="true"
+                className="pointer-events-none absolute inset-y-1 left-1 rounded-lg border border-border/50 bg-card shadow-sm transition-transform duration-200 ease-out motion-reduce:transition-none"
+                style={{ width: "calc(50% - 0.25rem)", transform: `translateX(${navMode === "island" ? 0 : 100}%)` }}
+              />
               <button
                 type="button"
-                onClick={handleStartShare}
-                disabled={shareStatus.state === "starting" || shareStatus.state === "downloading"}
-                className="w-full rounded-xl border border-primary/20 bg-primary/10 px-3 py-2 text-xs font-semibold text-primary transition-colors hover:bg-primary/15 active:scale-[0.98] disabled:cursor-wait disabled:opacity-60 motion-reduce:transition-none"
+                aria-pressed={navMode === "island"}
+                onClick={() => { setNavMode("island"); setShowTrackHubSettings(false); }}
+                className={`relative z-10 rounded-lg px-2 py-1.5 text-xs transition-colors active:scale-[0.98] motion-reduce:transition-none ${
+                  navMode === "island" ? "font-semibold text-foreground" : "font-medium text-muted-foreground hover:text-foreground"
+                }`}
               >
-                {shareStatus.state === "downloading" ? "Downloading Cloudflare…" : shareStatus.state === "starting" ? "Starting tunnel…" : "Create share link"}
+                TrackHub
               </button>
-            )}
-            <p className="text-[10px] leading-relaxed text-muted-foreground">Anyone with the link can reach your login page. Share only with trusted people; stop sharing when finished.</p>
-            {(shareMessage || shareStatus.error) && (
-              <p role="status" className={`text-[10px] leading-relaxed ${shareMessage === "Link copied to clipboard." ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}`}>
-                {shareMessage || shareStatus.error}
-              </p>
-            )}
+              <button
+                type="button"
+                aria-pressed={navMode === "sidebar"}
+                onClick={() => { setNavMode("sidebar"); setShowTrackHubSettings(false); }}
+                className={`relative z-10 rounded-lg px-2 py-1.5 text-xs transition-colors active:scale-[0.98] motion-reduce:transition-none ${
+                  navMode === "sidebar" ? "font-semibold text-foreground" : "font-medium text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                Classic Bar
+              </button>
+            </div>
           </div>
-        )}
-      </section>
 
-      <section className="overflow-hidden rounded-2xl border border-border/60 bg-muted/20 divide-y divide-border/40">
-        <div className="flex items-center justify-between gap-3 px-3.5 py-3">
-          <div>
-            <p className="text-xs font-semibold text-foreground">System Management</p>
-            <p className="text-[10px] text-muted-foreground">Review activity and deleted items.</p>
+          <div className="flex items-center justify-between gap-3 px-3.5 py-2.5">
+            <div className="min-w-0 pl-9">
+              <p className="text-xs font-medium text-foreground">Ask After Logout</p>
+              <p className="text-[10px] text-muted-foreground">Show layout picker at each sign-in.</p>
+            </div>
+            <SettingsSwitch
+              checked={askNavOnLogin}
+              label="Ask layout after logout"
+              onToggle={() => toggleAskNavOnLogin(!askNavOnLogin)}
+            />
           </div>
-          <InfoTip title="System management" lines={["Open system activity records or, when permitted, restore and manage deleted inventory and accounts."]} />
-        </div>
-        <button
-          type="button"
-          onClick={() => { setPage("activity-log"); setShowTrackHubSettings(false); }}
-          className="group flex w-full items-center gap-2.5 px-3.5 py-3 text-left transition-colors hover:bg-muted/35 active:scale-[0.98]"
-        >
-          <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg bg-emerald-500/15 text-emerald-500 shadow-2xs">
-            <Activity size={14} />
-          </span>
-          <span className="min-w-0 flex-1">
-            <span className="block truncate text-xs font-medium text-foreground">{isAdmin ? "Activity Log" : "My Activity Log"}</span>
-            <span className="block truncate text-[10px] text-muted-foreground">Audit trail of actions and system events</span>
-          </span>
-          <ChevronRight size={14} className="text-muted-foreground transition-transform group-hover:translate-x-0.5" />
-        </button>
 
-        {(isAdmin || isInventoryManager) && (
+          <div className="flex items-center justify-between gap-3 px-3.5 py-2.5">
+            <div className="flex min-w-0 items-center gap-2.5">
+              <span className={SETTINGS_ROW_ICON_CLASS}>
+                <Bot size={14} />
+              </span>
+              <div className="min-w-0">
+                <p className="text-xs font-medium text-foreground">SmartTrack Assistant</p>
+                <p className="text-[10px] text-muted-foreground">Show assistant shortcut in nav.</p>
+              </div>
+            </div>
+            <SettingsSwitch
+              checked={smartBotEnabled}
+              label="SmartTrack Assistant"
+              onToggle={() => toggleSmartBot(!smartBotEnabled)}
+            />
+          </div>
+
+          <div className="flex items-center justify-between gap-3 px-3.5 py-2.5">
+            <div className="flex min-w-0 items-center gap-2.5">
+              <span className={SETTINGS_ROW_ICON_CLASS}>
+                <BellRing size={14} />
+              </span>
+              <div className="min-w-0">
+                <p className="text-xs font-medium text-foreground">Stock Alert Orb</p>
+                <p className="text-[10px] text-muted-foreground">Show stock badge beside TrackHub.</p>
+              </div>
+            </div>
+            <SettingsSwitch
+              checked={showAlertOrb}
+              label="Stock Alert Orb"
+              onToggle={() => updateShowAlertOrb(!showAlertOrb)}
+            />
+          </div>
+        </section>
+      </div>
+
+      {/* ── Workspace & System Data ── */}
+      <div>
+        <p className="mb-1.5 px-1.5 text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">Workspace &amp; System</p>
+        <section className="overflow-hidden rounded-2xl border border-border/60 bg-muted/20 divide-y divide-border/40">
           <button
             type="button"
-            onClick={() => { setPage("recycle-bin"); setShowTrackHubSettings(false); }}
-            className="group flex w-full items-center gap-2.5 px-3.5 py-3 text-left transition-colors hover:bg-muted/35 active:scale-[0.98]"
+            onClick={handleToggleFullScreen}
+            className="flex w-full items-center gap-2.5 px-3.5 py-2.5 text-left transition-colors hover:bg-muted/35 active:scale-[0.98]"
           >
-            <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg bg-rose-500/15 text-rose-500 shadow-2xs">
-              <Trash2 size={14} />
+            <span className={SETTINGS_ROW_ICON_CLASS}>
+              <Maximize2 size={14} />
             </span>
             <span className="min-w-0 flex-1">
-              <span className="block text-xs font-medium text-foreground">Recycle Bin</span>
-              <span className="block text-[10px] text-muted-foreground">Restore or permanently remove deleted items</span>
+              <span className="block text-xs font-medium text-foreground">Full Screen</span>
+              <span className="block text-[10px] text-muted-foreground">Expand SmartTrack to fill display.</span>
+            </span>
+            <span className="rounded-md border border-border/70 bg-background/70 px-2 py-0.5 text-[10px] font-mono font-medium text-muted-foreground">
+              {isMac ? "⌃⌘F" : "F11"}
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => { setPage("activity-log"); setShowTrackHubSettings(false); }}
+            className="group flex w-full items-center gap-2.5 px-3.5 py-2.5 text-left transition-colors hover:bg-muted/35 active:scale-[0.98]"
+          >
+            <span className={SETTINGS_ROW_ICON_CLASS}>
+              <ClipboardList size={14} />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-xs font-medium text-foreground">{isAdmin ? "Activity Log" : "My Activity Log"}</span>
+              <span className="block truncate text-[10px] text-muted-foreground">Audit trail of system actions</span>
             </span>
             <ChevronRight size={14} className="text-muted-foreground transition-transform group-hover:translate-x-0.5" />
           </button>
-        )}
 
-        {isAdmin && (
-          <button
-            type="button"
-            onClick={() => { setShowDatabaseModal(true); setShowTrackHubSettings(false); }}
-            className="group flex w-full items-center gap-2.5 px-3.5 py-3 text-left transition-colors hover:bg-muted/35 active:scale-[0.98]"
-          >
-            <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg bg-blue-500/15 text-blue-500 shadow-2xs">
-              <Database size={14} />
-            </span>
-            <span className="min-w-0 flex-1">
-              <span className="block text-xs font-medium text-foreground">Offline Database &amp; Recovery</span>
-              <span className="block text-[10px] text-muted-foreground">Auto-migrations, backups &amp; data safety</span>
-            </span>
-            <ChevronRight size={14} className="text-muted-foreground transition-transform group-hover:translate-x-0.5" />
-          </button>
-        )}
-      </section>
+          {(isAdmin || isInventoryManager) && (
+            <button
+              type="button"
+              onClick={() => { setPage("recycle-bin"); setShowTrackHubSettings(false); }}
+              className="group flex w-full items-center gap-2.5 px-3.5 py-2.5 text-left transition-colors hover:bg-muted/35 active:scale-[0.98]"
+            >
+              <span className={SETTINGS_ROW_ICON_CLASS}>
+                <Trash2 size={14} />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-xs font-medium text-foreground">Recycle Bin</span>
+                <span className="block text-[10px] text-muted-foreground">Restore or purge deleted items</span>
+              </span>
+              <ChevronRight size={14} className="text-muted-foreground transition-transform group-hover:translate-x-0.5" />
+            </button>
+          )}
+
+          {isAdmin && (
+            <button
+              type="button"
+              onClick={() => { setShowDatabaseModal(true); setShowTrackHubSettings(false); }}
+              className="group flex w-full items-center gap-2.5 px-3.5 py-2.5 text-left transition-colors hover:bg-muted/35 active:scale-[0.98]"
+            >
+              <span className={SETTINGS_ROW_ICON_CLASS}>
+                <Database size={14} />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-xs font-medium text-foreground">Offline Database &amp; Recovery</span>
+                <span className="block text-[10px] text-muted-foreground">Migrations, backups &amp; data safety</span>
+              </span>
+              <ChevronRight size={14} className="text-muted-foreground transition-transform group-hover:translate-x-0.5" />
+            </button>
+          )}
+        </section>
+      </div>
     </div>
   ), [
     user.initials,
@@ -1777,20 +3560,28 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
     setRoleToRemove,
     darkMode,
     setDarkMode,
+    mutedColors,
+    updateMutedColors,
+    fontScale,
+    updateFontScale,
+    tableDensity,
+    updateTableDensity,
+    reduceMotionPref,
+    osReduceMotion,
+    updateReduceMotionPref,
     showHubToast,
     navMode,
     setNavMode,
+    askNavOnLogin,
+    toggleAskNavOnLogin,
     setShowTrackHubSettings,
     setShowDatabaseModal,
     smartBotEnabled,
     toggleSmartBot,
+    showAlertOrb,
+    updateShowAlertOrb,
     handleToggleFullScreen,
     isMac,
-    shareStatus,
-    handleCopyShareLink,
-    handleStopShare,
-    handleStartShare,
-    shareMessage,
     isAdmin,
     isInventoryManager,
     setPage,
@@ -1825,7 +3616,7 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
 
       <nav className="flex-1 px-2 py-3 space-y-0.5 overflow-y-auto">
         {navItems.map(item => (
-          <button key={item.id} onClick={() => setPage(item.id)} title={!sidebarExpanded ? item.label : undefined}
+          <button key={item.id} onClick={() => navigateTo(item.id)} title={!sidebarExpanded ? item.label : undefined}
             className={`w-full flex items-center gap-3 px-2.5 py-2.5 rounded-xl st-nav-item ${page === item.id ? "bg-blue-600/25 text-blue-200 border border-blue-400/30 shadow-2xs font-bold" : "text-white/50 hover:bg-white/[0.06] hover:text-white/90 border border-transparent"}`}>
             <item.icon size={15} className="flex-shrink-0" />
             {sidebarExpanded && <>
@@ -1842,9 +3633,9 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
           inventory={inventory}
           transactions={transactions}
           allowedPages={allowedPages}
-          onNavigate={setPage}
-          onOpenNewSale={() => setShowAddSale(true)}
-          onOpenAddProduct={() => setShowAddProduct(true)}
+          onNavigate={navigateTo}
+          onOpenNewSale={handleOpenAddSale}
+          onOpenAddProduct={handleOpenAddProduct}
           enabled={smartBotEnabled}
           mode="sidebar"
           sidebarExpanded={sidebarExpanded}
@@ -1855,10 +3646,7 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
       <div className={`border-t border-white/[0.07] ${sidebarExpanded ? "px-3.5 py-3" : "p-3 flex justify-center"}`}>
         {sidebarExpanded ? (
           <div className="flex items-center gap-2.5 rounded-xl px-2.5 py-2 bg-white/[0.04] border border-white/[0.06]">
-            <span className="relative flex h-2 w-2 shrink-0">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
-            </span>
+            <span className="relative flex h-2 w-2 shrink-0 rounded-full bg-emerald-500 ring-4 ring-emerald-500/20" />
             <div className="flex-1 min-w-0 text-left">
               <p className="text-[11px] font-semibold text-white/90 truncate tracking-tight">Active Station</p>
               <p className="text-[10px] text-emerald-400/80 font-medium truncate">Online · Tangub Pharmacy</p>
@@ -1866,10 +3654,7 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
           </div>
         ) : (
           <div className="w-8 h-8 rounded-xl bg-white/[0.04] border border-white/[0.06] flex items-center justify-center" title="Active Station · Online">
-            <span className="relative flex h-2 w-2">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
-            </span>
+            <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500 ring-4 ring-emerald-500/20" />
           </div>
         )}
       </div>
@@ -1884,10 +3669,10 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
   // ── Render ───────────────────────────────────────────────────────────────────
   return (
     <div className={darkMode ? "dark" : ""}>
-      <YouTubeTopLoader active={refreshing || pageNavigating} />
+      <YouTubeTopLoader active={refreshing} />
       {/* Floating Top Notification for Classic Sidebar Mode */}
       {navMode === "sidebar" && hubToast && (
-        <div className="fixed top-3 left-1/2 -translate-x-1/2 z-[100] pointer-events-none animate-in fade-in slide-in-from-top-2 duration-200">
+        <div className={`fixed top-3 left-1/2 -translate-x-1/2 z-[100] animate-in fade-in slide-in-from-top-2 duration-200 ${hubToast.action ? "pointer-events-auto" : "pointer-events-none"}`}>
           <div className="flex items-center gap-2 px-4 py-1.5 rounded-full bg-card border border-border shadow-md">
             <span className={`w-5 h-5 rounded-full flex items-center justify-center text-xs shrink-0 ${
               hubToast.type === "error"
@@ -1905,14 +3690,28 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
             <span className="text-xs font-semibold text-foreground">
               {hubToast.msg}
             </span>
+            {hubToast.action && (
+              <button
+                type="button"
+                onClick={() => {
+                  const act = hubToast.action;
+                  if (hubToastTimer.current) clearTimeout(hubToastTimer.current);
+                  setHubToast(null);
+                  act?.onClick();
+                }}
+                className="ml-1 rounded-full bg-primary/15 px-2.5 py-0.5 text-[10px] font-bold text-primary hover:bg-primary/25 transition-colors"
+              >
+                {hubToast.action.label}
+              </button>
+            )}
           </div>
         </div>
       )}
 
       <div className="st-home-enter flex h-screen bg-background overflow-hidden">
-        {/* Sidebar — only in sidebar mode */}
+        {/* Sidebar — only in sidebar mode (snaps cleanly without multi-frame full-page reflow) */}
         {navMode === "sidebar" && (
-          <aside className="flex-shrink-0 transition-all duration-300 overflow-hidden"
+          <aside className="flex-shrink-0 overflow-hidden"
             style={{ width: sidebarExpanded ? "224px" : "52px" }}>
             {sidebarContent}
           </aside>
@@ -1920,7 +3719,7 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
 
         <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
           {/* Topbar */}
-          <header className="flex-shrink-0 h-14 border-b border-border/80 flex items-center gap-3 px-4 sm:px-6 bg-card shadow-[0_1px_3px_rgba(0,0,0,0.03)]" style={{ zIndex: 40, position: "relative" }}>
+          <header className="flex-shrink-0 h-[56px] border-b border-border/80 flex items-center gap-3 st-shell-px bg-card shadow-[0_1px_3px_rgba(0,0,0,0.03)]" style={{ zIndex: confirmOpen ? 10005 : (toastOpen || systemAlertOpen) ? 65 : 40, position: "relative" }}>
 
             {navMode === "island" ? (
               /* ── TrackHub mode topbar layout ── */
@@ -1971,7 +3770,7 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
                   )}
                   {/* Search Dropdown */}
                   {searchOpen && searchQuery.length >= 2 && (
-                    <div className="absolute top-full left-0 right-0 mt-1.5 bg-card border border-border rounded-xl shadow-[0_12px_32px_-4px_rgba(37,99,235,0.15),0_4px_12px_rgba(0,0,0,0.06)] overflow-hidden z-50">
+                    <div className="st-dropdown-in absolute top-full left-0 right-0 mt-1.5 bg-card border border-border/80 rounded-xl shadow-[0_12px_32px_-4px_rgba(37,99,235,0.15),0_4px_12px_rgba(0,0,0,0.06)] overflow-hidden z-50">
                       {searchResults.length === 0 ? (
                         <div className="px-4 py-3 text-xs text-muted-foreground">No results for "{searchQuery}"</div>
                       ) : (
@@ -1997,7 +3796,7 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
                                             <p className="text-xs font-semibold text-foreground truncate">{r.label}</p>
                                             <p className="text-[10px] text-muted-foreground truncate">{r.sub}</p>
                                           </div>
-                                          <ArrowRight size={11} className="text-muted-foreground flex-shrink-0" />
+                                          <ChevronRight size={13} className="text-muted-foreground/60 flex-shrink-0" />
                                         </button>
                                       );
                                     })}
@@ -2019,7 +3818,7 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
                                             <p className="text-xs font-semibold text-foreground truncate">{r.label}</p>
                                             <p className="text-[10px] text-muted-foreground truncate">{r.sub}</p>
                                           </div>
-                                          <ArrowRight size={11} className="text-muted-foreground flex-shrink-0" />
+                                          <ChevronRight size={13} className="text-muted-foreground/60 flex-shrink-0" />
                                         </button>
                                       );
                                     })}
@@ -2067,7 +3866,7 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
                       <NotificationPanel notifs={notifs} onMarkAll={markAllRead} onMarkOne={markOneRead}
                         onNotificationClick={handleNotificationClick}
                         onNotificationHover={setHoveredNotifPid}
-                        productMap={Object.fromEntries(inventory.map(p => [p.id, p.name]))}
+                        productMap={productMap}
                         onClose={() => setShowNotifications(false)} />
                     )}
                   </div>
@@ -2094,15 +3893,14 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
                       <Settings size={16} />
                     </button>
                     {showTrackHubSettings && (
-                      <div className="absolute right-0 top-full mt-2 w-[min(24rem,calc(100vw_-_1.5rem))] max-h-[calc(100dvh_-_5rem)] overflow-y-auto scrollbar-thin rounded-3xl border border-border bg-card p-3.5 shadow-[0_20px_50px_rgba(0,0,0,0.18)] dark:shadow-[0_24px_50px_rgba(0,0,0,0.6)] z-50 st-dropdown-in transform-gpu">
-                        <div className="flex items-center justify-between border-b border-border/60 pb-2 mb-3">
-                          <div className="flex items-center gap-2">
-                            <Settings size={14} className="text-primary" />
-                            <span className="text-xs font-bold text-foreground">Settings</span>
-                          </div>
-                          <button type="button" onClick={() => setShowTrackHubSettings(false)} aria-label="Close settings" className="rounded-lg p-1 text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"><X size={13} /></button>
+                      <div className="absolute right-0 top-full mt-2 w-[min(24rem,calc(100vw_-_1.5rem))] max-h-[calc(100dvh_-_5rem)] flex flex-col overflow-hidden rounded-3xl border border-border bg-card shadow-[0_20px_50px_rgba(0,0,0,0.18)] dark:shadow-[0_24px_50px_rgba(0,0,0,0.6)] z-50 st-dropdown-in transform-gpu">
+                        <div className="flex flex-shrink-0 items-center justify-between border-b border-border/60 px-4 py-3">
+                          <span className="text-[13px] font-semibold tracking-tight text-foreground">Settings</span>
+                          <button type="button" onClick={() => setShowTrackHubSettings(false)} aria-label="Close settings" className="rounded-full bg-muted/60 p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"><X size={13} /></button>
                         </div>
-                        {settingsPanelContent}
+                        <div className="min-h-0 flex-1 overflow-y-auto scrollbar-thin p-3.5">
+                          {settingsPanelContent}
+                        </div>
                       </div>
                     )}
                   </div>
@@ -2157,7 +3955,7 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
 
                     {/* Dropdown */}
                     {searchOpen && searchQuery.length >= 2 && (
-                      <div className="absolute top-full left-0 right-0 mt-1.5 bg-card border border-border rounded-xl shadow-[0_12px_32px_-4px_rgba(37,99,235,0.15),0_4px_12px_rgba(0,0,0,0.06)] overflow-hidden z-50">
+                      <div className="st-dropdown-in absolute top-full left-0 right-0 mt-1.5 bg-card border border-border/80 rounded-xl shadow-[0_12px_32px_-4px_rgba(37,99,235,0.15),0_4px_12px_rgba(0,0,0,0.06)] overflow-hidden z-50">
                         {searchResults.length === 0 ? (
                           <div className="px-4 py-3 text-xs text-muted-foreground">No results for "{searchQuery}"</div>
                         ) : (
@@ -2186,7 +3984,7 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
                                               <p className="text-xs font-semibold text-foreground truncate">{r.label}</p>
                                               <p className="text-[10px] text-muted-foreground truncate">{r.sub}</p>
                                             </div>
-                                            <ArrowRight size={11} className="text-muted-foreground flex-shrink-0" />
+                                            <ChevronRight size={13} className="text-muted-foreground/60 flex-shrink-0" />
                                           </button>
                                         );
                                       })}
@@ -2210,7 +4008,7 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
                                               <p className="text-xs font-semibold text-foreground truncate">{r.label}</p>
                                               <p className="text-[10px] text-muted-foreground truncate">{r.sub}</p>
                                             </div>
-                                            <ArrowRight size={11} className="text-muted-foreground flex-shrink-0" />
+                                            <ChevronRight size={13} className="text-muted-foreground/60 flex-shrink-0" />
                                           </button>
                                         );
                                       })}
@@ -2251,7 +4049,7 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
                       <NotificationPanel notifs={notifs} onMarkAll={markAllRead} onMarkOne={markOneRead}
                         onNotificationClick={handleNotificationClick}
                         onNotificationHover={setHoveredNotifPid}
-                        productMap={Object.fromEntries(inventory.map(p => [p.id, p.name]))}
+                        productMap={productMap}
                         onClose={() => setShowNotifications(false)} />
                     )}
                   </div>
@@ -2278,15 +4076,14 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
                       <Settings size={16} />
                     </button>
                     {showTrackHubSettings && (
-                      <div className="absolute right-0 top-full mt-2 w-[min(24rem,calc(100vw_-_1.5rem))] max-h-[calc(100dvh_-_5rem)] overflow-y-auto scrollbar-thin rounded-3xl border border-border bg-card p-3.5 shadow-[0_20px_50px_rgba(0,0,0,0.18)] dark:shadow-[0_24px_50px_rgba(0,0,0,0.6)] z-50 st-dropdown-in transform-gpu">
-                        <div className="flex items-center justify-between border-b border-border/60 pb-2 mb-3">
-                          <div className="flex items-center gap-2">
-                            <Settings size={14} className="text-primary" />
-                            <span className="text-xs font-bold text-foreground">Settings</span>
-                          </div>
-                          <button type="button" onClick={() => setShowTrackHubSettings(false)} aria-label="Close settings" className="rounded-lg p-1 text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"><X size={13} /></button>
+                      <div className="absolute right-0 top-full mt-2 w-[min(24rem,calc(100vw_-_1.5rem))] max-h-[calc(100dvh_-_5rem)] flex flex-col overflow-hidden rounded-3xl border border-border bg-card shadow-[0_20px_50px_rgba(0,0,0,0.18)] dark:shadow-[0_24px_50px_rgba(0,0,0,0.6)] z-50 st-dropdown-in transform-gpu">
+                        <div className="flex flex-shrink-0 items-center justify-between border-b border-border/60 px-4 py-3">
+                          <span className="text-[13px] font-semibold tracking-tight text-foreground">Settings</span>
+                          <button type="button" onClick={() => setShowTrackHubSettings(false)} aria-label="Close settings" className="rounded-full bg-muted/60 p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"><X size={13} /></button>
                         </div>
-                        {settingsPanelContent}
+                        <div className="min-h-0 flex-1 overflow-y-auto scrollbar-thin p-3.5">
+                          {settingsPanelContent}
+                        </div>
                       </div>
                     )}
                   </div>
@@ -2322,26 +4119,26 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
             <div key={page} className="st-page-in min-h-full w-full">
             {page === "dashboard"    && <DashboardView user={user} inventory={inventory} transactions={transactions} cashierDashboard={cashierDashboard} />}
             {page === "inventory"    && <InventoryPage inventory={inventory} transactions={transactions} categories={categories}
-              onAddProduct={() => setShowAddProduct(true)} onEditProduct={product => { setSuggestedBatchQty(0); setEditingProduct(product); }}
+              onAddProduct={handleOpenAddProduct} onEditProduct={handleEditInventoryProduct}
               onDeleteProduct={setDeletingProduct} onAddCategory={handleAddCategory}
-              onReload={() => void loadAll(false)} showToast={showHubToast}
-              selectedProductId={selectedProductId} hoveredProductId={hoveredNotifPid} 
-              userRoles={[user.role]} />}
+              onReload={handleReloadAll} showToast={showHubToast}
+              selectedProductId={selectedProductId} hoveredProductId={hoveredNotifPid}
+              userRoles={userRoles} />}
             {page === "transactions" && <TransactionsPage user={user} transactions={transactions} inventory={inventory}
               selectedTransactionId={selectedTransactionId}
               showToast={showHubToast}
-              onAddSale={() => setShowAddSale(true)} onAddReturn={setReturningTx} onViewInvoice={setViewingInvoice} />}
-            {page === "analytics"    && <AnalyticsPage inventory={inventory} transactions={transactions} userRoles={[user.role]} onEditProduct={handleStockAlertEditProduct} showToast={showHubToast} />}
-            {page === "stock-alerts" && <StockAlertsPage inventory={inventory} transactions={transactions} onGoToInventory={() => setPage("inventory")} onEditProduct={handleStockAlertEditProduct} userRoles={[user.role]} />}
+              onAddSale={handleOpenAddSale} onAddReturn={setReturningTx} onViewInvoice={setViewingInvoice} />}
+            {page === "analytics"    && <AnalyticsPage inventory={inventory} transactions={transactions} userRoles={userRoles} onEditProduct={handleStockAlertEditProduct} showToast={showHubToast} />}
+            {page === "stock-alerts" && <StockAlertsPage inventory={inventory} transactions={transactions} onGoToInventory={handleGoToInventory} onEditProduct={handleStockAlertEditProduct} userRoles={userRoles} />}
             {page === "reports"      && <ReportsPage inventory={inventory} transactions={transactions} user={user} />}
             {page === "returns" && (isAdmin || isInventoryManager) && (
               <ReturnsPage user={user} inventory={inventory} onDispositionComplete={handleReturnDispositionComplete} />
             )}
             {page === "financial"    && isAdmin && <FinancialPage user={user} showToast={showHubToast} />}
-            {page === "purchases" && (isAdmin || isInventoryManager) && <PurchaseOrdersPage inventory={inventory} onInventoryChanged={() => { void loadAll(false); }} userRoles={[user.role]} />}
-            {page === "users"        && isAdmin && <UsersPage staff={staff} currentUserId={user.id} currentUserRoles={[user.role]} currentUserName={user.name} roles={roles} onAddUser={() => setShowAddUser(true)} onEditUser={setEditingUser} onDeleteUser={handleDeleteUser} onToggleStatus={handleToggleStatus} onResetPassword={handleAdminResetPassword} onCreatePassword={handleAdminCreatePassword} onRolesChanged={() => { rolesApi.list().then(setRoles).catch(() => {}); }} />}
+            {page === "purchases" && (isAdmin || isInventoryManager) && <PurchaseOrdersPage inventory={inventory} onInventoryChanged={handleReloadAll} userRoles={userRoles} />}
+            {page === "users"        && isAdmin && <UsersPage staff={staff} currentUserId={user.id} currentUserRoles={userRoles} currentUserName={user.name} roles={roles} onAddUser={() => setShowAddUser(true)} onEditUser={setEditingUser} onDeleteUser={handleDeleteUser} onToggleStatus={handleToggleStatus} onResetPassword={handleAdminResetPassword} onCreatePassword={handleAdminCreatePassword} onRolesChanged={handleRolesChanged} />}
             {page === "activity-log" && <ActivityLogPanel isAdmin={isAdmin} />}
-            {page === "recycle-bin"  && (isAdmin || isInventoryManager) && <RecycleBinPanel currentUserRoles={[user.role]} currentUserName={user.name} onRestored={() => void loadAll(false)} showToast={showHubToast} />}
+            {page === "recycle-bin"  && (isAdmin || isInventoryManager) && <RecycleBinPanel currentUserRoles={userRoles} currentUserName={user.name} onRestored={handleReloadAll} showToast={showHubToast} />}
             </div>
           </main>
         </div>
@@ -2354,65 +4151,86 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
           onClose={() => { setEditingProduct(null); setSuggestedBatchQty(0); }} onSave={handleSaveProduct} onAddCategory={handleAddCategory} />}
         {deletingProduct && <DeleteConfirmModal product={deletingProduct}
           onClose={() => setDeletingProduct(null)} onConfirm={() => handleDeleteProduct(deletingProduct)} />}
-        {showAddSale && <NewSaleModal onClose={() => setShowAddSale(false)} onAdd={handleAddSale} inventory={inventory} currentUser={user} onGoToInventory={() => { setShowAddSale(false); setPage("inventory"); }} />}
+        {showAddSale && (
+          <NewSaleModal
+            onClose={() => setShowAddSale(false)}
+            onAdd={handleAddSale}
+            inventory={inventory}
+            currentUser={user}
+            onGoToInventory={() => { setShowAddSale(false); setPage("inventory"); }}
+            initialDraft={pausedSaleDraft}
+            onMinimize={draft => setPausedSaleDraft(draft)}
+            onDiscardDraft={() => setPausedSaleDraft(null)}
+          />
+        )}
         {returningTx  && <ReturnModal saleTx={returningTx} onClose={() => setReturningTx(null)} onAdd={handleReturn} inventory={inventory} currentUser={user} />}
         {showAddUser  && <UserFormModal onClose={() => setShowAddUser(false)} onSave={handleSaveUser} currentUserRoles={[user.role]} roles={roles} />}
         {editingUser  && <UserFormModal initial={editingUser} onClose={() => setEditingUser(null)} onSave={handleSaveUser} currentUserRoles={[user.role]} roles={roles} />}
         {viewingInvoice && <InvoiceModal tx={viewingInvoice} settings={receiptSettings} inventory={inventory} onClose={() => setViewingInvoice(null)} />}
         {showAboutSystem && (
-          <Modal title="About SmartTrack" onClose={() => setShowAboutSystem(false)} wide>
-            <div className="space-y-5">
-              <section className="rounded-2xl border border-primary/15 bg-primary/[0.04] p-4 sm:p-5">
-                <div className="flex items-start gap-3">
-                  <img src={SMARTTRACK_LOGO_URL} alt="" className="mt-0.5 h-10 w-10 shrink-0 object-contain" />
-                  <div>
-                    <h3 className="text-sm font-bold text-foreground">Pharmacy operations, organized in one system</h3>
-                    <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
-                      SmartTrack helps a pharmacy manage medicine inventory, record point-of-sale transactions,
-                      monitor supplier orders and returns, and review business performance from one workspace.
-                    </p>
-                  </div>
+          <Modal title="About SmartTrack" onClose={() => setShowAboutSystem(false)} maxWidthClass="max-w-lg">
+            <div className="space-y-5 font-sans antialiased">
+              {/* Apple App Identity Hero */}
+              <div className="flex flex-col items-center text-center pt-1 pb-1">
+                <div className="flex h-16 w-16 items-center justify-center rounded-[20px] border border-border/70 bg-gradient-to-b from-muted/50 to-card p-2.5 shadow-[0_8px_24px_-6px_rgba(15,23,42,0.14)] dark:shadow-[0_10px_28px_-6px_rgba(0,0,0,0.55)]">
+                  <img src={SMARTTRACK_LOGO_URL} alt="SmartTrack" className="h-full w-full object-contain" />
                 </div>
-              </section>
+                <h3 className="mt-3.5 text-[18px] font-semibold tracking-tight text-foreground">SmartTrack</h3>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  Pharmacy Operations &amp; Inventory Workspace
+                </p>
+                <span className="mt-2.5 inline-flex items-center gap-1.5 rounded-full border border-border/70 bg-muted/50 px-2.5 py-0.5 text-[11px] font-medium text-muted-foreground">
+                  <span>Version 1.0.0</span>
+                  <span aria-hidden="true">·</span>
+                  <span>{window.smarttrack?.isElectron ? "Desktop App" : "Local Workspace"}</span>
+                </span>
+              </div>
 
-              <section>
-                <h3 className="mb-2.5 text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground">What SmartTrack manages</h3>
-                <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+              {/* Apple Settings Grouped Inset List — Core Modules */}
+              <div className="space-y-1.5">
+                <p className="px-1 text-[11px] font-semibold text-muted-foreground">Core Modules</p>
+                <div className="overflow-hidden rounded-2xl border border-border/70 bg-muted/25 dark:bg-white/[0.03] divide-y divide-border/50">
                   {[
-                    { icon: Package, title: "Inventory", description: "Maintain medicine details, stock levels, batches, expiry information, and reorder thresholds." },
-                    { icon: ShoppingCart, title: "Sales & receipts", description: "Record POS sales, update stock from completed transactions, and view transaction receipts." },
-                    { icon: Truck, title: "Supplier orders", description: "Prepare purchase orders, track their progress, and record delivered stock." },
-                    { icon: ClipboardCheck, title: "Returns", description: "Record returned items and track whether stock is restocked or marked as damaged." },
-                    { icon: BarChart2, title: "Analytics & reports", description: "Review sales, stock movement, and forecast summaries to support decisions." },
-                    { icon: Shield, title: "Team & accountability", description: "Manage staff access by role and review activity records and removed items where permitted." },
-                  ].map(({ icon: Icon, title, description }) => (
-                    <div key={title} className="rounded-xl border border-border/70 bg-card p-3">
-                      <div className="mb-2 flex items-center gap-2">
-                        <Icon size={14} className="text-primary" />
-                        <h4 className="text-xs font-bold text-foreground">{title}</h4>
+                    { icon: Package, tint: "bg-sky-500/15 text-sky-600 dark:text-sky-400", title: "Inventory & Batches", desc: "Stock counts, pack sizes, earliest-expiry alerts, and batch tracking" },
+                    { icon: ShoppingCart, tint: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400", title: "POS & Receipts", desc: "Sales checkout, SC/PWD discounts, and automatic FIFO deduction" },
+                    { icon: Truck, tint: "bg-amber-500/15 text-amber-600 dark:text-amber-400", title: "Supplier Orders & Returns", desc: "Purchase orders, deliveries, restocking, and broken write-offs" },
+                    { icon: BarChart2, tint: "bg-indigo-500/15 text-indigo-600 dark:text-indigo-400", title: "Analytics & Financials", desc: "SMA demand forecasts, EOQ restocking, 12% VAT, and batch COGS" },
+                    { icon: Shield, tint: "bg-violet-500/15 text-violet-600 dark:text-violet-400", title: "Roles & Accountability", desc: "Role permissions, activity audit logs, and recycle bin recovery" },
+                  ].map(({ icon: Icon, tint, title, desc }) => (
+                    <div key={title} className="flex items-center gap-3 px-3.5 py-2.5">
+                      <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-xl ${tint}`}>
+                        <Icon size={15} strokeWidth={2} />
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs font-semibold text-foreground leading-snug">{title}</p>
+                        <p className="text-[11px] text-muted-foreground leading-snug">{desc}</p>
                       </div>
-                      <p className="text-[11px] leading-relaxed text-muted-foreground">{description}</p>
                     </div>
                   ))}
                 </div>
-              </section>
+              </div>
 
-              <section className="grid gap-3 border-t border-border/70 pt-4 sm:grid-cols-2">
-                <div>
-                  <h3 className="text-xs font-bold text-foreground">A typical workflow</h3>
-                  <p className="mt-1.5 text-[11px] leading-relaxed text-muted-foreground">
-                    Add or receive stock, process sales, handle returns, then use alerts and reports to see what needs attention.
-                    Stock and transaction records are connected so teams can follow day-to-day changes.
-                  </p>
+              {/* Apple About System Specs Table */}
+              <div className="space-y-1.5">
+                <p className="px-1 text-[11px] font-semibold text-muted-foreground">Workspace Details</p>
+                <div className="overflow-hidden rounded-2xl border border-border/70 bg-muted/25 dark:bg-white/[0.03] divide-y divide-border/50 text-xs">
+                  {[
+                    { label: "Active Role", value: ROLE_LABELS[user.role] ?? user.role },
+                    { label: "Database", value: "Local MariaDB (Offline-first)" },
+                    { label: "Tax & Discount", value: "12% VAT · 20% SC/PWD exempt" },
+                    { label: "Stock Method", value: "FIFO deduction · Earliest-expiry alerts" },
+                  ].map(row => (
+                    <div key={row.label} className="flex items-center justify-between gap-4 px-3.5 py-2.5">
+                      <span className="font-medium text-muted-foreground">{row.label}</span>
+                      <span className="font-semibold text-foreground text-right tabular-nums">{row.value}</span>
+                    </div>
+                  ))}
                 </div>
-                <div>
-                  <h3 className="text-xs font-bold text-foreground">Access follows your role</h3>
-                  <p className="mt-1.5 text-[11px] leading-relaxed text-muted-foreground">
-                    Available pages and management actions depend on your account role. Administrators manage staff and system records;
-                    inventory managers focus on stock and supplier operations; cashier accounts focus on sales and their permitted pages.
-                  </p>
-                </div>
-              </section>
+              </div>
+
+              <p className="px-2 text-center text-[11px] leading-relaxed text-muted-foreground">
+                Sales, deliveries, returns, and permissions stay synchronized automatically across your permitted workspace.
+              </p>
             </div>
           </Modal>
         )}
@@ -2430,7 +4248,7 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
           onResetPassword={handleResetPassword}
           onUpdateProfile={handleUpdateProfile}
         />}
-        {systemAlert && (
+        {navMode === "sidebar" && !showNavStyleModal && systemAlert && (
           <Modal title={systemAlert.title} onClose={() => setSystemAlert(null)} wide closeOnOverlay={false}>
             <div className="space-y-4">
               <p className="text-sm text-foreground">{systemAlert.body}</p>
@@ -2465,6 +4283,42 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
             onCancel={() => setRoleToRemove(null)}
           />
         )}
+        {confirmDiscardCart && (
+          <ConfirmDialog
+            title="Discard Paused POS Cart?"
+            message="Remove all saved draft items from the paused POS cart? This cannot be undone."
+            confirmLabel="Discard Cart"
+            cancelLabel="Keep Draft"
+            variant="warning"
+            onConfirm={() => { setPausedSaleDraft(null); setConfirmDiscardCart(false); }}
+            onCancel={() => setConfirmDiscardCart(false)}
+          />
+        )}
+        <NavigationStyleChoiceModal
+          open={showNavStyleModal}
+          user={user}
+          currentMode={navMode}
+          askOnLogin={askNavOnLogin}
+          onToggleAskOnLogin={toggleAskNavOnLogin}
+          onPrepareTrackHub={() => {
+            setNavMode("island");
+            setTimeout(() => {
+              if (!reduceTrackHubMotion) {
+                setIslandMorph(m => ({ kind: "collapse", seq: (m?.seq ?? 0) + 1 }));
+              }
+            }, 390);
+          }}
+          onConfirm={mode => {
+            setNavMode(mode);
+            try { sessionStorage.removeItem("st_nav_prompt_pending"); } catch { /* ignore */ }
+            setShowNavStyleModal(false);
+            showHubToast(mode === "island" ? "Using TrackHub floating layout" : "Using Classic Bar sidebar layout", "info");
+          }}
+          onClose={() => {
+            try { sessionStorage.removeItem("st_nav_prompt_pending"); } catch { /* ignore */ }
+            setShowNavStyleModal(false);
+          }}
+        />
 
       </div>
     </div>

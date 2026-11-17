@@ -141,7 +141,6 @@
     font-variant-numeric: tabular-nums;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
-    text-rendering: optimizeLegibility;
   }
 
   h1 { font-size: var(--text-2xl); font-weight: 700; line-height: 1.3; letter-spacing: -0.02em; }
@@ -183,7 +182,7 @@
 /* ── Keyframes ────────────────────────────────────────────────────────────── */
 
 @keyframes st-modal-in {
-  from { opacity: 0; transform: scale(0.96) translateY(4px); }
+  from { opacity: 0; transform: scale(0.96) translateY(8px); }
   to   { opacity: 1; transform: scale(1)    translateY(0);   }
 }
 @keyframes st-modal-out {
@@ -199,8 +198,8 @@
   to   { opacity: 0; }
 }
 @keyframes st-page-in {
-  from { opacity: 0; transform: translateY(6px); }
-  to   { opacity: 1; transform: translateY(0);   }
+  from { opacity: 0; transform: translate3d(0, 4px, 0); }
+  to   { opacity: 1; transform: translate3d(0, 0, 0);   }
 }
 @keyframes st-fade-up {
   from { opacity: 0; transform: translateY(10px); }
@@ -227,8 +226,8 @@
   to   { transform: scaleX(1); }
 }
 @keyframes smartbot-float {
-  0%, 100% { transform: translateY(0); }
-  50%      { transform: translateY(-4px); }
+  0%, 100% { transform: translate3d(0, 0, 0); }
+  50%      { transform: translate3d(0, -3.5px, 0); }
 }
 @keyframes st-login-arrive {
   from { opacity: 0; transform: translateY(18px) scale(0.985); }
@@ -238,12 +237,28 @@
   from { opacity: 0; transform: translateY(24px) scale(0.975); }
   to   { opacity: 1; transform: translateY(0) scale(1); }
 }
+@keyframes st-cart-item-in {
+  from { opacity: 0; transform: translateY(-6px) scale(0.985); }
+  to   { opacity: 1; transform: translateY(0)    scale(1);     }
+}
+@keyframes st-reveal-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0);    }
+}
+@keyframes st-bar-fill-x {
+  from { transform: scaleX(0); }
+  to   { transform: scaleX(1); }
+}
+@keyframes st-bar-fill-y {
+  from { transform: scaleY(0); }
+  to   { transform: scaleY(1); }
+}
 
 /* ── Utility classes ──────────────────────────────────────────────────────── */
 @layer utilities {
   /* Modal panel */
   .st-modal-in {
-    animation: st-modal-in 320ms cubic-bezier(0.16, 1, 0.3, 1) both;
+    animation: st-modal-in 260ms cubic-bezier(0.22, 1.16, 0.36, 1) backwards;
   }
   .st-modal-out {
     animation: st-modal-out 200ms cubic-bezier(0.4, 0, 1, 1) both;
@@ -254,19 +269,42 @@
     animation: st-overlay-in 220ms ease both;
   }
 
-  /* Page content on mount */
+  /* Page content on mount (no persistent transform after settle) */
   .st-page-in {
-    animation: st-page-in 280ms cubic-bezier(0.16, 1, 0.3, 1) both;
+    animation: st-page-in 150ms cubic-bezier(0.16, 1, 0.3, 1) backwards;
   }
 
   /* Staggered list items — use with [animation-delay:var(--delay)] */
   .st-fade-up {
-    animation: st-fade-up 300ms cubic-bezier(0.16, 1, 0.3, 1) both;
+    animation: st-fade-up 240ms cubic-bezier(0.16, 1, 0.3, 1) backwards;
   }
 
   /* Generic fade */
   .st-fade-in {
-    animation: st-fade-in 200ms ease both;
+    animation: st-fade-in 160ms ease backwards;
+  }
+
+  /* POS cart item & progressive section reveal (zero layout thrash) */
+  .st-cart-item-in {
+    animation: st-cart-item-in 210ms cubic-bezier(0.22, 1.15, 0.36, 1) backwards;
+  }
+  .st-reveal-in {
+    animation: st-reveal-in 180ms cubic-bezier(0.16, 1, 0.3, 1) backwards;
+  }
+
+  /* Apple-style GPU-composited progress & chart bar fill on mount / reload */
+  .st-bar-fill {
+    transform-origin: left center;
+    animation: st-bar-fill-x 620ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
+  }
+  .st-bar-fill-y {
+    transform-origin: center bottom;
+    animation: st-bar-fill-y 620ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
+  }
+  .st-svg-bar-fill {
+    transform-box: fill-box;
+    transform-origin: left center;
+    animation: st-bar-fill-x 620ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
   }
 
   .smartbot-mascot-float {
@@ -276,29 +314,28 @@
   }
 
   .st-login-enter {
-    animation: st-login-arrive 650ms cubic-bezier(0.16, 1, 0.3, 1) both;
+    animation: st-login-arrive 650ms cubic-bezier(0.16, 1, 0.3, 1) backwards;
   }
   .st-login-brand {
-    animation: st-login-arrive 700ms cubic-bezier(0.16, 1, 0.3, 1) 80ms both;
+    animation: st-login-arrive 700ms cubic-bezier(0.16, 1, 0.3, 1) 80ms backwards;
   }
   .st-login-card {
-    animation: st-login-card-arrive 750ms cubic-bezier(0.16, 1, 0.3, 1) 140ms both;
+    animation: st-login-card-arrive 750ms cubic-bezier(0.16, 1, 0.3, 1) 140ms backwards;
   }
   .st-login-feature {
-    animation: st-login-arrive 550ms cubic-bezier(0.16, 1, 0.3, 1) both;
+    animation: st-login-arrive 550ms cubic-bezier(0.16, 1, 0.3, 1) backwards;
   }
   .st-home-enter {
-    animation: st-login-arrive 520ms cubic-bezier(0.16, 1, 0.3, 1) both;
+    animation: st-login-arrive 450ms cubic-bezier(0.16, 1, 0.3, 1) backwards;
   }
   /* Dropdown / popover */
   .st-dropdown-in {
-    animation: st-dropdown-in 200ms cubic-bezier(0.16, 1, 0.3, 1) both;
+    animation: st-dropdown-in 170ms cubic-bezier(0.16, 1, 0.3, 1) backwards;
   }
 
-  /* Card hover lift — combine with group-hover */
+  /* Card hover lift — GPU transform only (no box-shadow transition repaint) */
   .st-card {
-    transition: box-shadow 220ms cubic-bezier(0.16, 1, 0.3, 1),
-                transform   220ms cubic-bezier(0.16, 1, 0.3, 1);
+    transition: transform 180ms cubic-bezier(0.16, 1, 0.3, 1);
   }
   .st-card:hover {
     transform: translateY(-1px);
@@ -306,25 +343,109 @@
 
   /* Button press */
   .st-btn {
-    transition: opacity   150ms ease,
-                transform 150ms cubic-bezier(0.16, 1, 0.3, 1),
-                box-shadow 150ms ease,
-                background-color 150ms ease;
+    transition: opacity          140ms ease,
+                transform        140ms cubic-bezier(0.16, 1, 0.3, 1),
+                background-color 140ms ease;
   }
   .st-btn:hover  { opacity: 0.92; }
   .st-btn:active { transform: scale(0.97); opacity: 0.85; }
 
   /* Subtle press for secondary / ghost buttons */
   .st-btn-ghost {
-    transition: background-color 150ms ease,
-                color            150ms ease,
-                transform        150ms cubic-bezier(0.16, 1, 0.3, 1);
+    transition: background-color 140ms ease,
+                color            140ms ease,
+                transform        140ms cubic-bezier(0.16, 1, 0.3, 1);
   }
   .st-btn-ghost:active { transform: scale(0.97); }
 
+  /* Apple-style soft-tinted capsule action chip (replaces underlined link buttons) */
+  .st-chip-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.35rem;
+    border-radius: 9999px;
+    padding: 0.3rem 0.72rem;
+    font-size: 0.72rem;
+    font-weight: 600;
+    line-height: 1.25;
+    white-space: nowrap;
+    text-decoration: none;
+    color: #1d4ed8;
+    background-color: color-mix(in srgb, var(--primary) 10%, transparent);
+    border: 1px solid color-mix(in srgb, var(--primary) 20%, transparent);
+    cursor: pointer;
+    transition: background-color 140ms cubic-bezier(0.16, 1, 0.3, 1),
+                border-color     140ms cubic-bezier(0.16, 1, 0.3, 1),
+                color            140ms ease,
+                transform        140ms cubic-bezier(0.22, 1.2, 0.36, 1);
+  }
+  .st-chip-btn:hover {
+    text-decoration: none;
+    color: #1e40af;
+    background-color: color-mix(in srgb, var(--primary) 16%, transparent);
+    border-color: color-mix(in srgb, var(--primary) 34%, transparent);
+    box-shadow: 0 2px 8px -2px color-mix(in srgb, var(--primary) 24%, transparent);
+  }
+  .st-chip-btn:active {
+    transform: scale(0.96);
+  }
+  .dark .st-chip-btn {
+    color: #93c5fd;
+    background-color: rgba(59, 130, 246, 0.14);
+    border-color: rgba(96, 165, 250, 0.25);
+  }
+  .dark .st-chip-btn:hover {
+    color: #dbeafe;
+    background-color: rgba(59, 130, 246, 0.24);
+    border-color: rgba(96, 165, 250, 0.42);
+  }
+  .st-chip-btn--amber {
+    color: #b45309;
+    background-color: rgba(245, 158, 11, 0.12);
+    border-color: rgba(245, 158, 11, 0.28);
+  }
+  .st-chip-btn--amber:hover {
+    color: #92400e;
+    background-color: rgba(245, 158, 11, 0.2);
+    border-color: rgba(245, 158, 11, 0.44);
+    box-shadow: 0 2px 8px -2px rgba(245, 158, 11, 0.25);
+  }
+  .dark .st-chip-btn--amber {
+    color: #fcd34d;
+    background-color: rgba(245, 158, 11, 0.16);
+    border-color: rgba(251, 191, 36, 0.3);
+  }
+  .dark .st-chip-btn--amber:hover {
+    color: #fde68a;
+    background-color: rgba(245, 158, 11, 0.26);
+    border-color: rgba(251, 191, 36, 0.48);
+  }
+  .st-chip-btn--rose {
+    color: #be123c;
+    background-color: rgba(244, 63, 94, 0.12);
+    border-color: rgba(244, 63, 94, 0.26);
+  }
+  .st-chip-btn--rose:hover {
+    color: #9f1239;
+    background-color: rgba(244, 63, 94, 0.2);
+    border-color: rgba(244, 63, 94, 0.4);
+    box-shadow: 0 2px 8px -2px rgba(244, 63, 94, 0.24);
+  }
+  .dark .st-chip-btn--rose {
+    color: #fda4af;
+    background-color: rgba(244, 63, 94, 0.16);
+    border-color: rgba(251, 113, 133, 0.3);
+  }
+  .dark .st-chip-btn--rose:hover {
+    color: #fecdd3;
+    background-color: rgba(244, 63, 94, 0.26);
+    border-color: rgba(251, 113, 133, 0.48);
+  }
+
   /* Focus ring glow */
   .st-focus {
-    transition: box-shadow 150ms ease, border-color 150ms ease;
+    transition: border-color 150ms ease;
   }
   .st-focus:focus-within {
     box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.18);
@@ -356,20 +477,38 @@
   .st-login-card,
   .st-login-feature,
   .st-home-enter,
+  .st-cart-item-in,
+  .st-reveal-in,
   .smartbot-mascot-float,
   .st-dropdown-in {
-    animation: st-fade-in 120ms ease both;
+    animation: st-fade-in 120ms ease backwards;
   }
   .st-card:hover         { transform: none; }
   .st-btn:active         { transform: none; }
   .st-btn-ghost:active   { transform: none; }
+  .st-chip-btn:active    { transform: none; }
   .st-nav-item:active    { transform: none; }
   .st-card,
   .st-btn,
   .st-btn-ghost,
+  .st-chip-btn,
   .st-nav-item,
   .st-focus {
     transition-duration: 0ms !important;
+  }
+  .st-bar-fill,
+  .st-bar-fill-y,
+  .st-svg-bar-fill {
+    animation: none !important;
+  }
+}
+
+@media print {
+  .st-bar-fill,
+  .st-bar-fill-y,
+  .st-svg-bar-fill {
+    animation: none !important;
+    transform: none !important;
   }
 }
 
@@ -378,7 +517,7 @@
 /* another rather than all at once. Uses st-fade-up keyframe.                  */
 @layer utilities {
   .st-grid > * {
-    animation: st-fade-up 320ms cubic-bezier(0.16, 1, 0.3, 1) both;
+    animation: st-fade-up 240ms cubic-bezier(0.16, 1, 0.3, 1) backwards;
   }
   .st-grid > *:nth-child(1)  { animation-delay:  0ms; }
   .st-grid > *:nth-child(2)  { animation-delay: 40ms; }
@@ -395,30 +534,128 @@
   }
 }
 
-/* ── TrackHub-specific keyframes ──────────────────────────────────────────── */
+/* ── TrackHub-specific keyframes (Apple Dynamic Island GPU Spring Morph) ────── */
 
 /* Pill content (icon + label) slides up and scales in smoothly when page changes */
 @keyframes th-pill-content-in {
   0% {
     opacity: 0.15;
-    transform: translateY(6px) scale(0.94);
+    transform: translate3d(0, 7px, 0) scale(0.92);
+  }
+  65% {
+    opacity: 1;
+    transform: translate3d(0, -1px, 0) scale(1.015);
   }
   100% {
     opacity: 1;
-    transform: translateY(0) scale(1);
+    transform: translate3d(0, 0, 0) scale(1);
   }
 }
 
 /* Label slides up from below when the active page changes in the collapsed pill */
 @keyframes th-label-in {
-  from { opacity: 0.3; transform: translateY(5px) scale(0.96); }
-  to   { opacity: 1;   transform: translateY(0)   scale(1);    }
+  from { opacity: 0.3; transform: translate3d(0, 5px, 0) scale(0.96); }
+  to   { opacity: 1;   transform: translate3d(0, 0, 0) scale(1);    }
 }
 
-/* Nav grid items cascade in when the hub opens */
+/* Nav grid items cascade in when the hub opens (pure GPU transform + opacity) */
 @keyframes th-item-in {
-  from { opacity: 0; transform: translateY(8px) scale(0.93); }
-  to   { opacity: 1; transform: translateY(0)   scale(1);    }
+  0% {
+    opacity: 0;
+    transform: translate3d(0, -6px, 0) scale(0.84);
+  }
+  68% {
+    opacity: 1;
+    transform: translate3d(0, 1px, 0) scale(1.025);
+  }
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+/* Liquid Dynamic Island GPU squish-and-settle impulses (paired A/B for zero-reflow replay) */
+@keyframes th-squish-expand-a {
+  0%   { transform: translate3d(-50%, 0, 0) scale3d(0.982, 0.974, 1); }
+  45%  { transform: translate3d(-50%, 0, 0) scale3d(1.01, 1.012, 1); }
+  76%  { transform: translate3d(-50%, 0, 0) scale3d(0.998, 0.998, 1); }
+  100% { transform: translate3d(-50%, 0, 0) scale3d(1, 1, 1); }
+}
+@keyframes th-squish-expand-b {
+  0%   { transform: translate3d(-50%, 0, 0) scale3d(0.982, 0.974, 1); }
+  45%  { transform: translate3d(-50%, 0, 0) scale3d(1.01, 1.012, 1); }
+  76%  { transform: translate3d(-50%, 0, 0) scale3d(0.998, 0.998, 1); }
+  100% { transform: translate3d(-50%, 0, 0) scale3d(1, 1, 1); }
+}
+
+@keyframes th-squish-collapse-a {
+  0%   { transform: translate3d(-50%, 0, 0) scale3d(1.014, 1.018, 1); }
+  52%  { transform: translate3d(-50%, 0, 0) scale3d(0.982, 0.974, 1); }
+  80%  { transform: translate3d(-50%, 0, 0) scale3d(1.005, 1.005, 1); }
+  100% { transform: translate3d(-50%, 0, 0) scale3d(1, 1, 1); }
+}
+@keyframes th-squish-collapse-b {
+  0%   { transform: translate3d(-50%, 0, 0) scale3d(1.014, 1.018, 1); }
+  52%  { transform: translate3d(-50%, 0, 0) scale3d(0.982, 0.974, 1); }
+  80%  { transform: translate3d(-50%, 0, 0) scale3d(1.005, 1.005, 1); }
+  100% { transform: translate3d(-50%, 0, 0) scale3d(1, 1, 1); }
+}
+
+@keyframes th-squish-swap-a {
+  0%   { transform: translate3d(-50%, 0, 0) scale3d(0.982, 0.978, 1); }
+  46%  { transform: translate3d(-50%, 0, 0) scale3d(1.014, 1.015, 1); }
+  100% { transform: translate3d(-50%, 0, 0) scale3d(1, 1, 1); }
+}
+@keyframes th-squish-swap-b {
+  0%   { transform: translate3d(-50%, 0, 0) scale3d(0.982, 0.978, 1); }
+  46%  { transform: translate3d(-50%, 0, 0) scale3d(1.014, 1.015, 1); }
+  100% { transform: translate3d(-50%, 0, 0) scale3d(1, 1, 1); }
+}
+
+@keyframes th-squish-nudge-a {
+  0%   { transform: translate3d(-50%, 0, 0) scale3d(1, 1, 1); }
+  36%  { transform: translate3d(-50%, 0, 0) scale3d(1.024, 0.968, 1); }
+  74%  { transform: translate3d(-50%, 0, 0) scale3d(0.996, 1.008, 1); }
+  100% { transform: translate3d(-50%, 0, 0) scale3d(1, 1, 1); }
+}
+@keyframes th-squish-nudge-b {
+  0%   { transform: translate3d(-50%, 0, 0) scale3d(1, 1, 1); }
+  36%  { transform: translate3d(-50%, 0, 0) scale3d(1.024, 0.968, 1); }
+  74%  { transform: translate3d(-50%, 0, 0) scale3d(0.996, 1.008, 1); }
+  100% { transform: translate3d(-50%, 0, 0) scale3d(1, 1, 1); }
+}
+
+.th-pill-shell {
+  contain: layout style;
+  backface-visibility: hidden;
+  transform: translate3d(-50%, 0, 0) scale3d(1, 1, 1);
+  transform-origin: center top;
+}
+
+.th-pill-shell[data-collapsed="true"]:hover {
+  transform: translate3d(-50%, 0, 0) scale3d(1.018, 1.018, 1);
+}
+
+.th-pill-shell[data-collapsed="true"]:active {
+  transform: translate3d(-50%, 0, 0) scale3d(0.974, 0.962, 1);
+}
+
+.th-split-orb-face {
+  backface-visibility: hidden;
+  transform: scale3d(1, 1, 1);
+  transition: transform 220ms cubic-bezier(0.22, 1.24, 0.36, 1);
+}
+
+.th-split-orb-face:hover {
+  transform: scale3d(1.06, 1.06, 1);
+}
+
+.th-split-orb-face:active {
+  transform: scale3d(0.92, 0.92, 1);
+}
+
+.th-hub-tile-open {
+  animation: th-item-in 240ms cubic-bezier(0.22, 1.2, 0.36, 1) var(--th-delay, 0ms) backwards;
 }
 
 .th-assistant-morph {
@@ -437,7 +674,45 @@
   }
 }
 
+/* Pure GPU micro-animations for live TrackHub states (zero layout/paint cost) */
+@keyframes th-beat-bar {
+  0%, 100% { transform: scaleY(0.32); opacity: 0.7; }
+  50%      { transform: scaleY(1);    opacity: 1;   }
+}
+.th-beat-1 { animation: th-beat-bar 0.85s ease-in-out infinite; transform-origin: bottom; }
+.th-beat-2 { animation: th-beat-bar 0.62s 0.18s ease-in-out infinite; transform-origin: bottom; }
+.th-beat-3 { animation: th-beat-bar 0.76s 0.32s ease-in-out infinite; transform-origin: bottom; }
+
+@keyframes th-radar-ping {
+  0%        { transform: scale(0.85); opacity: 0.85; }
+  75%, 100% { transform: scale(2.15); opacity: 0;    }
+}
+.th-radar-ring { animation: th-radar-ping 1.85s cubic-bezier(0, 0, 0.2, 1) infinite; }
+
+@keyframes th-arc-spin {
+  from { transform: rotate(0deg);   }
+  to   { transform: rotate(360deg); }
+}
+.th-arc-spin { animation: th-arc-spin 0.85s linear infinite; }
+
+@keyframes th-check-draw {
+  from { stroke-dashoffset: 20; }
+  to   { stroke-dashoffset: 0;  }
+}
+.th-check-draw {
+  stroke-dasharray: 20;
+  animation: th-check-draw 300ms cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+
 @media (prefers-reduced-motion: reduce) {
+  .th-beat-1,
+  .th-beat-2,
+  .th-beat-3,
+  .th-radar-ring,
+  .th-arc-spin,
+  .th-check-draw {
+    animation: none !important;
+  }
   @keyframes th-pill-content-in {
     from { opacity: 0; }
     to   { opacity: 1; }
@@ -449,6 +724,19 @@
   @keyframes th-item-in {
     from { opacity: 0; }
     to   { opacity: 1; }
+  }
+  .th-split-orb-face,
+  .th-split-orb-face:hover,
+  .th-split-orb-face:active {
+    transform: none;
+    transition: none;
+  }
+  .th-pill-shell[data-collapsed="true"]:hover,
+  .th-pill-shell[data-collapsed="true"]:active {
+    transform: translate3d(-50%, 0, 0) scale3d(1, 1, 1);
+  }
+  .th-hub-tile-open {
+    animation: st-fade-in 120ms ease both;
   }
   .th-assistant-morph {
     animation: st-fade-in 120ms ease both;
@@ -464,10 +752,10 @@
 
 @layer utilities {
   .th-confirm-drop {
-    animation: th-confirm-drop 280ms cubic-bezier(0.16, 1, 0.3, 1) both;
+    animation: th-confirm-drop 240ms cubic-bezier(0.16, 1, 0.3, 1) backwards;
   }
   @media (prefers-reduced-motion: reduce) {
-    .th-confirm-drop { animation: st-fade-in 120ms ease both; }
+    .th-confirm-drop { animation: st-fade-in 120ms ease backwards; }
   }
 }
 
@@ -493,4 +781,255 @@
     from { opacity: 0; }
     to   { opacity: 1; }
   }
+}
+
+/* ── Sticky Table Headers (solid card surface — zero scroll-compositor blur) ─ */
+@media screen {
+  [data-table-scroll="fixed"] thead.sticky,
+  table thead.sticky.top-0 {
+    background-color: var(--card);
+    box-shadow: 0 1px 0 0 color-mix(in srgb, var(--border) 90%, transparent), 0 3px 10px -4px rgba(15, 23, 42, 0.05);
+  }
+}
+
+/* ── User Display Preferences (Settings: Compact Density & Reduce Motion) ──── */
+:root[data-density="compact"] table thead th {
+  padding-top: 0.5rem;
+  padding-bottom: 0.5rem;
+}
+
+:root[data-density="compact"] table tbody td {
+  padding-top: 0.4375rem;
+  padding-bottom: 0.4375rem;
+}
+
+:root[data-reduce-motion="true"] .st-modal-in,
+:root[data-reduce-motion="true"] .st-modal-out,
+:root[data-reduce-motion="true"] .st-overlay-in,
+:root[data-reduce-motion="true"] .st-page-in,
+:root[data-reduce-motion="true"] .st-fade-up,
+:root[data-reduce-motion="true"] .st-fade-in,
+:root[data-reduce-motion="true"] .st-login-enter,
+:root[data-reduce-motion="true"] .st-login-brand,
+:root[data-reduce-motion="true"] .st-login-card,
+:root[data-reduce-motion="true"] .st-login-feature,
+:root[data-reduce-motion="true"] .st-home-enter,
+:root[data-reduce-motion="true"] .st-cart-item-in,
+:root[data-reduce-motion="true"] .st-reveal-in,
+:root[data-reduce-motion="true"] .smartbot-mascot-float,
+:root[data-reduce-motion="true"] .st-dropdown-in,
+:root[data-reduce-motion="true"] .th-hub-tile-open,
+:root[data-reduce-motion="true"] .th-confirm-drop {
+  animation: st-fade-in 120ms ease backwards !important;
+}
+
+:root[data-reduce-motion="true"] .th-assistant-morph {
+  animation: st-fade-in 120ms ease both !important;
+  will-change: auto;
+}
+
+:root[data-reduce-motion="true"] .st-bar-fill,
+:root[data-reduce-motion="true"] .st-bar-fill-y,
+:root[data-reduce-motion="true"] .st-svg-bar-fill,
+:root[data-reduce-motion="true"] .th-beat-1,
+:root[data-reduce-motion="true"] .th-beat-2,
+:root[data-reduce-motion="true"] .th-beat-3,
+:root[data-reduce-motion="true"] .th-radar-ring,
+:root[data-reduce-motion="true"] .th-arc-spin,
+:root[data-reduce-motion="true"] .th-check-draw,
+:root[data-reduce-motion="true"] .animate-pulse,
+:root[data-reduce-motion="true"] .animate-bounce,
+:root[data-reduce-motion="true"] .animate-ping {
+  animation: none !important;
+}
+
+:root[data-reduce-motion="true"] .st-card:hover,
+:root[data-reduce-motion="true"] .st-btn:active,
+:root[data-reduce-motion="true"] .st-btn-ghost:active,
+:root[data-reduce-motion="true"] .st-chip-btn:active,
+:root[data-reduce-motion="true"] .st-nav-item:active,
+:root[data-reduce-motion="true"] .th-split-orb-face,
+:root[data-reduce-motion="true"] .th-split-orb-face:hover,
+:root[data-reduce-motion="true"] .th-split-orb-face:active {
+  transform: none !important;
+}
+
+:root[data-reduce-motion="true"] .st-card,
+:root[data-reduce-motion="true"] .st-btn,
+:root[data-reduce-motion="true"] .st-btn-ghost,
+:root[data-reduce-motion="true"] .st-chip-btn,
+:root[data-reduce-motion="true"] .st-nav-item,
+:root[data-reduce-motion="true"] .st-focus,
+:root[data-reduce-motion="true"] .th-split-orb-face {
+  transition-duration: 0ms !important;
+}
+
+:root[data-reduce-motion="true"] .th-pill-shell[data-collapsed="true"]:hover,
+:root[data-reduce-motion="true"] .th-pill-shell[data-collapsed="true"]:active {
+  transform: translate3d(-50%, 0, 0) scale3d(1, 1, 1);
+}
+
+/* ── Unified Fluid Page & Topbar Gutters (all monitor sizes) ────────────────── */
+:root {
+  --st-shell-gutter: 1rem;
+}
+
+@media (min-width: 640px) {
+  :root { --st-shell-gutter: 1.5rem; }
+}
+
+@media (min-width: 1024px) {
+  :root { --st-shell-gutter: 1.75rem; }
+}
+
+@media (min-width: 1440px) {
+  :root { --st-shell-gutter: 2.25rem; }
+}
+
+@media (min-width: 2200px) {
+  :root { --st-shell-gutter: clamp(3rem, 3.2vw, 5rem); }
+}
+
+@layer utilities {
+  .st-shell-px {
+    padding-inline: var(--st-shell-gutter);
+  }
+  .st-shell-mx {
+    margin-inline: var(--st-shell-gutter);
+  }
+}
+
+/* ── Muted Colors Mode (Unified Apple Monochrome Accents — Preserves Contrast) ─ */
+:root[data-muted-colors="true"] {
+  --chart-1: #3b6fd8;
+  --chart-2: #64748b;
+  --chart-3: #94a3b8;
+  --chart-4: #d97706;
+  --chart-5: #e11d48;
+
+  /* Gently soften primary blue saturation while keeping crisp clarity */
+  --color-blue-50: oklch(97% 0.009 255);
+  --color-blue-100: oklch(93.2% 0.020 256);
+  --color-blue-200: oklch(88.2% 0.036 254);
+  --color-blue-300: oklch(80.9% 0.068 252);
+  --color-blue-400: oklch(70.7% 0.110 255);
+  --color-blue-500: oklch(62.3% 0.140 260);
+  --color-blue-600: oklch(54.6% 0.155 263);
+  --color-blue-700: oklch(48.8% 0.155 264);
+  --color-blue-800: oklch(42.4% 0.130 266);
+  --color-blue-950: oklch(28.2% 0.065 268);
+
+  /* Unify decorative rainbow hues (indigo, violet, purple, sky, cyan, teal) into calm cool slate */
+  --color-indigo-300: oklch(86.9% 0.022 253);
+  --color-indigo-400: oklch(70.4% 0.040 257);
+  --color-indigo-500: oklch(55.4% 0.046 257);
+  --color-indigo-600: oklch(44.6% 0.043 257);
+  --color-indigo-700: oklch(37.2% 0.044 257);
+
+  --color-violet-50: oklch(98.4% 0.003 248);
+  --color-violet-100: oklch(96.8% 0.007 248);
+  --color-violet-300: oklch(86.9% 0.022 253);
+  --color-violet-400: oklch(70.4% 0.040 257);
+  --color-violet-500: oklch(55.4% 0.046 257);
+  --color-violet-600: oklch(44.6% 0.043 257);
+  --color-violet-700: oklch(37.2% 0.044 257);
+  --color-violet-900: oklch(20.8% 0.042 266);
+
+  --color-purple-300: oklch(86.9% 0.022 253);
+  --color-purple-500: oklch(55.4% 0.046 257);
+  --color-purple-600: oklch(44.6% 0.043 257);
+
+  --color-sky-50: oklch(98.4% 0.003 248);
+  --color-sky-100: oklch(96.8% 0.007 248);
+  --color-sky-200: oklch(92.9% 0.013 256);
+  --color-sky-300: oklch(86.9% 0.022 253);
+  --color-sky-400: oklch(70.4% 0.040 257);
+  --color-sky-500: oklch(55.4% 0.046 257);
+  --color-sky-600: oklch(44.6% 0.043 257);
+  --color-sky-700: oklch(37.2% 0.044 257);
+  --color-sky-950: oklch(12.9% 0.042 265);
+
+  --color-cyan-300: oklch(86.9% 0.022 253);
+  --color-cyan-500: oklch(55.4% 0.046 257);
+
+  --color-teal-200: oklch(92.9% 0.013 256);
+  --color-teal-300: oklch(86.9% 0.022 253);
+  --color-teal-400: oklch(70.4% 0.040 257);
+  --color-teal-500: oklch(55.4% 0.046 257);
+  --color-teal-600: oklch(44.6% 0.043 257);
+  --color-teal-700: oklch(37.2% 0.044 257);
+
+  /* Preserve true semantic status hues (~25% calmer chroma, zero muddy olive/brown shift) */
+  --color-emerald-50: oklch(97.9% 0.014 166);
+  --color-emerald-100: oklch(95% 0.036 163);
+  --color-emerald-200: oklch(90.5% 0.065 164);
+  --color-emerald-300: oklch(84.5% 0.100 165);
+  --color-emerald-400: oklch(76.5% 0.125 163);
+  --color-emerald-500: oklch(69.6% 0.120 162.5);
+  --color-emerald-600: oklch(59.6% 0.105 163.2);
+  --color-emerald-700: oklch(50.8% 0.090 165.6);
+  --color-emerald-800: oklch(43.2% 0.072 166.9);
+  --color-emerald-900: oklch(37.8% 0.060 168.9);
+  --color-emerald-950: oklch(26.2% 0.040 172.5);
+
+  --color-amber-50: oklch(98.7% 0.015 95);
+  --color-amber-100: oklch(96.2% 0.040 95);
+  --color-amber-200: oklch(92.4% 0.082 95);
+  --color-amber-300: oklch(87.9% 0.118 91);
+  --color-amber-400: oklch(82.8% 0.135 84);
+  --color-amber-500: oklch(76.9% 0.135 70);
+  --color-amber-600: oklch(66.6% 0.130 58.3);
+  --color-amber-700: oklch(55.5% 0.120 49);
+  --color-amber-800: oklch(47.3% 0.102 46.2);
+  --color-amber-900: oklch(41.4% 0.085 45.9);
+  --color-amber-950: oklch(27.9% 0.060 45.6);
+
+  --color-yellow-50: oklch(98.7% 0.018 102);
+  --color-yellow-200: oklch(94.5% 0.085 101);
+  --color-yellow-300: oklch(90.5% 0.122 98);
+  --color-yellow-400: oklch(85.2% 0.138 92);
+  --color-yellow-500: oklch(79.5% 0.130 86);
+  --color-yellow-600: oklch(68.1% 0.115 75.8);
+  --color-yellow-700: oklch(55.4% 0.100 66.4);
+  --color-yellow-800: oklch(47.6% 0.085 61.9);
+
+  --color-orange-50: oklch(98% 0.011 73);
+  --color-orange-100: oklch(95.4% 0.026 75);
+  --color-orange-200: oklch(90.1% 0.052 70);
+  --color-orange-300: oklch(83.7% 0.088 66);
+  --color-orange-400: oklch(75% 0.125 56);
+  --color-orange-500: oklch(70.5% 0.145 47.6);
+  --color-orange-600: oklch(64.6% 0.150 41.1);
+  --color-orange-700: oklch(55.3% 0.135 38.4);
+  --color-orange-800: oklch(47% 0.112 37.3);
+  --color-orange-900: oklch(40.8% 0.090 38.1);
+
+  --color-rose-50: oklch(96.9% 0.010 12.4);
+  --color-rose-200: oklch(89.2% 0.042 10);
+  --color-rose-300: oklch(81% 0.085 11.6);
+  --color-rose-400: oklch(71.2% 0.140 13.4);
+  --color-rose-500: oklch(64.5% 0.175 16.4);
+  --color-rose-600: oklch(58.6% 0.180 17.6);
+  --color-rose-700: oklch(51.4% 0.160 16.9);
+  --color-rose-800: oklch(45.5% 0.135 13.7);
+
+  --color-red-50: oklch(97.1% 0.009 17.4);
+  --color-red-100: oklch(93.6% 0.022 17.7);
+  --color-red-200: oklch(88.5% 0.044 18.3);
+  --color-red-300: oklch(80.8% 0.082 19.6);
+  --color-red-400: oklch(70.4% 0.138 22.2);
+  --color-red-500: oklch(63.7% 0.170 25.3);
+  --color-red-600: oklch(57.7% 0.175 27.3);
+  --color-red-700: oklch(50.5% 0.155 27.5);
+  --color-red-800: oklch(44.4% 0.130 26.9);
+  --color-red-900: oklch(39.6% 0.105 25.7);
+  --color-red-950: oklch(25.8% 0.070 26);
+}
+
+:root[data-muted-colors="true"] .dark {
+  --chart-1: #60a5fa;
+  --chart-2: #94a3b8;
+  --chart-3: #64748b;
+  --chart-4: #f59e0b;
+  --chart-5: #fb7185;
 }

@@ -1,9 +1,11 @@
-import { useState, useMemo, useEffect, useRef } from "react";
+import { memo, useState, useMemo, useEffect, useRef } from "react";
 import { ShoppingCart, FileText, Printer } from "lucide-react";
 import { groupCartTransactions, hasUserRole, type AuthUser, type Product, type Transaction } from "./data";
-import { fmt, TxTypeBadge, TxBadge, ViewReasonModal } from "./shared";
+import { fmt, TxTypeBadge, TxBadge, ViewReasonModal, ConfirmDialog, TablePager, SegmentedTabs, AnimatedMetricText, InfoTip } from "./shared";
 
-export default function TransactionsPage({
+const TRANSACTIONS_PAGE_SIZE = 40;
+
+const TransactionsPage = memo(function TransactionsPage({
   user,
   transactions,
   inventory,
@@ -26,9 +28,12 @@ export default function TransactionsPage({
   const [typeFilter, setTypeFilter] = useState<"all" | "sale" | "return" | "adjustment">("all");
   const [dateFrom, setDateFrom] = useState(todayISO);
   const [dateTo, setDateTo] = useState("");
+  const [page, setPage] = useState(1);
   const [viewingReason, setViewingReason] = useState<Transaction | null>(null);
+  const [confirmExportCsv, setConfirmExportCsv] = useState(false);
   const [highlightedTransactionId, setHighlightedTransactionId] = useState<string | null>(null);
   const transactionRows = useRef(new Map<string, HTMLTableRowElement>());
+  const lastScrolledTxRef = useRef<string | null>(null);
 
   const parseTransactionDate = (date: string) => {
     const [rawDate] = date.split(" ");
@@ -37,48 +42,80 @@ export default function TransactionsPage({
   };
 
   const filtered = useMemo(() => {
+    const fromDate = dateFrom ? new Date(`${dateFrom}T00:00:00`) : null;
+    const toDate = dateTo ? new Date(`${dateTo}T23:59:59`) : null;
     const matchingTransactions = transactions.filter(tx => {
       if (typeFilter !== "all" && tx.type !== typeFilter) return false;
-      const txDate = parseTransactionDate(tx.date);
-      if (dateFrom) {
-        const fromDate = new Date(`${dateFrom}T00:00:00`);
-        if (txDate < fromDate) return false;
-      }
-      if (dateTo) {
-        const toDate = new Date(`${dateTo}T23:59:59`);
-        if (txDate > toDate) return false;
+      if (fromDate || toDate) {
+        const txDate = parseTransactionDate(tx.date);
+        if (fromDate && txDate < fromDate) return false;
+        if (toDate && txDate > toDate) return false;
       }
       return true;
     });
     return groupCartTransactions(matchingTransactions);
   }, [typeFilter, transactions, dateFrom, dateTo]);
 
+  const totalPages = Math.max(1, Math.ceil(filtered.length / TRANSACTIONS_PAGE_SIZE));
+  const safePage = Math.min(page, totalPages);
+  const paginated = useMemo(
+    () => filtered.slice((safePage - 1) * TRANSACTIONS_PAGE_SIZE, safePage * TRANSACTIONS_PAGE_SIZE),
+    [filtered, safePage]
+  );
+
   useEffect(() => {
-    if (!selectedTransactionId) return;
+    if (!selectedTransactionId) {
+      lastScrolledTxRef.current = null;
+      return;
+    }
+    setTypeFilter("all");
     setDateFrom("");
     setDateTo("");
+    lastScrolledTxRef.current = null;
   }, [selectedTransactionId]);
 
   useEffect(() => {
-    if (!selectedTransactionId) return;
-    const row = transactionRows.current.get(selectedTransactionId);
+    if (!selectedTransactionId || lastScrolledTxRef.current === selectedTransactionId) return;
+    const idx = filtered.findIndex(
+      tx => tx.id === selectedTransactionId || tx.cartItems?.some(i => i.id === selectedTransactionId)
+    );
+    if (idx >= 0) {
+      const targetPage = Math.floor(idx / TRANSACTIONS_PAGE_SIZE) + 1;
+      if (targetPage !== safePage) {
+        setPage(targetPage);
+        return;
+      }
+    }
+    const targetTx = idx >= 0 ? filtered[idx] : undefined;
+    const row =
+      transactionRows.current.get(selectedTransactionId) ??
+      (targetTx ? transactionRows.current.get(targetTx.id) : undefined);
     if (!row) return;
+    lastScrolledTxRef.current = selectedTransactionId;
     row.scrollIntoView({ behavior: "smooth", block: "center" });
-    setHighlightedTransactionId(selectedTransactionId);
+    setHighlightedTransactionId(targetTx?.id ?? selectedTransactionId);
+  }, [selectedTransactionId, filtered, paginated, safePage]);
+
+  useEffect(() => {
+    if (!highlightedTransactionId) return;
     const timeout = window.setTimeout(() => setHighlightedTransactionId(null), 2200);
     return () => window.clearTimeout(timeout);
-  }, [selectedTransactionId, filtered]);
+  }, [highlightedTransactionId]);
 
-  const today = new Date().toLocaleDateString("en-US", { month: "2-digit", day: "2-digit", year: "numeric" }); // "MM/DD/YYYY"
-
-  const groupedSales = groupCartTransactions(transactions.filter(t => t.type === "sale"));
-  const salesToday   = groupedSales.filter(t => t.date.startsWith(today));
-  const allSales     = groupedSales;
-  const allReturns   = transactions.filter(t => t.type === "return");
-
-  const salesTodayAmt  = salesToday.reduce((s, t) => s + t.amount, 0);
-  const allSalesAmt    = allSales.reduce((s, t) => s + t.amount, 0);
-  const allReturnsAmt  = allReturns.reduce((s, t) => s + t.amount, 0);
+  const { salesToday, allSales, allReturns, salesTodayAmt, allSalesAmt, allReturnsAmt } = useMemo(() => {
+    const today = new Date().toLocaleDateString("en-US", { month: "2-digit", day: "2-digit", year: "numeric" }); // "MM/DD/YYYY"
+    const groupedSales = groupCartTransactions(transactions.filter(t => t.type === "sale"));
+    const todaySales = groupedSales.filter(t => t.date.startsWith(today));
+    const returnsList = transactions.filter(t => t.type === "return");
+    return {
+      salesToday: todaySales,
+      allSales: groupedSales,
+      allReturns: returnsList,
+      salesTodayAmt: todaySales.reduce((s, t) => s + t.amount, 0),
+      allSalesAmt: groupedSales.reduce((s, t) => s + t.amount, 0),
+      allReturnsAmt: returnsList.reduce((s, t) => s + t.amount, 0),
+    };
+  }, [transactions]);
   const isAdmin = hasUserRole(user, "admin") || hasUserRole(user, "admin/owner");
   const isCashier = hasUserRole(user, "cashier");
   const canModify = isCashier;
@@ -104,12 +141,23 @@ export default function TransactionsPage({
   };
 
   return (
-    <div className="flex flex-col w-full max-w-[1400px] mx-auto" style={{ height: "calc(100dvh - 56px)" }}>
+    <div className="flex flex-col w-full overflow-hidden" style={{ height: "calc(100dvh - 56px)" }}>
       {/* ── Fixed header: title + stats ── */}
-      <div className="flex-shrink-0 px-4 sm:px-6 pt-4 sm:pt-6 pb-4 bg-background border-b border-border/50 z-20">
+      <div className="flex-shrink-0 st-shell-px pt-4 sm:pt-6 pb-4 bg-background border-b border-border/50 z-20">
         <div className="flex items-start sm:items-center justify-between gap-3">
           <div>
-            <h1 className="text-xl font-bold text-foreground">Transactions</h1>
+            <div className="flex items-center gap-2">
+              <h1 className="text-xl font-bold text-foreground">Transactions</h1>
+              <InfoTip
+                title="Transactions & Stock Impact"
+                lines={[
+                  "Audit trail of POS checkouts, customer returns, and stock adjustments.",
+                  { label: "Sale", value: "Deducts sold units immediately from active FIFO inventory batches" },
+                  { label: "Return", value: "Logs customer refund; stock restores only after quality inspection in Returns" },
+                  { label: "Adjustment", value: "Manual inventory audit count or damaged write-off" },
+                ]}
+              />
+            </div>
             <p className="text-sm text-muted-foreground mt-0.5">
               Sales &amp; returns
               {isAdmin && !isCashier && <span className="ml-2 text-amber-600 dark:text-amber-400 font-semibold">· Read-only access</span>}
@@ -119,7 +167,7 @@ export default function TransactionsPage({
             <div className="flex items-center gap-2 flex-shrink-0 flex-wrap">
               <button
                 onClick={onAddSale}
-                className="flex items-center gap-2 px-3 py-2 bg-primary text-primary-foreground rounded-xl text-xs font-bold hover:opacity-90 transition-opacity shadow-sm shadow-primary/20"
+                className="flex items-center gap-2 px-3 py-2 bg-primary text-primary-foreground rounded-xl text-xs font-bold hover:opacity-90 transition-all shadow-sm shadow-primary/20 st-btn"
               >
                 <ShoppingCart size={13} />New Sale
               </button>
@@ -133,9 +181,11 @@ export default function TransactionsPage({
             { label: "All Sales",         val: fmt(allSalesAmt),   sub: `${allSales.length} total sale${allSales.length !== 1 ? "s" : ""}`,          color: "text-sky-600 dark:text-sky-400" },
             { label: "Returns / Refunds", val: fmt(allReturnsAmt), sub: `${allReturns.length} return${allReturns.length !== 1 ? "s" : ""}`,           color: "text-orange-600 dark:text-orange-400" },
           ].map(c => (
-            <div key={c.label} className="bg-card border border-border rounded-xl p-4 shadow-sm">
+            <div key={c.label} className="bg-card border border-border rounded-xl p-4 shadow-sm st-card">
               <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">{c.label}</p>
-              <p className="text-xl font-bold text-foreground mt-2 tabular-nums tracking-tight">{c.val}</p>
+              <p className="text-xl font-bold text-foreground mt-2 tabular-nums tracking-tight">
+                <AnimatedMetricText value={c.val} />
+              </p>
               <p className={`text-xs mt-1 font-medium ${c.color}`}>{c.sub}</p>
             </div>
           ))}
@@ -143,46 +193,47 @@ export default function TransactionsPage({
       </div>
 
       {/* ── Scrollable table ── */}
-      <div className="flex-1 overflow-hidden flex flex-col mx-4 sm:mx-6 my-4 bg-card border border-border rounded-xl shadow-sm">
+      <div className="flex-1 min-h-0 overflow-hidden flex flex-col st-shell-mx my-4 bg-card border border-border rounded-xl shadow-sm">
         {/* Filters bar — fixed inside the card */}
         <div className="flex-shrink-0 flex flex-col gap-3 px-5 py-3.5 border-b border-border sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex flex-wrap items-center gap-1.5">
-            {(["all", "sale", "return", "adjustment"] as const).map(f => (
-              <button
-                key={f}
-                onClick={() => setTypeFilter(f)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                  typeFilter === f ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                {f === "all" ? "All" : f === "sale" ? "Sales" : f === "return" ? "Returns" : "Adjustments"}
-              </button>
-            ))}
-          </div>
+          <SegmentedTabs<"all" | "sale" | "return" | "adjustment">
+            tone="primary"
+            ariaLabel="Filter transactions by type"
+            value={typeFilter}
+            onChange={f => { setTypeFilter(f); setPage(1); }}
+            className="flex-wrap"
+            buttonClassName="font-bold"
+            items={[
+              { id: "all", label: "All" },
+              { id: "sale", label: "Sales" },
+              { id: "return", label: "Returns" },
+              { id: "adjustment", label: "Adjustments" },
+            ]}
+          />
           <div className="flex flex-wrap items-center gap-2">
             <label className="text-[10px] uppercase tracking-wide text-muted-foreground">From</label>
-            <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="w-32 rounded-lg border border-border bg-background px-3 py-2 text-xs text-foreground" />
+            <input type="date" value={dateFrom} onChange={e => { setDateFrom(e.target.value); setPage(1); }} className="w-32 rounded-lg border border-border bg-background px-3 py-2 text-xs text-foreground" />
             <label className="text-[10px] uppercase tracking-wide text-muted-foreground">To</label>
-            <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="w-32 rounded-lg border border-border bg-background px-3 py-2 text-xs text-foreground" />
+            <input type="date" value={dateTo} onChange={e => { setDateTo(e.target.value); setPage(1); }} className="w-32 rounded-lg border border-border bg-background px-3 py-2 text-xs text-foreground" />
             {(dateFrom !== todayISO || dateTo !== "") && (
-              <button onClick={() => { setDateFrom(todayISO); setDateTo(""); }} className="text-xs text-primary hover:text-primary/80 font-semibold transition-colors">
+              <button type="button" onClick={() => { setDateFrom(todayISO); setDateTo(""); setPage(1); }} className="st-chip-btn">
                 Reset
               </button>
             )}
             {(dateFrom || dateTo) && (
-              <button onClick={() => { setDateFrom(""); setDateTo(""); }} className="text-xs text-muted-foreground hover:text-foreground border border-border rounded-lg px-2 py-1 transition-colors font-semibold">
+              <button onClick={() => { setDateFrom(""); setDateTo(""); setPage(1); }} className="text-xs text-muted-foreground hover:text-foreground border border-border rounded-lg px-2 py-1 transition-colors font-semibold">
                 Clear dates
               </button>
             )}
             {isAdmin && (
-              <button onClick={handleExport} className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors font-semibold">
+              <button onClick={() => setConfirmExportCsv(true)} className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors font-semibold">
                 <FileText size={12} />Export
               </button>
             )}
           </div>
         </div>
 
-        <div className="overflow-x-auto overflow-y-auto flex-1" data-table-scroll="fixed">
+        <div className="overflow-x-auto overflow-y-auto flex-1 min-h-0" data-table-scroll="fixed">
           <table className="w-full">
             <thead className="sticky top-0 z-10 bg-card shadow-sm">
               <tr className="border-b border-border/60 bg-muted/20">
@@ -192,7 +243,7 @@ export default function TransactionsPage({
               </tr>
             </thead>
             <tbody>
-              {filtered.map(tx => (
+              {paginated.map(tx => (
                 <tr
                   key={tx.id}
                   ref={row => {
@@ -259,8 +310,24 @@ export default function TransactionsPage({
             </tbody>
           </table>
         </div>
+        <div className="flex-shrink-0">
+          <TablePager total={filtered.length} page={safePage} pageSize={TRANSACTIONS_PAGE_SIZE} onPage={setPage} />
+        </div>
       </div>
       {viewingReason && <ViewReasonModal tx={viewingReason} onClose={() => setViewingReason(null)} />}
+      {confirmExportCsv && (
+        <ConfirmDialog
+          title="Export Transactions CSV?"
+          message={`Download ${filtered.length} filtered transaction${filtered.length === 1 ? "" : "s"} as a CSV spreadsheet?`}
+          confirmLabel="Export CSV"
+          cancelLabel="Cancel"
+          variant="info"
+          onConfirm={() => { setConfirmExportCsv(false); handleExport(); }}
+          onCancel={() => setConfirmExportCsv(false)}
+        />
+      )}
     </div>
   );
-}
+});
+
+export default TransactionsPage;

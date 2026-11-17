@@ -21,7 +21,7 @@ function FieldInput({ label, type = "text", value, onChange, placeholder, requir
           placeholder={placeholder}
           required={required}
           autoComplete={type === "email" ? "username" : undefined}
-          className="w-full h-12 bg-white/85 backdrop-blur-md border border-white/95 rounded-2xl pl-11 pr-4 text-sm text-slate-900 placeholder:text-slate-400 shadow-[inset_0_1px_2px_rgba(0,0,0,0.05)] focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500/70 focus:bg-white transition-all"
+          className="w-full h-12 bg-white/95 border border-white/95 rounded-2xl pl-11 pr-4 text-sm text-slate-900 placeholder:text-slate-400 shadow-[inset_0_1px_2px_rgba(0,0,0,0.05)] focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500/70 focus:bg-white transition-colors"
         />
         {type === "email" && (
           <Mail
@@ -74,21 +74,23 @@ function InactiveAccountDialog({ onClose }: { onClose: () => void }) {
   );
 }
 
-// ─── Pure Vector Split Background (Zero Images, Royal Blue Oceanic S-Curve Glassmorphism) ───
+// ─── Pure Vector Split Background (Pre-baked Gradients — Zero GPU Blur Passes) ───
 function SplitVectorBackdrop() {
   return (
     <div className="absolute inset-0 overflow-hidden pointer-events-none select-none">
       {/* Right-Side Luminous Dimmed Daylight & Soft Blue Ambiance */}
-      <div className="absolute inset-0 bg-[#edf2f7]">
-        {/* Soft daylight sky on top right */}
-        <div className="absolute top-0 right-0 w-2/3 h-full bg-gradient-to-b from-[#e0ecf8] via-[#eef4fb] to-[#edf2f7]" />
-
-        {/* Soft blurred organic nature shapes in sky blue, royal sapphire, and indigo */}
-        <div className="absolute top-1/4 -right-16 w-[620px] h-[520px] rounded-full bg-[#93c5fd]/50 blur-[90px] transform-gpu" />
-        <div className="absolute top-1/2 right-12 w-[680px] h-[480px] rounded-full bg-[#60a5fa]/35 blur-[95px] transform-gpu" />
-        <div className="absolute -bottom-24 right-0 w-[820px] h-[540px] rounded-full bg-[#2563eb]/25 blur-[105px] transform-gpu" />
-        <div className="absolute bottom-16 right-1/4 w-[480px] h-[380px] rounded-full bg-[#38bdf8]/30 blur-[85px] transform-gpu" />
-      </div>
+      <div
+        className="absolute inset-0 bg-[#edf2f7]"
+        style={{
+          backgroundImage: [
+            "radial-gradient(620px 520px at 94% 38%, rgba(147, 197, 253, 0.42) 0%, rgba(147, 197, 253, 0) 70%)",
+            "radial-gradient(680px 480px at 80% 62%, rgba(96, 165, 250, 0.28) 0%, rgba(96, 165, 250, 0) 70%)",
+            "radial-gradient(820px 540px at 88% 98%, rgba(37, 99, 235, 0.22) 0%, rgba(37, 99, 235, 0) 72%)",
+            "radial-gradient(480px 380px at 66% 78%, rgba(56, 189, 248, 0.24) 0%, rgba(56, 189, 248, 0) 70%)",
+            "linear-gradient(180deg, #e0ecf8 0%, #eef4fb 52%, #edf2f7 100%)",
+          ].join(", "),
+        }}
+      />
 
       {/* Left-Side Sweeping Oceanic Royal Blue Silk Wave */}
       <svg
@@ -107,6 +109,12 @@ function SplitVectorBackdrop() {
             <stop offset="100%" stopColor="#1d4ed8" />
           </linearGradient>
 
+          {/* Soft ambient edge glow replacing heavy feDropShadow */}
+          <linearGradient id="spineEdgeShadow" x1="0%" y1="50%" x2="100%" y2="50%">
+            <stop offset="0%" stopColor="#020817" stopOpacity="0.28" />
+            <stop offset="100%" stopColor="#020817" stopOpacity="0" />
+          </linearGradient>
+
           {/* Luminous glowing sky spine highlight along the curve */}
           <linearGradient id="spineSkyGlow" x1="0%" y1="0%" x2="100%" y2="100%">
             <stop offset="0%" stopColor="#93c5fd" stopOpacity="0.95" />
@@ -115,48 +123,66 @@ function SplitVectorBackdrop() {
             <stop offset="100%" stopColor="transparent" stopOpacity="0" />
           </linearGradient>
 
-          {/* Lower left soft ambient light ribbon */}
-          <linearGradient id="lowerBlueArc" x1="0%" y1="100%" x2="100%" y2="0%">
-            <stop offset="0%" stopColor="#38bdf8" stopOpacity="0.35" />
-            <stop offset="60%" stopColor="#2563eb" stopOpacity="0.15" />
-            <stop offset="100%" stopColor="transparent" stopOpacity="0" />
-          </linearGradient>
+          {/* Pre-baked soft aurora radial gradients replacing feGaussianBlur */}
+          <radialGradient id="auroraGlowCyan" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stopColor="#38bdf8" stopOpacity="0.28" />
+            <stop offset="60%" stopColor="#38bdf8" stopOpacity="0.08" />
+            <stop offset="100%" stopColor="#38bdf8" stopOpacity="0" />
+          </radialGradient>
+          <radialGradient id="auroraGlowBlue" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stopColor="#60a5fa" stopOpacity="0.26" />
+            <stop offset="65%" stopColor="#60a5fa" stopOpacity="0.07" />
+            <stop offset="100%" stopColor="#60a5fa" stopOpacity="0" />
+          </radialGradient>
+          <radialGradient id="auroraGlowIndigo" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stopColor="#818cf8" stopOpacity="0.22" />
+            <stop offset="65%" stopColor="#6366f1" stopOpacity="0.06" />
+            <stop offset="100%" stopColor="#6366f1" stopOpacity="0" />
+          </radialGradient>
 
-          {/* Layer shadow */}
-          <filter id="waveShadow" x="-10%" y="-10%" width="130%" height="130%">
-            <feDropShadow dx="15" dy="0" stdDeviation="30" floodColor="#020817" floodOpacity="0.45" />
-          </filter>
+          {/* Clip luminous wave ribbons inside the deep ocean S-curve */}
+          <clipPath id="blueWaveClip">
+            <path d="M 0 0 L 1150 0 C 1085 280 960 650 1030 1080 L 0 1080 Z" />
+          </clipPath>
         </defs>
 
-        {/* Primary sweeping S-curve covering the left side and flowing through center */}
+        {/* Soft edge halo along S-curve (zero SVG filter passes) */}
         <path
-          d="M 0 0 L 1180 0 C 1100 280 820 620 980 1080 L 0 1080 Z"
-          fill="url(#blueWaveGrad)"
-          filter="url(#waveShadow)"
+          d="M 1150 0 C 1085 280 960 650 1030 1080"
+          fill="none"
+          stroke="rgba(2, 8, 23, 0.14)"
+          strokeWidth="36"
         />
 
-        {/* Glowing luminous curved spine edge */}
+        {/* Primary sweeping S-curve covering the left side */}
         <path
-          d="M 1180 0 C 1100 280 820 620 980 1080"
+          d="M 0 0 L 1150 0 C 1085 280 960 650 1030 1080 L 0 1080 Z"
+          fill="url(#blueWaveGrad)"
+        />
+
+        {/* Pre-baked cyan & royal-sky radial aurora circles behind feature cards */}
+        <g clipPath="url(#blueWaveClip)">
+          <circle cx="265" cy="740" r="240" fill="url(#auroraGlowCyan)" />
+          <circle cx="535" cy="790" r="260" fill="url(#auroraGlowBlue)" />
+          <circle cx="835" cy="705" r="250" fill="url(#auroraGlowCyan)" />
+          <circle cx="480" cy="340" r="320" fill="url(#auroraGlowBlue)" />
+          <circle cx="360" cy="960" r="360" fill="url(#auroraGlowIndigo)" />
+        </g>
+
+        {/* Soft glowing spine highlight */}
+        <path
+          d="M 1150 0 C 1085 280 960 650 1030 1080"
+          fill="none"
+          stroke="rgba(96, 165, 250, 0.22)"
+          strokeWidth="12"
+        />
+        <path
+          d="M 1150 0 C 1085 280 960 650 1030 1080"
           fill="none"
           stroke="url(#spineSkyGlow)"
           strokeWidth="3.5"
-          filter="drop-shadow(0 0 16px rgba(96, 165, 250, 0.8))"
-        />
-
-        {/* Lower left ambient light ribbon */}
-        <path
-          d="M -50 820 Q 280 680 450 1080"
-          fill="none"
-          stroke="url(#lowerBlueArc)"
-          strokeWidth="90"
-          filter="blur(30px)"
         />
       </svg>
-
-      {/* Gentle ambient lighting orbs to soften transitions */}
-      <div className="absolute top-1/4 left-1/4 w-[500px] h-[500px] rounded-full bg-blue-500/15 blur-[120px]" />
-      <div className="absolute -bottom-20 left-10 w-[600px] h-[400px] rounded-full bg-indigo-500/20 blur-[130px]" />
     </div>
   );
 }
@@ -221,7 +247,7 @@ function LoginPage({ onLogin, businessSettings }: {
 
       {/* Top navigation bar */}
       <header className="w-full max-w-[1400px] mx-auto px-6 sm:px-12 py-7 flex items-center justify-end z-10">
-        <div className="hidden sm:inline-flex items-center gap-2 px-4 py-2 rounded-full text-[10px] font-bold uppercase tracking-[0.12em] bg-white/60 backdrop-blur-md border border-white/80 text-blue-950 shadow-sm">
+        <div className="hidden sm:inline-flex items-center gap-2 px-4 py-2 rounded-full text-[10px] font-bold uppercase tracking-[0.12em] bg-white/85 border border-white/90 text-blue-950 shadow-sm">
           <span className="h-1.5 w-1.5 rounded-full bg-blue-600" />
           Pharmacy operations · Tangub Pharmacy
         </div>
@@ -234,11 +260,14 @@ function LoginPage({ onLogin, businessSettings }: {
         <div className="st-login-brand lg:col-span-7 flex flex-col justify-center items-center text-center">
           {/* Official 3D SmartTrack App Icon */}
           <div className="relative mb-7 group mx-auto">
-            <div className="absolute -inset-3 bg-gradient-to-tr from-teal-400/30 via-sky-400/25 to-blue-500/20 rounded-3xl blur-2xl opacity-80 group-hover:opacity-100 transition-opacity" />
+            <div
+              className="pointer-events-none absolute -inset-6 rounded-full opacity-85"
+              style={{ background: "radial-gradient(circle, rgba(56,189,248,0.28) 0%, rgba(59,130,246,0.12) 50%, transparent 72%)" }}
+            />
             <img
               src={SMARTTRACK_LOGO_URL}
               alt="SmartTrack mark"
-              className="relative w-40 h-28 sm:w-48 sm:h-32 object-contain drop-shadow-[0_18px_28px_rgba(0,0,0,0.35)] transition-all duration-300 group-hover:scale-105 group-hover:-translate-y-1 opacity-100"
+              className="relative w-40 h-28 sm:w-48 sm:h-32 object-contain drop-shadow-[0_12px_20px_rgba(0,0,0,0.3)] transition-transform duration-200 group-hover:scale-105 group-hover:-translate-y-1 opacity-100"
             />
           </div>
 
@@ -262,17 +291,23 @@ function LoginPage({ onLogin, businessSettings }: {
               <div
                 key={title}
                 style={{
-                  animationDelay: `${180 + index * 100}ms`,
-                  backdropFilter: "blur(24px) saturate(180%)",
-                  WebkitBackdropFilter: "blur(24px) saturate(180%)",
+                  animationDelay: `${140 + index * 70}ms`,
+                  background:
+                    "linear-gradient(155deg, rgba(255, 255, 255, 0.24) 0%, rgba(224, 242, 254, 0.14) 48%, rgba(191, 219, 254, 0.10) 100%)",
                 }}
-                className="st-login-feature bg-gradient-to-b from-white/[0.18] to-white/[0.09] border border-white/25 rounded-2xl p-4 shadow-[0_12px_28px_rgba(0,0,0,0.22),inset_0_1px_1.5px_rgba(255,255,255,0.4),inset_0_-1px_1px_rgba(255,255,255,0.1)] hover:from-white/[0.24] hover:to-white/[0.14] hover:border-white/40 hover:shadow-[0_16px_36px_rgba(0,0,0,0.28),inset_0_1px_2px_rgba(255,255,255,0.55)] transition-all text-center flex flex-col items-center group"
+                className="relative overflow-hidden st-login-feature border border-white/35 hover:border-white/55 hover:-translate-y-0.5 rounded-2xl p-4 shadow-[0_14px_30px_rgba(2,8,23,0.32),inset_0_1px_1px_rgba(255,255,255,0.55)] transition-[transform,border-color] duration-200 text-center flex flex-col items-center group"
               >
-                <div className="w-8 h-8 rounded-xl bg-blue-500/25 border border-blue-300/40 flex items-center justify-center mb-3 text-blue-100 shadow-[inset_0_1px_1px_rgba(255,255,255,0.3)] group-hover:scale-105 transition-transform mx-auto">
-                  <Icon size={15} />
+                {/* Frosted glass specular sheen */}
+                <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-white/15 via-transparent to-sky-200/10 opacity-75 transition-opacity duration-200 group-hover:opacity-100" />
+                <div className="pointer-events-none absolute inset-x-4 top-0 h-px bg-gradient-to-r from-transparent via-white/80 to-transparent" />
+
+                <div className="relative z-10 flex flex-col items-center">
+                  <div className="w-9 h-9 rounded-xl bg-gradient-to-b from-white/32 to-white/12 border border-white/45 flex items-center justify-center mb-3 text-white shadow-[0_6px_14px_rgba(2,8,23,0.22),inset_0_1px_1px_rgba(255,255,255,0.65)] group-hover:scale-105 group-hover:border-white/65 transition-[transform,border-color] duration-200 mx-auto">
+                    <Icon size={15} />
+                  </div>
+                  <p className="text-xs font-bold text-white tracking-wide drop-shadow-[0_1px_2px_rgba(2,8,23,0.45)]">{title}</p>
+                  <p className="text-[11px] text-sky-50/95 mt-1 leading-normal drop-shadow-[0_1px_1px_rgba(2,8,23,0.3)]">{detail}</p>
                 </div>
-                <p className="text-xs font-bold text-white tracking-wide drop-shadow-sm">{title}</p>
-                <p className="text-[11px] text-blue-100/90 mt-1 leading-normal">{detail}</p>
               </div>
             ))}
           </div>
@@ -280,7 +315,7 @@ function LoginPage({ onLogin, businessSettings }: {
 
         {/* Right Column: Milky Frosted-Glass Login Card */}
         <div className="st-login-card-wrap lg:col-span-5 flex justify-center lg:justify-end">
-          <div className="st-login-card w-full max-w-[430px] bg-white/70 backdrop-blur-2xl border border-white/90 rounded-[32px] shadow-[0_25px_60px_-15px_rgba(15,23,42,0.2),inset_0_1px_2px_rgba(255,255,255,0.95)] p-8 sm:p-9 text-left">
+          <div className="st-login-card w-full max-w-[430px] bg-white/88 backdrop-blur-md border border-white/95 rounded-[32px] shadow-[0_24px_54px_-15px_rgba(15,23,42,0.18),inset_0_1px_2px_rgba(255,255,255,0.95)] p-8 sm:p-9 text-left">
             
             <h2 className="text-2xl font-bold tracking-tight text-slate-900 text-center">
               Welcome back
@@ -309,7 +344,7 @@ function LoginPage({ onLogin, businessSettings }: {
                     placeholder="password"
                     required
                     autoComplete="current-password"
-                    className="w-full h-12 bg-white/85 backdrop-blur-md border border-white/95 rounded-2xl pl-11 pr-11 text-sm text-slate-900 placeholder:text-slate-400 shadow-[inset_0_1px_2px_rgba(0,0,0,0.05)] focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500/70 focus:bg-white transition-all"
+                    className="w-full h-12 bg-white/95 border border-white/95 rounded-2xl pl-11 pr-11 text-sm text-slate-900 placeholder:text-slate-400 shadow-[inset_0_1px_2px_rgba(0,0,0,0.05)] focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500/70 focus:bg-white transition-colors"
                   />
                   <LockKeyhole
                     size={18}
@@ -432,23 +467,39 @@ export default function Login() {
     }
     const selectedRole = assignedRoles[0];
     activeRoleStore.set(selectedRole);
+    try {
+      if (localStorage.getItem("st_nav_prompt_on_login") !== "false") {
+        sessionStorage.setItem("st_nav_prompt_pending", "1");
+      } else {
+        sessionStorage.removeItem("st_nav_prompt_pending");
+      }
+    } catch { /* ignore */ }
     setUser({ ...nextUser, role: selectedRole as AuthUser["role"] });
   }, []);
 
   const handleSelectRole = (role: string) => {
     if (!pendingRoleUser || !(pendingRoleUser.roles ?? [pendingRoleUser.role]).includes(role)) return;
     activeRoleStore.set(role);
+    try {
+      if (localStorage.getItem("st_nav_prompt_on_login") !== "false") {
+        sessionStorage.setItem("st_nav_prompt_pending", "1");
+      } else {
+        sessionStorage.removeItem("st_nav_prompt_pending");
+      }
+    } catch { /* ignore */ }
     setUser({ ...pendingRoleUser, role: role as AuthUser["role"] });
     setPendingRoleUser(null);
   };
 
   const handleCancelRoleSelection = async () => {
+    try { sessionStorage.removeItem("st_nav_prompt_pending"); } catch { /* ignore */ }
     await authApi.logout();
     setPendingRoleUser(null);
   };
   const handleHomeReady = useCallback(() => setHomeReady(true), []);
 
   const handleLogout = async () => {
+    try { sessionStorage.removeItem("st_nav_prompt_pending"); } catch { /* ignore */ }
     try {
       await authApi.logout();
     } catch {

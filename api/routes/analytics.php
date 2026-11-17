@@ -100,7 +100,33 @@ switch ($method . ':' . $action) {
             $demandMap[$row['monthKey']] = (int)$row['demand'];
             $monthLabels[$row['monthKey']] = $row['month'];
         }
-        $forecastRows = $demandRows;
+
+        // Fill calendar gap months with 0 between the first sale for this scope and
+        // the latest recorded sale month so quiet periods count accurately in SMA windows.
+        $forecastRows = [];
+        if (count($demandRows) > 0) {
+            $storeMaxMonth = (string)($pdo->query(
+                "SELECT COALESCE(MAX(DATE_FORMAT(transacted_at, '%Y-%m')), '') FROM transactions WHERE type = 'sale'"
+            )->fetchColumn() ?: '');
+            $firstMonthKey = $demandRows[0]['monthKey'];
+            $lastDemandMonthKey = $demandRows[count($demandRows) - 1]['monthKey'];
+            $endMonthKey = ($storeMaxMonth !== '' && $storeMaxMonth > $lastDemandMonthKey)
+                ? $storeMaxMonth
+                : $lastDemandMonthKey;
+            $cursor = new DateTimeImmutable($firstMonthKey . '-01');
+            $end = new DateTimeImmutable($endMonthKey . '-01');
+            while ($cursor <= $end) {
+                $mk = $cursor->format('Y-m');
+                $label = $monthLabels[$mk] ?? $cursor->format('M Y');
+                $monthLabels[$mk] = $label;
+                $forecastRows[] = [
+                    'monthKey' => $mk,
+                    'month' => $label,
+                    'demand' => $demandMap[$mk] ?? 0,
+                ];
+                $cursor = $cursor->modify('+1 month');
+            }
+        }
         $demandValues = array_column($forecastRows, 'demand');
         $result = [];
         foreach ($forecastRows as $i => $row) {
@@ -142,8 +168,34 @@ switch ($method . ':' . $action) {
         $orderCostParam   = isset($_GET['order_cost']) ? max(1.0, (float)$_GET['order_cost']) : 120.0;
         $holdingRateParam = isset($_GET['holding_rate']) ? max(0.01, (float)$_GET['holding_rate']) : 0.2;
 
-        $avgCostRow = $pdo->query('SELECT AVG(price) AS avg FROM products')->fetch();
-        $avgCost    = (float)($avgCostRow['avg'] ?? 8.75);
+        $costWhere = product_not_deleted_sql($pdo, 'p');
+        $costParams = [];
+        if ($productId !== '') {
+            $costWhere .= ' AND p.id = ?';
+            $costParams[] = $productId;
+        }
+        if ($category !== '') {
+            $costWhere .= ' AND EXISTS (
+                SELECT 1 FROM product_category_map pcm
+                JOIN categories c ON c.id = pcm.category_id
+                WHERE pcm.product_id = p.id AND c.name = ?
+            )';
+            $costParams[] = $category;
+        }
+        $costStmt = $pdo->prepare(
+            "SELECT SUM(CASE WHEN b.unit_cost IS NOT NULL AND b.unit_cost > 0 AND b.qty > 0 THEN b.qty * b.unit_cost ELSE 0 END) AS costed_value,
+                    SUM(CASE WHEN b.unit_cost IS NOT NULL AND b.unit_cost > 0 AND b.qty > 0 THEN b.qty ELSE 0 END) AS costed_qty,
+                    AVG(CASE WHEN p.price > 0 THEN p.price * 0.7 ELSE 5.0 END) AS fallback_cost
+             FROM products p
+             LEFT JOIN product_batches b ON b.product_id = p.id AND b.qty > 0
+             WHERE $costWhere"
+        );
+        $costStmt->execute($costParams);
+        $costRow    = $costStmt->fetch(PDO::FETCH_ASSOC);
+        $costedQty  = (int)($costRow['costed_qty'] ?? 0);
+        $avgCost    = $costedQty > 0
+            ? ((float)$costRow['costed_value'] / $costedQty)
+            : (float)($costRow['fallback_cost'] ?? 8.75);
         $eoq        = estimate_eoq((int)round($annDemand), $avgCost, $orderCostParam, $holdingRateParam);
 
         $adjustedDmg = (int)$pdo->query(
@@ -222,7 +274,7 @@ switch ($method . ':' . $action) {
                     SUM(CASE WHEN b.unit_cost IS NOT NULL AND b.qty > 0 THEN b.qty ELSE 0 END) AS costed_qty
              FROM products p
              LEFT JOIN product_batches b ON b.product_id = p.id AND b.qty > 0
-             WHERE p.status IN ('out_of_stock','critical','low')
+             WHERE p.status IN ('out_of_stock','critical','low') AND " . product_not_deleted_sql($pdo, 'p') . "
              GROUP BY p.id, p.name, p.reorder, p.price, p.units_per_pack"
         )->fetchAll(PDO::FETCH_ASSOC);
 

@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
-import { Ban, CalendarDays, PackageCheck, Pencil, Plus, RefreshCw, Truck, X } from "lucide-react";
-import { productsApi, purchaseOrdersApi, type PurchaseOrder, type SupplierPerformance } from "./api";
+import { Ban, CalendarDays, ChevronDown, ChevronUp, PackageCheck, Pencil, Plus, RefreshCw, Search, Truck, X } from "lucide-react";
+import { clearApiCache, productsApi, purchaseOrdersApi, type PurchaseOrder, type SupplierPerformance } from "./api";
 import { hasUserRole, type Product } from "./data";
-import { InfoTip, TablePager, ConfirmDialog } from "./shared";
+import { InfoTip, TablePager, ConfirmDialog, SegmentedTabs } from "./shared";
 
 type DraftLine = { productId: string; productName: string; qtyOrdered: number };
 type ReceiveDraft = { qty: string; expiry: string; cost: string };
@@ -28,7 +28,7 @@ function statusLabel(status: PurchaseOrder["status"]) {
   return "Ordered";
 }
 
-export default function PurchaseOrdersPage({
+function PurchaseOrdersPage({
   inventory,
   onInventoryChanged,
   userRoles,
@@ -37,9 +37,9 @@ export default function PurchaseOrdersPage({
   onInventoryChanged: () => void;
   userRoles: string[];
 }) {
-  const [orders, setOrders] = useState<PurchaseOrder[]>([]);
-  const [performance, setPerformance] = useState<SupplierPerformance[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [orders, setOrders] = useState<PurchaseOrder[]>(() => purchaseOrdersApi.peekList() ?? []);
+  const [performance, setPerformance] = useState<SupplierPerformance[]>(() => purchaseOrdersApi.peekPerformance() ?? []);
+  const [loading, setLoading] = useState(() => !(purchaseOrdersApi.peekList() && purchaseOrdersApi.peekPerformance()));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -77,11 +77,22 @@ export default function PurchaseOrdersPage({
 
   const [showCreateModal, setShowCreateModal] = useState(false);
 
-  // ── Pagination ────────────────────────────────────────────────────────────
-  const [perfPage, setPerfPage] = useState(1);
-  const PERF_PAGE_SIZE = 5;
+  // ── View tab, Filter & Pagination ────────────────────────────────────────
+  const [activeSection, setActiveSection] = useState<"orders" | "fulfillment">(() => {
+    try {
+      const saved = localStorage.getItem("smarttrack_purchases_section");
+      if (saved === "orders" || saved === "fulfillment") return saved;
+    } catch { /* ignore */ }
+    return "orders";
+  });
+  useEffect(() => {
+    try { localStorage.setItem("smarttrack_purchases_section", activeSection); } catch { /* ignore */ }
+  }, [activeSection]);
+  const [orderStatusFilter, setOrderStatusFilter] = useState<"all" | "open" | "received" | "cancelled">("all");
+  const [orderSearch, setOrderSearch] = useState("");
+  const [expandedOrderIds, setExpandedOrderIds] = useState<Record<number, boolean>>({});
   const [ordersPage, setOrdersPage] = useState(1);
-  const ORDERS_PAGE_SIZE = 5;
+  const ORDERS_PAGE_SIZE = 25;
 
   // ── Derived data ──────────────────────────────────────────────────────────
   const suppliers = useMemo(
@@ -122,6 +133,12 @@ export default function PurchaseOrdersPage({
       setLoading(false);
     }
   }, []);
+
+  const handleManualRefresh = useCallback(async () => {
+    clearApiCache();
+    setLoading(true);
+    await load();
+  }, [load]);
 
   useEffect(() => {
     void load();
@@ -365,139 +382,228 @@ export default function PurchaseOrdersPage({
     }
   };
 
-  // ── KPI values ─────────────────────────────────────────────────────────────
-  const totalOpen = orders.filter((o) => o.status !== "received" && o.status !== "cancelled").length;
-  const totalOrdered = performance.reduce((sum, row) => sum + row.qtyOrdered, 0);
-  const totalReceived = performance.reduce((sum, row) => sum + row.qtyFulfilled, 0);
-  const overallRate = totalOrdered > 0 ? (totalReceived / totalOrdered) * 100 : null;
+  // ── KPI values & filtered orders ───────────────────────────────────────────
+  const { totalOpen, receivedCount, cancelledCount, overallRate } = useMemo(() => {
+    let open = 0;
+    let receivedOrders = 0;
+    let cancelledOrders = 0;
+    for (const o of orders) {
+      if (o.status === "received") receivedOrders++;
+      else if (o.status === "cancelled") cancelledOrders++;
+      else open++;
+    }
+    const ordered = performance.reduce((sum, row) => sum + row.qtyOrdered, 0);
+    const received = performance.reduce((sum, row) => sum + row.qtyFulfilled, 0);
+    const rate = ordered > 0 ? (received / ordered) * 100 : null;
+    return {
+      totalOpen: open,
+      receivedCount: receivedOrders,
+      cancelledCount: cancelledOrders,
+      overallRate: rate,
+    };
+  }, [orders, performance]);
 
-  const paginatedPerformance = useMemo(() => {
-    const start = (perfPage - 1) * PERF_PAGE_SIZE;
-    return performance.slice(start, start + PERF_PAGE_SIZE);
-  }, [performance, perfPage]);
+  const filteredOrders = useMemo(() => {
+    const q = orderSearch.trim().toLowerCase();
+    return orders.filter((order) => {
+      if (orderStatusFilter === "open" && (order.status === "received" || order.status === "cancelled")) return false;
+      if (orderStatusFilter === "received" && order.status !== "received") return false;
+      if (orderStatusFilter === "cancelled" && order.status !== "cancelled") return false;
+      if (!q) return true;
+      return (
+        `po-${order.id}`.includes(q) ||
+        order.supplier.toLowerCase().includes(q) ||
+        order.items.some((item) => item.productName.toLowerCase().includes(q))
+      );
+    });
+  }, [orders, orderStatusFilter, orderSearch]);
+
+  useEffect(() => {
+    setOrdersPage(1);
+  }, [orderStatusFilter, orderSearch]);
 
   const paginatedOrders = useMemo(() => {
     const start = (ordersPage - 1) * ORDERS_PAGE_SIZE;
-    return orders.slice(start, start + ORDERS_PAGE_SIZE);
-  }, [orders, ordersPage]);
+    return filteredOrders.slice(start, start + ORDERS_PAGE_SIZE);
+  }, [filteredOrders, ordersPage]);
 
   // ── ─────────────────────────────────────────────────────────────────────────
   return (
-    <div className="p-4 sm:p-6 space-y-4 w-full max-w-[1400px] mx-auto st-page-in">
-      {/* Header */}
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <div className="ml-auto flex items-center gap-2">
-            <h1 className="text-xl font-bold text-foreground">Supplier Orders</h1>
-            <InfoTip
-              title="Supplier Orders & Fulfillment"
-              lines={[
-                "Record supplier orders and compare ordered quantities with deliveries received.",
-                { label: "Purchase Orders", value: "Log incoming orders with suppliers before delivery without inflating active stock" },
-                { label: "Record Delivery", value: "Receive delivered quantities into inventory batches with lot expiry and cost" },
-                { label: "Edit / Cancel", value: "Orders can be edited or cancelled until a delivery is recorded" },
-                { label: "Fulfillment Rate", value: "Ratio of quantity received over quantity ordered per supplier" },
-              ]}
-            />
-          </div>
-          <p className="text-sm text-muted-foreground mt-0.5">
-            Track supplier orders, record deliveries, and monitor fulfillment.
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          {canModify && (
-          <button
-            type="button"
-            onClick={() => {
-              setError("");
-              setNotice("");
-              setShowCreateModal(true);
-            }}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground hover:opacity-90 transition-all"
-          >
-            <Plus size={13} /> New Order
-          </button>
-          )}
-          <button
-            type="button"
-            onClick={() => void load()}
-            disabled={loading}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-2 text-xs font-semibold text-foreground hover:bg-muted/60 transition-all disabled:opacity-50"
-          >
-            <RefreshCw size={13} className={loading ? "animate-spin" : ""} /> Refresh
-          </button>
-        </div>
-      </div>
-
-      {/* Banners */}
-      {error && (
-        <div role="alert" className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-500/30 dark:bg-red-950/40 dark:text-red-200">
-          {error}
-        </div>
-      )}
-      {notice && (
-        <div role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-950/40 dark:text-emerald-200">
-          {notice}
-        </div>
-      )}
-
-      {/* ═══════════════════════════════════════════════════════════════════════ */}
-      {/* Orders & Fulfillment                                                    */}
-      {/* ═══════════════════════════════════════════════════════════════════════ */}
-      <div className="space-y-4">
-          {/* KPI cards */}
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-            <div className="rounded-xl border border-border/80 bg-card p-3 sm:p-4">
-              <p className="text-[10px] uppercase tracking-wide text-muted-foreground font-semibold">Suppliers tracked</p>
-              <p className="mt-0.5 text-lg font-bold text-foreground">{performance.length}</p>
-            </div>
-            <div className="rounded-xl border border-border/80 bg-card p-3 sm:p-4">
-              <p className="text-[10px] uppercase tracking-wide text-muted-foreground font-semibold">Open orders</p>
-              <p className="mt-0.5 text-lg font-bold text-amber-600 dark:text-amber-400">{totalOpen}</p>
-            </div>
-            <div className="rounded-xl border border-border/80 bg-card p-3 sm:p-4">
-              <p className="text-[10px] uppercase tracking-wide text-muted-foreground font-semibold">Overall fulfillment</p>
-              <p className="mt-0.5 text-lg font-bold text-primary">
-                {overallRate === null ? "—" : overallRate.toFixed(1) + "%"}
+    <div className="flex flex-col w-full overflow-hidden" style={{ height: "calc(100dvh - 56px)" }}>
+      {/* Fixed Header + View Switcher */}
+      <div className="flex-shrink-0 st-shell-px pt-4 sm:pt-5 pb-0 bg-background border-b border-border/60 z-20">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-3 min-w-0">
+            <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl border border-primary/15 bg-primary/10 text-primary">
+              <Truck size={19} />
+            </span>
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <h1 className="text-xl font-bold tracking-tight text-foreground truncate">Supplier Orders</h1>
+                <InfoTip
+                  title="Supplier Orders & Fulfillment"
+                  lines={[
+                    "Create supplier purchase orders and reconcile incoming deliveries.",
+                    { label: "Purchase Orders", value: "Log incoming orders before arrival without inflating active stock" },
+                    { label: "Record Delivery", value: "Receive items into inventory batches with expiry and unit cost" },
+                    { label: "Edit / Cancel", value: "Available until the first delivery is recorded" },
+                    { label: "Fulfillment Rate", value: "Received quantity divided by ordered quantity per supplier" },
+                  ]}
+                />
+              </div>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Track supplier orders, record deliveries, and monitor fulfillment.
               </p>
             </div>
           </div>
+          <div className="flex items-center gap-2 shrink-0">
+            {canModify && (
+              <button
+                type="button"
+                onClick={() => {
+                  setError("");
+                  setNotice("");
+                  setShowCreateModal(true);
+                }}
+                className="inline-flex items-center gap-1.5 whitespace-nowrap shrink-0 rounded-xl bg-primary px-3.5 py-2 text-xs font-semibold text-primary-foreground shadow-sm hover:opacity-90 transition-[opacity,background-color]"
+              >
+                <Plus size={14} /> New Order
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => void handleManualRefresh()}
+              disabled={loading}
+              className="inline-flex items-center gap-1.5 whitespace-nowrap shrink-0 rounded-xl border border-border bg-card px-3.5 py-2 text-xs font-semibold text-foreground hover:bg-muted/60 transition-colors disabled:opacity-50"
+            >
+              <RefreshCw size={13} className={loading ? "animate-spin" : ""} /> Refresh
+            </button>
+          </div>
+        </div>
 
-          {/* Purchase orders list */}
-          <section className="rounded-lg border border-border/80 bg-card">
-            <div className="px-3 py-2.5 border-b border-border/80 flex items-center gap-2">
-              <CalendarDays size={15} className="text-primary" />
-              <h2 className="text-sm font-bold text-foreground">Purchase orders</h2>
-              <InfoTip
-                title="Purchase Orders Lifecycle"
-                lines={[
-                  "Track the delivery status of inventory orders placed with suppliers.",
-                  { label: "Ordered", value: "Purchase request created and pending shipment from supplier" },
-                  { label: "Partially Received", value: "Partial shipment arrived and received into inventory; balance pending" },
-                  { label: "Received", value: "All ordered quantities verified and added to inventory batches" },
-                  { label: "Cancelled", value: "Order voided before any delivery was received" },
-                ]}
-              />
+        <SegmentedTabs<"orders" | "fulfillment">
+          variant="underline"
+          ariaLabel="Supplier order sections"
+          value={activeSection}
+          onChange={setActiveSection}
+          className="mt-3.5"
+          items={[
+            {
+              id: "orders",
+              label: "Purchase orders",
+              icon: <CalendarDays size={14} />,
+              badge: (
+                <span className="text-xs tabular-nums text-muted-foreground">{orders.length}</span>
+              ),
+            },
+            {
+              id: "fulfillment",
+              label: "Supplier fulfillment",
+              icon: <PackageCheck size={14} />,
+              badge: (
+                <span className="text-xs tabular-nums text-muted-foreground">{performance.length}</span>
+              ),
+            },
+          ]}
+        />
+      </div>
+
+      {/* ═══════════════════════════════════════════════════════════════════════ */}
+      {/* Fixed Chrome — ONLY the inner list/table scrolls                        */}
+      {/* ═══════════════════════════════════════════════════════════════════════ */}
+      <div className="flex-1 min-h-0 flex flex-col st-shell-px py-4 gap-3.5 overflow-hidden">
+        {/* Banners */}
+        {error && (
+          <div role="alert" className="flex-shrink-0 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-500/30 dark:bg-red-950/40 dark:text-red-200">
+            {error}
+          </div>
+        )}
+        {notice && (
+          <div role="status" className="flex-shrink-0 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-950/40 dark:text-emerald-200">
+            {notice}
+          </div>
+        )}
+
+        {/* Fixed KPI cards */}
+        <div className="flex-shrink-0 grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <div className="rounded-2xl border border-border/80 bg-card px-4 py-3 shadow-sm">
+            <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Suppliers tracked</p>
+            <p className="mt-0.5 text-xl font-bold tabular-nums text-foreground">{performance.length}</p>
+          </div>
+          <div className="rounded-2xl border border-border/80 bg-card px-4 py-3 shadow-sm">
+            <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Open orders</p>
+            <p className="mt-0.5 text-xl font-bold tabular-nums text-amber-600 dark:text-amber-400">{totalOpen}</p>
+          </div>
+          <div className="rounded-2xl border border-border/80 bg-card px-4 py-3 shadow-sm">
+            <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Overall fulfillment</p>
+            <p className="mt-0.5 text-xl font-bold tabular-nums text-primary">
+              {overallRate === null ? "—" : overallRate.toFixed(1) + "%"}
+            </p>
+          </div>
+        </div>
+
+        {/* Purchase orders (list-only scroll) */}
+        {activeSection === "orders" && (
+          <section className="flex-1 min-h-0 flex flex-col rounded-2xl border border-border/80 bg-card shadow-sm overflow-hidden">
+            <div className="flex-shrink-0 px-4 py-3 border-b border-border/80 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+              <div className="flex items-center gap-2">
+                <CalendarDays size={15} className="text-primary shrink-0" />
+                <h2 className="text-sm font-bold text-foreground">Purchase orders</h2>
+                <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium tabular-nums text-muted-foreground">
+                  {filteredOrders.length}
+                </span>
+              </div>
+              <div className="flex flex-wrap items-center gap-2.5">
+                <SegmentedTabs<"all" | "open" | "received" | "cancelled">
+                  ariaLabel="Filter purchase orders"
+                  value={orderStatusFilter}
+                  onChange={setOrderStatusFilter}
+                  size="sm"
+                  items={[
+                    { id: "all", label: `All (${orders.length})` },
+                    { id: "open", label: `Open (${totalOpen})` },
+                    { id: "received", label: `Received (${receivedCount})` },
+                    { id: "cancelled", label: `Cancelled (${cancelledCount})` },
+                  ]}
+                />
+                <label className="relative block w-full sm:w-56">
+                  <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                  <input
+                    type="search"
+                    value={orderSearch}
+                    onChange={(e) => setOrderSearch(e.target.value)}
+                    placeholder="Search PO, supplier, item..."
+                    aria-label="Search purchase orders"
+                    className="w-full rounded-lg border border-border bg-background py-1.5 pl-8 pr-2.5 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/25"
+                  />
+                </label>
+              </div>
             </div>
+
             {loading ? (
-              <div className="p-4 space-y-3">
+              <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-3" data-table-scroll="fixed">
                 {[1, 2, 3, 4].map(i => (
-                  <div key={i} className="flex items-center justify-between gap-4 py-2 border-b border-border/40">
+                  <div key={i} className="flex items-center justify-between gap-4 py-2 border-b border-border/40 last:border-b-0">
                     <div className="space-y-1">
                       <div className="yt-shimmer-box h-4 w-32 rounded-md" />
                       <div className="yt-shimmer-box h-3 w-48 rounded-md" />
                     </div>
                     <div className="yt-shimmer-box h-6 w-20 rounded-full" />
-                    <div className="yt-shimmer-box h-4 w-20 rounded-md" />
                     <div className="yt-shimmer-box h-8 w-24 rounded-lg" />
                   </div>
                 ))}
               </div>
             ) : orders.length === 0 ? (
-              <p className="p-5 text-sm text-muted-foreground">No purchase orders recorded yet.</p>
+              <div className="flex-1 flex items-center justify-center p-6">
+                <p className="text-sm text-muted-foreground text-center">No purchase orders recorded yet.</p>
+              </div>
+            ) : filteredOrders.length === 0 ? (
+              <div className="flex-1 flex items-center justify-center p-6">
+                <p className="text-sm text-muted-foreground text-center">No purchase orders match your filter.</p>
+              </div>
             ) : (
-              <div>
-                <div className="divide-y divide-border/80">
+              <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
+                <div className="flex-1 min-h-0 overflow-y-auto divide-y divide-border/70" data-table-scroll="fixed">
                   {paginatedOrders.map((order) => {
                     const ordered = order.items.reduce((sum, item) => sum + item.qtyOrdered, 0);
                     const received = order.items.reduce((sum, item) => sum + item.qtyReceived, 0);
@@ -511,146 +617,213 @@ export default function PurchaseOrdersPage({
                         ? "border-red-500/20 bg-red-500/10 text-red-700 dark:text-red-400"
                         : "border-sky-500/20 bg-sky-500/10 text-sky-700 dark:text-sky-400";
                     const isCancelled = order.status === "cancelled";
+                    const isExpanded = Boolean(expandedOrderIds[order.id]);
+                    const visibleItems = isExpanded ? order.items : order.items.slice(0, 3);
+                    const hiddenCount = Math.max(0, order.items.length - 3);
                     return (
                       <div
                         key={order.id}
-                        className="flex flex-col gap-2 p-3 sm:flex-row sm:items-center sm:justify-between hover:bg-muted/10 transition-colors"
+                        className="flex flex-col gap-3 px-4 py-3.5 lg:flex-row lg:items-center lg:justify-between hover:bg-muted/15 transition-colors"
                       >
-                        <div className="min-w-0">
+                        <div className="min-w-0 flex-1 space-y-1.5">
                           <div className="flex flex-wrap items-center gap-2">
                             <p className="text-sm font-semibold text-foreground">
                               PO-{order.id} · {order.supplier}
                             </p>
                             <span
                               className={
-                                "rounded-full border px-2 py-0.5 text-[10px] font-bold tracking-wide uppercase " +
+                                "rounded-full border px-2 py-0.5 text-[10px] font-bold tracking-wide uppercase whitespace-nowrap " +
                                 statusClass
                               }
                             >
                               {statusLabel(order.status)}
                             </span>
+                            <span className="text-[11px] text-muted-foreground tabular-nums">
+                              {order.items.length} item{order.items.length === 1 ? "" : "s"}
+                            </span>
                           </div>
-                          <p className="text-xs text-muted-foreground mt-1">
+                          <p className="text-xs text-muted-foreground">
                             Ordered {order.orderedAt}
                             {order.expectedDeliveryDate ? " · Expected " + order.expectedDeliveryDate : ""}
                           </p>
-                          <p className="text-xs text-muted-foreground mt-1 truncate">
-                            {order.items
-                              .map(
-                                (item) =>
-                                  `${item.productName} · ${item.qtyReceived.toLocaleString()} of ${item.qtyOrdered.toLocaleString()} received`
-                              )
-                              .join("  |  ")}
-                          </p>
+                          <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                            {visibleItems.map((item) => {
+                              const done = item.qtyReceived >= item.qtyOrdered && item.qtyOrdered > 0;
+                              return (
+                                <span
+                                  key={`${order.id}-${item.id}`}
+                                  className={`inline-flex items-center gap-1.5 rounded-lg border px-2 py-0.5 text-[11px] ${
+                                    done
+                                      ? "border-emerald-500/20 bg-emerald-500/5 text-foreground"
+                                      : "border-border/70 bg-muted/35 text-muted-foreground"
+                                  }`}
+                                >
+                                  <span className="max-w-[180px] truncate font-medium text-foreground">{item.productName}</span>
+                                  <span className="tabular-nums text-[10px] text-muted-foreground">
+                                    {item.qtyReceived.toLocaleString()}/{item.qtyOrdered.toLocaleString()}
+                                  </span>
+                                </span>
+                              );
+                            })}
+                            {hiddenCount > 0 && (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setExpandedOrderIds((prev) => ({ ...prev, [order.id]: !prev[order.id] }))
+                                }
+                                className="inline-flex items-center gap-1 rounded-lg border border-primary/25 bg-primary/5 px-2 py-0.5 text-[11px] font-semibold text-primary hover:bg-primary/10 transition-colors whitespace-nowrap"
+                              >
+                                {isExpanded ? (
+                                  <>
+                                    Show less <ChevronUp size={11} />
+                                  </>
+                                ) : (
+                                  <>
+                                    +{hiddenCount} more <ChevronDown size={11} />
+                                  </>
+                                )}
+                              </button>
+                            )}
+                          </div>
                         </div>
-                        <div className="flex items-center justify-end gap-2">
+
+                        <div className="flex flex-wrap sm:flex-nowrap items-center justify-between sm:justify-end gap-3 shrink-0 pt-2 lg:pt-0 border-t lg:border-t-0 border-border/40">
                           {!isCancelled && (
-                            <div className="text-right">
+                            <div className="text-left sm:text-right shrink-0 whitespace-nowrap tabular-nums min-w-[96px]">
                               <p className="text-xs font-semibold text-foreground">{rate.toFixed(1)}% received</p>
-                              <p className="text-[10px] text-muted-foreground">
+                              <p className="text-[11px] text-muted-foreground">
                                 {received.toLocaleString()} / {ordered.toLocaleString()}
                               </p>
                             </div>
                           )}
-                          {order.status === "ordered" && canModify && (
-                            <>
+                          {!isCancelled && order.status !== "received" && canModify && (
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              {order.status === "ordered" && (
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={() => beginEdit(order)}
+                                    className="inline-flex items-center gap-1 whitespace-nowrap shrink-0 rounded-lg border border-border px-2.5 py-1.5 text-xs font-semibold text-foreground hover:bg-muted transition-colors"
+                                  >
+                                    <Pencil size={13} /> Edit
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => setCancellingOrder(order)}
+                                    className="inline-flex items-center gap-1 whitespace-nowrap shrink-0 rounded-lg border border-red-300/60 px-2.5 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors"
+                                  >
+                                    <Ban size={13} /> Cancel
+                                  </button>
+                                </>
+                              )}
                               <button
                                 type="button"
-                                onClick={() => beginEdit(order)}
-                                className="inline-flex items-center gap-1 rounded-lg border border-border px-2.5 py-1.5 text-xs font-semibold text-foreground hover:bg-muted transition-colors"
+                                onClick={() => beginReceiving(order)}
+                                className="inline-flex items-center justify-center whitespace-nowrap shrink-0 rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:opacity-90 transition-[opacity,background-color]"
                               >
-                                <Pencil size={13} /> Edit
+                                Record delivery
                               </button>
-                              <button
-                                type="button"
-                                onClick={() => setCancellingOrder(order)}
-                                className="inline-flex items-center gap-1 rounded-lg border border-red-300/60 px-2.5 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors"
-                              >
-                                <Ban size={13} /> Cancel
-                              </button>
-                            </>
-                          )}
-                          {order.status !== "received" && !isCancelled && canModify && (
-                            <button
-                              type="button"
-                              onClick={() => beginReceiving(order)}
-                              className="rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:opacity-90 transition-all"
-                            >
-                              Record delivery
-                            </button>
+                            </div>
                           )}
                         </div>
                       </div>
                     );
                   })}
                 </div>
-                <TablePager
-                  total={orders.length}
-                  page={ordersPage}
-                  pageSize={ORDERS_PAGE_SIZE}
-                  onPage={setOrdersPage}
-                  alwaysShow
-                />
+                <div className="flex-shrink-0">
+                  <TablePager
+                    total={filteredOrders.length}
+                    page={ordersPage}
+                    pageSize={ORDERS_PAGE_SIZE}
+                    onPage={setOrdersPage}
+                  />
+                </div>
               </div>
             )}
           </section>
+        )}
 
-          {/* Supplier fulfillment */}
-          <section className="rounded-lg border border-border/80 bg-card">
-            <div className="px-3 py-2.5 border-b border-border/80 flex items-center gap-2">
-              <h2 className="text-sm font-bold text-foreground">Supplier fulfillment</h2>
-              <InfoTip
-                title="Supplier Fulfillment Guide"
-                lines={[
-                  "Received quantity ÷ ordered quantity across recorded purchase orders.",
-                  { label: "Quantity Metric", value: "Measures volume fulfillment, not delivery timeliness" },
-                  { label: "Historical Records", value: "Applies to orders created in SmartTrack; legacy stock batches without POs are excluded" },
-                  { label: "Fulfillment Rate", value: "Percentage of requested units successfully delivered by supplier" },
-                ]}
-              />
+        {/* Supplier fulfillment (table-only scroll) */}
+        {activeSection === "fulfillment" && (
+          <section className="flex-1 min-h-0 flex flex-col rounded-2xl border border-border/80 bg-card shadow-sm overflow-hidden">
+            <div className="flex-shrink-0 px-4 py-3 border-b border-border/80 flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <h2 className="text-sm font-bold text-foreground">Supplier fulfillment</h2>
+                <InfoTip
+                  title="Supplier Fulfillment Rate"
+                  lines={[
+                    "Measures received quantity against ordered quantity across purchase orders.",
+                    { label: "Focus", value: "Tracks order completeness, not delivery speed" },
+                    { label: "Coverage", value: "Applies to SmartTrack purchase orders only (excludes legacy batches)" },
+                    { label: "Rate formula", value: "Total units received ÷ total units ordered" },
+                  ]}
+                />
+              </div>
+              <span className="text-[11px] text-muted-foreground tabular-nums">
+                {performance.length} supplier{performance.length === 1 ? "" : "s"}
+              </span>
             </div>
             {performance.length === 0 ? (
-              <p className="p-5 text-sm text-muted-foreground">No purchase order history yet.</p>
+              <div className="flex-1 flex items-center justify-center p-6">
+                <p className="text-sm text-muted-foreground text-center">No purchase order history yet.</p>
+              </div>
             ) : (
-              <div>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left">
-                    <thead className="sticky top-0 z-10 bg-card shadow-sm text-[10px] uppercase tracking-wide text-muted-foreground">
-                      <tr>
-                        <th className="px-3 py-2">Supplier</th>
-                        <th className="px-3 py-2">Orders</th>
-                        <th className="px-3 py-2">Units ordered</th>
-                        <th className="px-3 py-2">Units received</th>
-                        <th className="px-3 py-2">Fulfillment</th>
-                        <th className="px-3 py-2">Open</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {paginatedPerformance.map((row) => (
-                        <tr key={row.supplier} className="border-t border-border/70 hover:bg-muted/20 transition-colors">
-                          <td className="px-3 py-2 text-xs font-semibold text-foreground">{row.supplier}</td>
-                          <td className="px-3 py-2 text-xs text-muted-foreground">{row.orderCount}</td>
-                          <td className="px-3 py-2 text-xs tabular-nums text-foreground">{row.qtyOrdered.toLocaleString()}</td>
-                          <td className="px-3 py-2 text-xs tabular-nums text-foreground">{row.qtyFulfilled.toLocaleString()}</td>
-                          <td className="px-3 py-2 text-xs font-semibold text-primary">
-                            {row.fulfillmentRate === null ? "—" : row.fulfillmentRate.toFixed(1) + "%"}
+              <div className="flex-1 min-h-0 overflow-x-auto overflow-y-auto" data-table-scroll="fixed">
+                <table className="w-full text-left">
+                  <thead className="sticky top-0 z-10 bg-card shadow-sm text-[10px] uppercase tracking-wider text-muted-foreground">
+                    <tr className="border-b border-border/70 bg-muted/30">
+                      <th className="px-4 py-2.5">Supplier</th>
+                      <th className="px-4 py-2.5 text-right">Orders</th>
+                      <th className="px-4 py-2.5 text-right">Units ordered</th>
+                      <th className="px-4 py-2.5 text-right">Units received</th>
+                      <th className="px-4 py-2.5">Fulfillment</th>
+                      <th className="px-4 py-2.5 text-right">Open</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border/60">
+                    {performance.map((row) => {
+                      const ratePct = row.fulfillmentRate ?? 0;
+                      return (
+                        <tr key={row.supplier} className="hover:bg-muted/20 transition-colors">
+                          <td className="px-4 py-3 text-xs font-semibold text-foreground whitespace-nowrap">{row.supplier}</td>
+                          <td className="px-4 py-3 text-xs text-muted-foreground text-right tabular-nums">{row.orderCount}</td>
+                          <td className="px-4 py-3 text-xs tabular-nums text-foreground text-right">{row.qtyOrdered.toLocaleString()}</td>
+                          <td className="px-4 py-3 text-xs tabular-nums text-foreground text-right">{row.qtyFulfilled.toLocaleString()}</td>
+                          <td className="px-4 py-3 text-xs">
+                            {row.fulfillmentRate === null ? (
+                              <span className="text-muted-foreground">—</span>
+                            ) : (
+                              <div className="flex items-center gap-2 min-w-[110px]">
+                                <div className="h-1.5 w-16 rounded-full bg-muted overflow-hidden shrink-0">
+                                  <div
+                                    className={`h-full rounded-full ${ratePct >= 95 ? "bg-emerald-500" : ratePct > 0 ? "bg-primary" : "bg-muted-foreground/30"}`}
+                                    style={{ width: `${Math.min(100, Math.max(0, ratePct))}%` }}
+                                  />
+                                </div>
+                                <span className={`font-semibold tabular-nums ${ratePct >= 95 ? "text-emerald-600 dark:text-emerald-400" : "text-primary"}`}>
+                                  {row.fulfillmentRate.toFixed(1)}%
+                                </span>
+                              </div>
+                            )}
                           </td>
-                          <td className="px-3 py-2 text-xs text-muted-foreground">{row.openOrders}</td>
+                          <td className="px-4 py-3 text-xs text-right tabular-nums">
+                            {row.openOrders > 0 ? (
+                              <span className="inline-flex items-center justify-center rounded-full bg-amber-500/15 px-2 py-0.5 text-[11px] font-semibold text-amber-600 dark:text-amber-400">
+                                {row.openOrders}
+                              </span>
+                            ) : (
+                              <span className="text-muted-foreground">0</span>
+                            )}
+                          </td>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-                <TablePager
-                  total={performance.length}
-                  page={perfPage}
-                  pageSize={PERF_PAGE_SIZE}
-                  onPage={setPerfPage}
-                  alwaysShow
-                />
+                      );
+                    })}
+                  </tbody>
+                </table>
               </div>
             )}
           </section>
+        )}
       </div>
 
       {/* ═══════════════════════════════════════════════════════════════════════ */}
@@ -877,7 +1050,7 @@ export default function PurchaseOrdersPage({
               <button
                 type="submit"
                 disabled={saving || draftLines.length === 0}
-                className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50 transition-all st-btn"
+                className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50 transition-[opacity,background-color] st-btn"
               >
                 <PackageCheck size={14} /> Review order
               </button>
@@ -1091,7 +1264,7 @@ export default function PurchaseOrdersPage({
               <button
                 type="submit"
                 disabled={saving}
-                className="rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50 transition-all"
+                className="rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50 transition-[opacity,background-color]"
               >
                 {saving ? "Saving…" : "Save delivery"}
               </button>
@@ -1307,3 +1480,5 @@ export default function PurchaseOrdersPage({
     </div>
   );
 }
+
+export default memo(PurchaseOrdersPage);

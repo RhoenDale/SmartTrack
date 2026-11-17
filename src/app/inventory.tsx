@@ -1,10 +1,148 @@
-import { useState, useEffect, useRef, useMemo } from "react";
+import { memo, useCallback, useState, useEffect, useRef, useMemo } from "react";
 import { Search, Plus, Pencil, Trash2, Download, Upload } from "lucide-react";
 import { getReorderUnits, hasUserRole, sortBatchesByExpiry, type Product, type Transaction } from "./data";
-import { fmt, StockBadge } from "./shared";
+import { fmt, StockBadge, ConfirmDialog, SegmentedTabs, InfoTip } from "./shared";
 import { ProductImportModal } from "./product-import-modal";
 
-export default function InventoryPage({
+interface InventoryRowMeta {
+  unitsPerPack: number;
+  packCount: number;
+  looseUnits: number;
+  unitLabel: string;
+  totalSold: number;
+  packsSold: number;
+  looseSold: number;
+  reorderUnits: number;
+  earliestExpiry: string;
+  monthsLeft: number | null;
+  extraBatches: number;
+}
+
+const InventoryRow = memo(function InventoryRow({
+  item,
+  meta,
+  isSelected,
+  isHovered,
+  canModify,
+  isCashier,
+  setRowRef,
+  onEditProduct,
+  onDeleteProduct,
+}: {
+  item: Product;
+  meta: InventoryRowMeta;
+  isSelected: boolean;
+  isHovered: boolean;
+  canModify: boolean;
+  isCashier: boolean;
+  setRowRef: (id: string, el: HTMLTableRowElement | null) => void;
+  onEditProduct: (p: Product) => void;
+  onDeleteProduct: (p: Product) => void;
+}) {
+  return (
+    <tr
+      ref={el => setRowRef(item.id, el)}
+      className={`border-b border-border/50 ${
+        isSelected
+          ? "bg-primary/10"
+          : isHovered
+          ? "bg-secondary/10"
+          : "hover:bg-muted/20"
+      }`}
+    >
+      <td className="px-5 py-3">
+        {item.barcode && <p className="text-[10px] font-semibold text-primary">{item.barcode}</p>}
+        <p className="text-xs font-bold text-foreground">{item.name}</p>
+        <p className="text-[10px] text-muted-foreground mt-0.5">ID {item.id}</p>
+      </td>
+      <td className="px-4 py-3 text-xs text-muted-foreground">{item.category}</td>
+      <td className="px-4 py-3 text-xs text-muted-foreground">{item.supplier}</td>
+      <td className="px-4 py-3 text-xs text-foreground">
+        <div className="flex flex-col gap-0.5">
+          <span className="font-bold text-foreground">
+            {meta.unitsPerPack > 1
+              ? `${meta.packCount.toLocaleString()} packs/boxes`
+              : `${item.stock.toLocaleString()} ${meta.unitLabel}${item.stock === 1 ? "" : "s"}`}
+          </span>
+          <span className="text-[10px] text-muted-foreground">
+            {item.stock.toLocaleString()} {meta.unitLabel}{item.stock !== 1 ? "s" : ""} total
+            {meta.unitsPerPack > 1 && ` · ${meta.looseUnits} loose`}
+          </span>
+          {meta.unitsPerPack > 1 && <span className="text-[10px] text-primary">1 pack = {meta.unitsPerPack} {meta.unitLabel}s</span>}
+        </div>
+      </td>
+      <td className="px-3 py-3 text-xs text-foreground w-24">
+        {meta.totalSold === 0 ? (
+          <span className="text-muted-foreground">—</span>
+        ) : meta.unitsPerPack > 1 ? (
+          <div className="flex flex-col gap-0.5">
+            <span className="font-semibold tabular-nums">{meta.packsSold.toLocaleString()} pk</span>
+            <span className="text-[10px] text-muted-foreground tabular-nums">
+              {meta.totalSold.toLocaleString()} {meta.unitLabel}s{meta.looseSold > 0 ? ` · ${meta.looseSold}L` : ""}
+            </span>
+          </div>
+        ) : (
+          <span className="tabular-nums font-semibold">
+            {meta.totalSold.toLocaleString()} <span className="font-normal text-muted-foreground">{meta.unitLabel}{meta.totalSold !== 1 ? "s" : ""}</span>
+          </span>
+        )}
+      </td>
+      <td className="px-4 py-3 text-xs text-muted-foreground">
+        {meta.unitsPerPack > 1 ? (
+          <>
+            {item.reorder} pack{item.reorder !== 1 ? "s" : ""}
+            <span className="block text-[10px]">({meta.reorderUnits.toLocaleString()} units)</span>
+          </>
+        ) : (
+          <>{meta.reorderUnits.toLocaleString()} {meta.unitLabel}{meta.reorderUnits === 1 ? "" : "s"}</>
+        )}
+      </td>
+      <td className="px-4 py-3 text-xs font-bold">
+        <div className="flex flex-col gap-0.5">
+          {item.salePrice != null ? (
+            <span>
+              <span className="line-through text-muted-foreground mr-1">{fmt(item.price)}</span>
+              <span className="text-primary">{fmt(item.salePrice)}</span>
+            </span>
+          ) : (
+            <span className="text-foreground">{fmt(item.price)}</span>
+          )}
+        </div>
+      </td>
+      <td className="px-4 py-3 text-xs text-muted-foreground">
+        {meta.monthsLeft !== null ? (
+          <span className={meta.monthsLeft <= 3 ? "text-red-500 font-semibold" : meta.monthsLeft <= 6 ? "text-amber-600 dark:text-amber-400 font-medium" : ""}>
+            {meta.earliestExpiry}{meta.monthsLeft <= 3 && " ⚠"}
+          </span>
+        ) : (
+          meta.earliestExpiry
+        )}
+        {meta.extraBatches > 0 && (
+          <span className="ml-1 text-[10px] text-primary">+{meta.extraBatches} batch</span>
+        )}
+      </td>
+      <td className="px-4 py-3 whitespace-nowrap"><StockBadge status={item.status} /></td>
+      <td className="px-4 py-3 whitespace-nowrap">
+        {canModify ? (
+          <div className="flex items-center gap-2">
+            <button onClick={() => onEditProduct(item)} className="p-1.5 rounded-lg text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors" title="Edit product">
+              <Pencil size={16} />
+            </button>
+            <button onClick={() => onDeleteProduct(item)} className="p-1.5 rounded-lg text-muted-foreground hover:text-red-500 hover:bg-red-500/10 transition-colors" title="Delete product">
+              <Trash2 size={16} />
+            </button>
+          </div>
+        ) : (
+          <span className="text-[10px] text-muted-foreground italic">
+            {isCashier ? "View only" : "Read only"}
+          </span>
+        )}
+      </td>
+    </tr>
+  );
+});
+
+const InventoryPage = memo(function InventoryPage({
   inventory,
   transactions,
   categories,
@@ -34,13 +172,17 @@ export default function InventoryPage({
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [showImportModal, setShowImportModal] = useState(false);
+  const [confirmExportCsv, setConfirmExportCsv] = useState(false);
   const rowRefs = useRef<Record<string, HTMLTableRowElement | null>>({});
+  const setRowRef = useCallback((id: string, el: HTMLTableRowElement | null) => {
+    rowRefs.current[id] = el;
+  }, []);
 
   // Check if user is admin (read-only access to inventory)
   const isAdmin   = hasUserRole({ roles: userRoles }, "admin") || hasUserRole({ roles: userRoles }, "admin/owner");
   const isCashier = hasUserRole({ roles: userRoles }, "cashier");
   const canModify = hasUserRole({ roles: userRoles }, "inventory_manager");
-  const canImport = isAdmin || canModify;
+  const canImport = canModify;
 
   // Units sold per product from sale transactions
   const soldByProductId = useMemo(() => {
@@ -53,26 +195,62 @@ export default function InventoryPage({
     return map;
   }, [transactions]);
 
-  useEffect(() => {
-    if (selectedProductId) {
-      setSearch("");
-      setStatusFilter("all");
-      const row = rowRefs.current[selectedProductId];
-      row?.scrollIntoView({ behavior: "smooth", block: "center" });
+  const rowMetaById = useMemo(() => {
+    const now = Date.now();
+    const metaMap = new Map<string, InventoryRowMeta>();
+    for (const item of inventory) {
+      const unitsPerPack = Math.max(1, item.unitsPerPack ?? 1);
+      const packCount = Math.floor(item.stock / unitsPerPack);
+      const looseUnits = item.stock % unitsPerPack;
+      const unitLabel = item.unitLabel ?? "unit";
+      const totalSold = soldByProductId[item.id] ?? soldByProductId[item.name] ?? 0;
+      const earliest = sortBatchesByExpiry(item.batches)[0];
+      const monthsLeft = earliest?.expiryDate
+        ? (new Date(earliest.expiryDate).getTime() - now) / (1000 * 60 * 60 * 24 * 30)
+        : null;
+      metaMap.set(item.id, {
+        unitsPerPack,
+        packCount,
+        looseUnits,
+        unitLabel,
+        totalSold,
+        packsSold: unitsPerPack > 1 ? Math.floor(totalSold / unitsPerPack) : 0,
+        looseSold: unitsPerPack > 1 ? totalSold % unitsPerPack : 0,
+        reorderUnits: getReorderUnits(item),
+        earliestExpiry: earliest?.expiry ?? item.expiry,
+        monthsLeft,
+        extraBatches: item.batches.length > 1 ? item.batches.length - 1 : 0,
+      });
     }
+    return metaMap;
+  }, [inventory, soldByProductId]);
+
+  useEffect(() => {
+    if (!selectedProductId) return;
+    setSearch("");
+    setStatusFilter("all");
+    const frame = window.requestAnimationFrame(() => {
+      rowRefs.current[selectedProductId]?.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+    return () => window.cancelAnimationFrame(frame);
   }, [selectedProductId]);
 
+  const attentionCount = useMemo(() => inventory.filter(i => i.status !== "good").length, [inventory]);
+
   const filtered = useMemo(
-    () =>
-      inventory.filter(item => {
+    () => {
+      const q = search.toLowerCase();
+      return inventory.filter(item => {
         const ms =
-          item.name.toLowerCase().includes(search.toLowerCase()) ||
-          item.category.toLowerCase().includes(search.toLowerCase()) ||
-          (item.barcode ?? "").toLowerCase().includes(search.toLowerCase()) ||
-          item.id.toLowerCase().includes(search.toLowerCase());
+          !q ||
+          item.name.toLowerCase().includes(q) ||
+          item.category.toLowerCase().includes(q) ||
+          (item.barcode ?? "").toLowerCase().includes(q) ||
+          item.id.toLowerCase().includes(q);
         const mf = statusFilter === "all" || item.status === statusFilter;
         return ms && mf;
-      }),
+      });
+    },
     [search, statusFilter, inventory]
   );
 
@@ -117,21 +295,32 @@ export default function InventoryPage({
   };
 
   return (
-    <div className="flex flex-col w-full max-w-[1400px] mx-auto" style={{ height: "calc(100dvh - 56px)" }}>
+    <div className="flex flex-col w-full overflow-hidden" style={{ height: "calc(100dvh - 56px)" }}>
       {/* ── Sticky header: title + actions + search/filter ── */}
-      <div className="flex-shrink-0 px-4 sm:px-6 pt-4 sm:pt-6 pb-4 bg-background border-b border-border/50 z-20">
-        <div className="flex items-start sm:items-center justify-between gap-3">
+      <div className="flex-shrink-0 st-shell-px pt-4 sm:pt-6 pb-4 bg-background border-b border-border/50 z-20">
+        <div className="flex flex-wrap items-start sm:items-center justify-between gap-3">
           <div>
-            <h1 className="text-xl font-bold text-foreground">Products</h1>
+            <div className="flex items-center gap-2">
+              <h1 className="text-xl font-bold text-foreground">Products</h1>
+              <InfoTip
+                title="Inventory & Batch Rules"
+                lines={[
+                  "Tracks medicine stock across supplier batches, pack sizes, and expiry dates.",
+                  { label: "Batch Order", value: "POS deducts oldest received batches first (FIFO); table flags earliest expiry" },
+                  { label: "Packs & Units", value: "Pack quantities automatically convert into sellable base units" },
+                  { label: "Alert Threshold", value: "Low below Reorder Point; Critical below 40% of Reorder Point" },
+                ]}
+              />
+            </div>
             <p className="text-sm text-muted-foreground mt-0.5">
-              {inventory.length} products · {inventory.filter(i => i.status !== "good").length} need attention
+              {inventory.length} products · {attentionCount} need attention
               {isAdmin && !canModify && <span className="ml-2 text-amber-600 dark:text-amber-400 font-semibold">· Read-only access</span>}
               {isCashier && !canModify && <span className="ml-2 text-violet-600 dark:text-violet-400 font-semibold">· View-only access</span>}
             </p>
           </div>
           <div className="flex items-center gap-2 flex-wrap justify-end">
             <button
-              onClick={handleExportCsv}
+              onClick={() => setConfirmExportCsv(true)}
               className="flex items-center gap-2 px-3 py-2.5 border border-border bg-card text-foreground rounded-xl text-sm font-bold hover:bg-muted/50 transition-colors shadow-sm flex-shrink-0 cursor-pointer"
             >
               <Download size={14} />Export CSV
@@ -148,7 +337,7 @@ export default function InventoryPage({
             {canModify && (
               <button
                 onClick={onAddProduct}
-                className="flex items-center gap-2 px-4 py-2.5 bg-primary text-primary-foreground rounded-xl text-sm font-bold hover:opacity-90 transition-opacity shadow-sm shadow-primary/20 flex-shrink-0 cursor-pointer"
+                className="flex items-center gap-2 px-4 py-2.5 bg-primary text-primary-foreground rounded-xl text-sm font-bold hover:opacity-90 transition-[opacity,background-color,transform] shadow-sm shadow-primary/20 flex-shrink-0 cursor-pointer st-btn"
               >
                 <Plus size={14} />Add Product
               </button>
@@ -156,8 +345,8 @@ export default function InventoryPage({
           </div>
         </div>
 
-        <div className="flex flex-col sm:flex-row gap-3 mt-4">
-          <div className="relative flex-1 max-w-sm">
+        <div className="flex flex-col sm:flex-row gap-3 mt-4 items-start sm:items-center">
+          <div className="relative flex-1 w-full max-w-sm">
             <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
             <input
               value={search}
@@ -166,27 +355,24 @@ export default function InventoryPage({
               className="w-full bg-card border border-border rounded-xl pl-8 pr-4 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary shadow-sm"
             />
           </div>
-          <div className="flex items-center gap-1.5 flex-wrap">
-            {["all", "out_of_stock", "critical", "low", "moderate", "good"].map(f => (
-              <button
-                key={f}
-                onClick={() => setStatusFilter(f)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                  statusFilter === f
-                    ? "bg-primary text-primary-foreground shadow-sm"
-                    : "bg-card border border-border text-muted-foreground hover:text-foreground shadow-sm"
-                }`}
-              >
-                {f === "out_of_stock" ? "Out of Stock" : f.charAt(0).toUpperCase() + f.slice(1)}
-              </button>
-            ))}
-          </div>
+          <SegmentedTabs
+            tone="primary"
+            ariaLabel="Filter products by stock status"
+            value={statusFilter}
+            onChange={setStatusFilter}
+            className="flex-wrap"
+            buttonClassName="font-bold"
+            items={["all", "out_of_stock", "critical", "low", "moderate", "good"].map(f => ({
+              id: f,
+              label: f === "out_of_stock" ? "Out of Stock" : f.charAt(0).toUpperCase() + f.slice(1),
+            }))}
+          />
         </div>
       </div>
 
       {/* ── Scrollable table ── */}
-      <div className="flex-1 overflow-hidden flex flex-col mx-4 sm:mx-6 my-4 bg-card border border-border rounded-xl shadow-sm">
-        <div className="overflow-x-auto overflow-y-auto flex-1" data-table-scroll="fixed">
+      <div className="flex-1 min-h-0 overflow-hidden flex flex-col st-shell-mx my-4 bg-card border border-border rounded-xl shadow-sm">
+        <div className="overflow-x-auto overflow-y-auto flex-1 min-h-0" data-table-scroll="fixed">
           <table className="w-full">
             <thead className="sticky top-0 z-10 bg-card shadow-sm">
               <tr className="border-b border-border bg-muted/30">
@@ -196,127 +382,24 @@ export default function InventoryPage({
               </tr>
             </thead>
             <tbody>
-              {filtered.map(item => (
-                <tr
-                  key={item.id}
-                  ref={el => { rowRefs.current[item.id] = el; }}
-                  className={`border-b border-border/50 transition-colors ${
-                    item.id === selectedProductId
-                      ? "bg-primary/10"
-                      : hoveredProductId === item.id
-                      ? "bg-secondary/10"
-                      : "hover:bg-muted/20"
-                  }`}
-                >
-                  <td className="px-5 py-3">
-                    {item.barcode && <p className="text-[10px] font-semibold text-primary">{item.barcode}</p>}
-                    <p className="text-xs font-bold text-foreground">{item.name}</p>
-                    <p className="text-[10px] text-muted-foreground mt-0.5">ID {item.id}</p>
-                  </td>
-                  <td className="px-4 py-3 text-xs text-muted-foreground">{item.category}</td>
-                  <td className="px-4 py-3 text-xs text-muted-foreground">{item.supplier}</td>
-                  <td className="px-4 py-3 text-xs text-foreground">
-                    {(() => {
-                      const unitsPerPack = Math.max(1, item.unitsPerPack ?? 1);
-                      const packCount = Math.floor(item.stock / unitsPerPack);
-                      const looseUnits = item.stock % unitsPerPack;
-                      const unitLabel = item.unitLabel ?? "unit";
-                      return (
-                        <div className="flex flex-col gap-0.5">
-                          <span className="font-bold text-foreground">
-                            {unitsPerPack > 1
-                              ? `${packCount.toLocaleString()} packs/boxes`
-                              : `${item.stock.toLocaleString()} ${unitLabel}${item.stock === 1 ? "" : "s"}`}
-                          </span>
-                          <span className="text-[10px] text-muted-foreground">
-                            {item.stock.toLocaleString()} {unitLabel}{item.stock !== 1 ? "s" : ""} total
-                            {unitsPerPack > 1 && ` · ${looseUnits} loose`}
-                          </span>
-                          {unitsPerPack > 1 && <span className="text-[10px] text-primary">1 pack = {unitsPerPack} {unitLabel}s</span>}
-                        </div>
-                      );
-                    })()}
-                  </td>
-                  {/* Units Sold */}
-                  <td className="px-3 py-3 text-xs text-foreground w-24">
-                    {(() => {
-                      const totalSold = soldByProductId[item.id] ?? soldByProductId[item.name] ?? 0;
-                      if (totalSold === 0) return <span className="text-muted-foreground">—</span>;
-                      const unitsPerPack = Math.max(1, item.unitsPerPack ?? 1);
-                      const unitLabel = item.unitLabel ?? "unit";
-                      if (unitsPerPack > 1) {
-                        const packsSold = Math.floor(totalSold / unitsPerPack);
-                        const looseSold = totalSold % unitsPerPack;
-                        return (
-                          <div className="flex flex-col gap-0.5">
-                            <span className="font-semibold tabular-nums">{packsSold.toLocaleString()} pk</span>
-                            <span className="text-[10px] text-muted-foreground tabular-nums">
-                              {totalSold.toLocaleString()} {unitLabel}s{looseSold > 0 ? ` · ${looseSold}L` : ""}
-                            </span>
-                          </div>
-                        );
-                      }
-                      return <span className="tabular-nums font-semibold">{totalSold.toLocaleString()} <span className="font-normal text-muted-foreground">{unitLabel}{totalSold !== 1 ? "s" : ""}</span></span>;
-                    })()}
-                  </td>
-                  {/* Reorder At */}
-                  <td className="px-4 py-3 text-xs text-muted-foreground">
-                    {(() => {
-                      const unitsPerPack = Math.max(1, item.unitsPerPack ?? 1);
-                      const unitLabel = item.unitLabel ?? "unit";
-                      return unitsPerPack > 1
-                        ? <>{item.reorder} pack{item.reorder !== 1 ? "s" : ""}
-                            <span className="block text-[10px]">({getReorderUnits(item).toLocaleString()} units)</span>
-                          </>
-                        : <>{getReorderUnits(item).toLocaleString()} {unitLabel}{getReorderUnits(item) === 1 ? "" : "s"}</>;
-                    })()}
-                  </td>
-                  <td className="px-4 py-3 text-xs font-bold">
-                    <div className="flex flex-col gap-0.5">
-                      {item.salePrice != null ? (
-                        <span>
-                          <span className="line-through text-muted-foreground mr-1">{fmt(item.price)}</span>
-                          <span className="text-primary">{fmt(item.salePrice)}</span>
-                        </span>
-                      ) : (
-                        <span className="text-foreground">{fmt(item.price)}</span>
-                      )}
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 text-xs text-muted-foreground">
-                    {(() => {
-                      const earliest = sortBatchesByExpiry(item.batches)[0];
-                      if (!earliest?.expiryDate) return item.expiry;
-                      const monthsLeft = (new Date(earliest.expiryDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24 * 30);
-                      return (
-                        <span className={monthsLeft <= 3 ? "text-red-500 font-semibold" : monthsLeft <= 6 ? "text-amber-600 dark:text-amber-400 font-medium" : ""}>
-                          {earliest.expiry}{monthsLeft <= 3 && " ⚠"}
-                        </span>
-                      );
-                    })()}
-                    {item.batches.length > 1 && (
-                      <span className="ml-1 text-[10px] text-primary">+{item.batches.length - 1} batch</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3"><StockBadge status={item.status} /></td>
-                  <td className="px-4 py-3">
-                    {canModify ? (
-                      <div className="flex items-center gap-2">
-                        <button onClick={() => onEditProduct(item)} className="p-1.5 rounded-lg text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors" title="Edit product">
-                          <Pencil size={16} />
-                        </button>
-                        <button onClick={() => onDeleteProduct(item)} className="p-1.5 rounded-lg text-muted-foreground hover:text-red-500 hover:bg-red-500/10 transition-colors" title="Delete product">
-                          <Trash2 size={16} />
-                        </button>
-                      </div>
-                    ) : (
-                      <span className="text-[10px] text-muted-foreground italic">
-                        {isCashier ? "View only" : "Read only"}
-                      </span>
-                    )}
-                  </td>
-                </tr>
-              ))}
+              {filtered.map(item => {
+                const meta = rowMetaById.get(item.id);
+                if (!meta) return null;
+                return (
+                  <InventoryRow
+                    key={item.id}
+                    item={item}
+                    meta={meta}
+                    isSelected={item.id === selectedProductId}
+                    isHovered={hoveredProductId === item.id}
+                    canModify={canModify}
+                    isCashier={isCashier}
+                    setRowRef={setRowRef}
+                    onEditProduct={onEditProduct}
+                    onDeleteProduct={onDeleteProduct}
+                  />
+                );
+              })}
               {filtered.length === 0 && (
                 <tr>
                   <td colSpan={10} className="text-center py-10 text-sm text-muted-foreground">
@@ -335,6 +418,19 @@ export default function InventoryPage({
         onSuccess={onReload}
         showToast={showToast}
       />
+      {confirmExportCsv && (
+        <ConfirmDialog
+          title="Export Inventory CSV?"
+          message={`Download all ${inventory.length} inventory product${inventory.length === 1 ? "" : "s"} and stock levels as a CSV spreadsheet?`}
+          confirmLabel="Export CSV"
+          cancelLabel="Cancel"
+          variant="info"
+          onConfirm={() => { setConfirmExportCsv(false); handleExportCsv(); }}
+          onCancel={() => setConfirmExportCsv(false)}
+        />
+      )}
     </div>
   );
-}
+});
+
+export default InventoryPage;

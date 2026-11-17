@@ -79,39 +79,70 @@ export interface Transaction {
 
 export function groupCartTransactions(transactions: Transaction[]): Transaction[] {
   const result: Transaction[] = [];
-  const groupedIds = new Set<string>();
+  const groupedBySaleId = new Map<string, Transaction[]>();
+
+  for (const transaction of transactions) {
+    if (transaction.type === "sale" && transaction.saleGroupId) {
+      let list = groupedBySaleId.get(transaction.saleGroupId);
+      if (!list) {
+        list = [];
+        groupedBySaleId.set(transaction.saleGroupId, list);
+      }
+      list.push(transaction);
+    }
+  }
+
+  const emittedGroupIds = new Set<string>();
 
   for (const transaction of transactions) {
     if (transaction.type !== "sale" || !transaction.saleGroupId) {
       result.push(transaction);
       continue;
     }
-    if (groupedIds.has(transaction.saleGroupId)) continue;
+    if (emittedGroupIds.has(transaction.saleGroupId)) continue;
 
-    groupedIds.add(transaction.saleGroupId);
-    const cartItems = transactions.filter(item =>
-      item.type === "sale" && item.saleGroupId === transaction.saleGroupId
-    );
-    const total = (field: "amount" | "preTaxAmount" | "taxAmount") =>
-      cartItems.reduce((sum, item) => sum + (item[field] ?? 0), 0);
-    const taxRates = new Set(cartItems.map(item => item.taxRate ?? 0));
+    emittedGroupIds.add(transaction.saleGroupId);
+    const cartItems = groupedBySaleId.get(transaction.saleGroupId) ?? [transaction];
+    let amount = 0;
+    let preTaxAmount = 0;
+    let taxAmount = 0;
+    let discountAmount = 0;
+    let qty = 0;
+    let customerVatExempt = false;
+    let customerExemptionType: string | null = null;
+    let customerIdNumber: string | null = null;
+    let discountNote: string | undefined;
+    const taxRates = new Set<number>();
+
+    for (const item of cartItems) {
+      qty += item.qty;
+      amount += item.amount ?? 0;
+      preTaxAmount += item.preTaxAmount ?? 0;
+      taxAmount += item.taxAmount ?? 0;
+      discountAmount += item.discountAmount ?? 0;
+      taxRates.add(item.taxRate ?? 0);
+      if (item.customerVatExempt) customerVatExempt = true;
+      if (!customerExemptionType && item.customerExemptionType) customerExemptionType = item.customerExemptionType;
+      if (!customerIdNumber && item.customerIdNumber) customerIdNumber = item.customerIdNumber;
+      if (!discountNote && item.note?.startsWith("Customer discount:")) discountNote = item.note;
+    }
 
     result.push({
       ...transaction,
       id: transaction.saleGroupId,
       product: `Cart · ${cartItems.length} product${cartItems.length === 1 ? "" : "s"}`,
-      qty: cartItems.reduce((sum, item) => sum + item.qty, 0),
+      qty,
       saleQty: undefined,
       saleUnit: "unit",
-      amount: total("amount"),
-      preTaxAmount: total("preTaxAmount"),
-      taxAmount: total("taxAmount"),
-        discountAmount: cartItems.reduce((sum, item) => sum + (item.discountAmount ?? 0), 0),
+      amount,
+      preTaxAmount,
+      taxAmount,
+      discountAmount,
       taxRate: taxRates.size === 1 ? [...taxRates][0] : null,
-      customerVatExempt: cartItems.some(item => item.customerVatExempt),
-      customerExemptionType: cartItems.find(item => item.customerExemptionType)?.customerExemptionType ?? null,
-      customerIdNumber: cartItems.find(item => item.customerIdNumber)?.customerIdNumber ?? null,
-      note: cartItems.find(item => item.note?.startsWith("Customer discount:"))?.note ?? transaction.note,
+      customerVatExempt,
+      customerExemptionType,
+      customerIdNumber,
+      note: discountNote ?? transaction.note,
       cartItems,
     });
   }
@@ -222,23 +253,29 @@ export function formatExpiryInputValue(expiry: string): string {
 
 /** Sort batches by received date ascending (FIFO). */
 export function sortBatchesFIFO(batches: ProductBatch[]): ProductBatch[] {
-  return [...batches]
-    .filter(b => b.qty > 0)
-    .sort((a, b) => parseExpiry(a.receivedDate).getTime() - parseExpiry(b.receivedDate).getTime());
+  const active: { batch: ProductBatch; time: number }[] = [];
+  for (const b of batches) {
+    if (b.qty <= 0) continue;
+    active.push({ batch: b, time: parseExpiry(b.receivedDate).getTime() });
+  }
+  active.sort((a, b) => a.time - b.time);
+  return active.map(item => item.batch);
 }
 
 /** Sort batches by expiry date ascending — earliest first. */
 export function sortBatchesByExpiry(batches: ProductBatch[]): ProductBatch[] {
-  return [...batches]
-    .filter(b => b.qty > 0)
-    .sort((a, b) => {
-      const expiryTime = (expiry: string | null) => {
-        if (!expiry || expiry === "—") return Number.POSITIVE_INFINITY;
-        const time = parseExpiry(expiry).getTime();
-        return Number.isNaN(time) ? Number.POSITIVE_INFINITY : time;
-      };
-      return expiryTime(a.expiry) - expiryTime(b.expiry);
-    });
+  const active: { batch: ProductBatch; time: number }[] = [];
+  for (const b of batches) {
+    if (b.qty <= 0) continue;
+    let time = Number.POSITIVE_INFINITY;
+    if (b.expiry && b.expiry !== "—") {
+      const parsed = parseExpiry(b.expiry).getTime();
+      if (!Number.isNaN(parsed)) time = parsed;
+    }
+    active.push({ batch: b, time });
+  }
+  active.sort((a, b) => a.time - b.time);
+  return active.map(item => item.batch);
 }
 
 export function getEarliestExpiry(batches: ProductBatch[]): string {
@@ -288,37 +325,45 @@ export function estimateEOQ(
   return Math.max(0, Math.round(Math.sqrt((2 * annualDemand * orderCost) / holdingCost)));
 }
 
+const SHORT_MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"] as const;
+
 export function getMonthlyDemand(transactions: Transaction[]): { month: string; demand: number }[] {
-  const sales = transactions.filter(tx => tx.type === "sale");
-  if (sales.length === 0) return [];
-  const map = new Map<string, number>();
-  let minTime = Number.POSITIVE_INFINITY;
-  let maxTime = Number.NEGATIVE_INFINITY;
+  const map = new Map<number, number>();
+  let minIdx = Number.POSITIVE_INFINITY;
+  let maxIdx = Number.NEGATIVE_INFINITY;
 
-  sales.forEach(tx => {
-    const d = new Date(tx.date);
-    if (Number.isNaN(d.getTime())) return;
-    const t = d.getTime();
-    if (t < minTime) minTime = t;
-    if (t > maxTime) maxTime = t;
-    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-    map.set(key, (map.get(key) ?? 0) + tx.qty);
-  });
+  for (const tx of transactions) {
+    if (tx.type !== "sale") continue;
+    let monthIdx = -1;
+    const m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})/.exec(tx.date);
+    if (m) {
+      const mo = Number(m[1]);
+      const dy = Number(m[2]);
+      const yr = Number(m[3]);
+      if (mo >= 1 && mo <= 12 && dy >= 1 && dy <= 31) {
+        monthIdx = yr * 12 + (mo - 1);
+      }
+    }
+    if (monthIdx < 0) {
+      const d = new Date(tx.date);
+      if (Number.isNaN(d.getTime())) continue;
+      monthIdx = d.getFullYear() * 12 + d.getMonth();
+    }
+    if (monthIdx < minIdx) minIdx = monthIdx;
+    if (monthIdx > maxIdx) maxIdx = monthIdx;
+    map.set(monthIdx, (map.get(monthIdx) ?? 0) + tx.qty);
+  }
 
-  if (!Number.isFinite(minTime) || !Number.isFinite(maxTime)) return [];
-
-  const minD = new Date(minTime);
-  const maxD = new Date(maxTime);
-  const start = new Date(minD.getFullYear(), minD.getMonth(), 1);
-  const end = new Date(maxD.getFullYear(), maxD.getMonth(), 1);
+  if (!Number.isFinite(minIdx) || !Number.isFinite(maxIdx)) return [];
 
   const result: { month: string; demand: number }[] = [];
-  const cursor = new Date(start);
-  while (cursor <= end) {
-    const key = `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, "0")}`;
-    const label = cursor.toLocaleDateString("en-US", { month: "short", year: "numeric" });
-    result.push({ month: label, demand: map.get(key) ?? 0 });
-    cursor.setMonth(cursor.getMonth() + 1);
+  for (let idx = minIdx; idx <= maxIdx; idx++) {
+    const year = Math.floor(idx / 12);
+    const month = idx % 12;
+    result.push({
+      month: `${SHORT_MONTH_NAMES[month]} ${year}`,
+      demand: map.get(idx) ?? 0,
+    });
   }
   return result;
 }

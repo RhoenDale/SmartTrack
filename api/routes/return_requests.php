@@ -50,7 +50,7 @@ if ($method === 'GET' && !$id) {
 
 // ── POST /return-requests/broken — record broken/damaged stock ────────────────
 if ($method === 'POST' && $id === 'broken') {
-    require_role(['inventory_manager', 'admin', 'admin/owner']);
+    require_role(['inventory_manager', 'cashier']);
     $data = body();
     require_fields($data, ['product_id', 'qty', 'reason']);
 
@@ -169,7 +169,7 @@ if ($method === 'POST' && $id === 'broken') {
 
 // ── POST /return-requests — record customer return ────────────────────────────
 if ($method === 'POST' && !$id) {
-    require_role(['cashier', 'inventory_manager', 'admin', 'admin/owner']);
+    require_role(['cashier', 'inventory_manager']);
     $data = body();
     require_fields($data, ['sale_tx_id', 'qty', 'reason']);
 
