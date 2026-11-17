@@ -26,7 +26,7 @@ if ($method === 'GET') {
 }
 
 if ($method === 'POST') {
-    require_role(['admin/owner', 'admin', 'inventory_manager']);
+    require_role(['inventory_manager']);
     $data = body();
     require_fields($data, ['name']);
     $name = trim($data['name']);

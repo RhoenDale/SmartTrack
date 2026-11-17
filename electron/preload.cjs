@@ -47,17 +47,6 @@ contextBridge.exposeInMainWorld('smarttrack', {
    */
   checkXampp: () => invoke('check-xampp'),
 
-  /** Start or stop a temporary public Cloudflare link to this local app. */
-  getShareStatus: () => invoke('share-status'),
-  startShare: () => invoke('share-start'),
-  stopShare: () => invoke('share-stop'),
-  copyText: (text) => invoke('copy-text', text),
-  onShareStatus: (callback) => {
-    const listener = (_event, status) => callback(status);
-    ipcRenderer.on('share-status', listener);
-    return () => ipcRenderer.removeListener('share-status', listener);
-  },
-
   // ── File system helpers ───────────────────────────────────────────────────
 
   /**

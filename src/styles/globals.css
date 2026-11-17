@@ -160,4 +160,10 @@
       rgba(255, 255, 255, 0) 100%
     );
   }
+
+  @media (prefers-reduced-motion: reduce) {
+    .yt-shimmer-box::after {
+      animation: none;
+    }
+  }
 }

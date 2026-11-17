@@ -116,13 +116,50 @@ if ($method === 'GET') {
 
 json_response(['error' => 'Method not allowed.'], 405);
 
+// ─── Expiry Gate & Discount Validation Helpers ────────────────────────────────
+
+function assert_sale_batches_safe(string $productName, array $consumed): void {
+    $todayMidnight = strtotime(date('Y-m-d'));
+    foreach ($consumed as $batch) {
+        $expiryRaw = $batch['expiry'] ?? null;
+        if ($expiryRaw === null || $expiryRaw === '') continue;
+
+        $expiryTs = strtotime(date('Y-m-d', strtotime((string)$expiryRaw)));
+        if ($expiryTs === false) continue;
+
+        $daysLeft = (int)floor(($expiryTs - $todayMidnight) / 86400);
+        $batchId = (string)($batch['batchId'] ?? '');
+        $expiryFmt = date('m/d/Y', $expiryTs);
+
+        if ($daysLeft <= 0) {
+            throw new DomainException(
+                "Cannot sell \"{$productName}\" — batch (ID: {$batchId}) has already EXPIRED on {$expiryFmt}. Remove this batch from inventory immediately."
+            );
+        }
+        if ($daysLeft <= 30) {
+            throw new DomainException(
+                "Cannot sell \"{$productName}\" — batch (ID: {$batchId}) expires in {$daysLeft} day" . ($daysLeft === 1 ? '' : 's') . " ({$expiryFmt}). Products within 30 days of expiry cannot be sold. Please remove or update this batch."
+            );
+        }
+    }
+}
+
+function validate_customer_exemption_fields(bool $required, string $type, string $idNumber): void {
+    if (!$required) return;
+    $allowedExemptionTypes = ['Senior Citizen', 'PWD', 'Other Qualified ID'];
+    if (!in_array($type, $allowedExemptionTypes, true)) {
+        json_response(['error' => 'Invalid VAT exemption ID type.'], 422);
+    }
+    if ($idNumber === '') {
+        json_response(['error' => 'Customer ID number is required for VAT exemption.'], 422);
+    }
+}
+
 // ─── Handlers ─────────────────────────────────────────────────────────────────
 
 function handle_sale(PDO $pdo, array $authUser): void {
-    // Admin and Admin/Owner accounts are read-only.
-    if (user_has_role($authUser, ['admin', 'admin/owner']) && !user_has_role($authUser, 'cashier')) {
-        json_response(['error' => 'Admins cannot create sales. Only cashiers and inventory managers have this permission.'], 403);
-    }
+    // Only Cashiers can create POS sales (Admins and Inventory Managers cannot).
+    require_role(['cashier']);
 
     $data = body();
     $items = $data['items'] ?? null;
@@ -140,17 +177,9 @@ function handle_sale(PDO $pdo, array $authUser): void {
     $customerVatExempt      = !empty($data['customer_vat_exempt']);
     $customerExemptionType  = trim((string)($data['customer_exemption_type'] ?? ''));
     $customerIdNumber       = trim((string)($data['customer_id_number'] ?? ''));
-    $allowedExemptionTypes  = ['Senior Citizen', 'PWD', 'Other Qualified ID'];
-    if ($customerVatExempt) {
-        if (!in_array($customerExemptionType, $allowedExemptionTypes, true)) {
-            json_response(['error' => 'Invalid VAT exemption ID type.'], 422);
-        }
-        if ($customerIdNumber === '') {
-            json_response(['error' => 'Customer ID number is required for VAT exemption.'], 422);
-        }
-    }
+    validate_customer_exemption_fields($customerVatExempt, $customerExemptionType, $customerIdNumber);
 
-    $prod = $pdo->prepare('SELECT * FROM products WHERE id = ?');
+    $prod = $pdo->prepare('SELECT * FROM products WHERE id = ? AND ' . product_not_deleted_sql($pdo, 'products'));
     $prod->execute([$productId]);
     $product = $prod->fetch();
     if (!$product) json_response(['error' => 'Product not found.'], 404);
@@ -165,6 +194,7 @@ function handle_sale(PDO $pdo, array $authUser): void {
     $amount      = $shelfAmount;
 
     $isProductVatExempt = false; // VAT-exempt is a sale-level flag (SC/PWD), not per product
+    $discountAmount = 0.0;
     if ($customerVatExempt) {
         // SC/PWD discount: remove VAT (÷1.12), then 20% off the pre-tax amount
         $discountBase = round($shelfAmount / 1.12, 2);
@@ -185,49 +215,19 @@ function handle_sale(PDO $pdo, array $authUser): void {
     $cvType   = $customerVatExempt ? $customerExemptionType : null;
     $cvId     = $customerVatExempt ? $customerIdNumber      : null;
 
-    $batchStmt = $pdo->prepare(
-        "SELECT batch_id, expiry_date, qty
-         FROM product_batches
-         WHERE product_id = ? AND qty > 0
-         ORDER BY received_date ASC, id ASC
-         LIMIT 1"
-    );
-    $batchStmt->execute([$productId]);
-    $firstBatch = $batchStmt->fetch();
-    if ($firstBatch && $firstBatch['expiry_date'] !== null) {
-        $daysLeft = (strtotime($firstBatch['expiry_date']) - time()) / 86400;
-        if ($daysLeft <= 0) {
-            json_response([
-                'error'         => "Cannot sell \"{$product['name']}\" — the first batch (ID: {$firstBatch['batch_id']}) has already EXPIRED on " . date('m/d/Y', strtotime($firstBatch['expiry_date'])) . ". Remove this batch from inventory immediately.",
-                'type'          => 'expiry_block',
-                'batchId'       => $firstBatch['batch_id'],
-                'expiryDate'    => $firstBatch['expiry_date'],
-                'daysLeft'      => (int)$daysLeft,
-            ], 422);
-        }
-        if ($daysLeft <= 30) {
-            json_response([
-                'error'         => "Cannot sell \"{$product['name']}\" — the first batch (ID: {$firstBatch['batch_id']}) expires in " . ceil($daysLeft) . " days (" . date('m/d/Y', strtotime($firstBatch['expiry_date'])) . "). Products within 30 days of expiry cannot be sold. Please remove or update this batch.",
-                'type'          => 'expiry_block',
-                'batchId'       => $firstBatch['batch_id'],
-                'expiryDate'    => $firstBatch['expiry_date'],
-                'daysLeft'      => (int)ceil($daysLeft),
-            ], 422);
-        }
-    }
-
     $pdo->beginTransaction();
     try {
         $consumed = fifo_deduct($productId, $qty);
+        assert_sale_batches_safe((string)$product['name'], $consumed);
 
         $txId = gen_tx_id('TXN');
         $pdo->prepare(
             'INSERT INTO transactions
-             (id, type, sale_group_id, product_name, product_id, qty, sale_qty, sale_unit, units_per_sale, amount, pre_tax_amount, tax_amount, tax_rate,
+             (id, type, sale_group_id, product_name, product_id, qty, sale_qty, sale_unit, units_per_sale, amount, discount_amount, pre_tax_amount, tax_amount, tax_rate,
               customer_vat_exempt, customer_exemption_type, customer_id_number,
               staff, staff_id, status, note, transacted_at)
-              VALUES (?, "sale", NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "completed", ?, NOW())'
-          )->execute([$txId, $product['name'], $productId, $qty, $saleQty, $saleUnit, $unitsPerSale, $amount,
+              VALUES (?, "sale", NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "completed", ?, NOW())'
+          )->execute([$txId, $product['name'], $productId, $qty, $saleQty, $saleUnit, $unitsPerSale, $amount, $discountAmount,
                     $preTaxAmount, $taxAmount, $vatRate,
                     $cvExempt, $cvType, $cvId,
                     staff_abbrev($authUser['name']), $authUser['id'], $note]);
@@ -265,15 +265,14 @@ function handle_multi_sale(PDO $pdo, array $authUser, array $data, array $items)
     $customerVatExempt      = !empty($data['customer_vat_exempt']);
     $customerExemptionType  = trim((string)($data['customer_exemption_type'] ?? ''));
     $customerIdNumber       = trim((string)($data['customer_id_number'] ?? ''));
-    $allowedExemptionTypes  = ['Senior Citizen', 'PWD', 'Other Qualified ID'];
-    if ($customerVatExempt) {
-        if (!in_array($customerExemptionType, $allowedExemptionTypes, true)) {
-            json_response(['error' => 'Invalid VAT exemption ID type.'], 422);
-        }
-        if ($customerIdNumber === '') {
-            json_response(['error' => 'Customer ID number is required for VAT exemption.'], 422);
+    $hasAnyDiscountItem     = $customerVatExempt;
+    foreach ($items as $it) {
+        if (is_array($it) && !empty($it['apply_customer_discount'])) {
+            $hasAnyDiscountItem = true;
+            break;
         }
     }
+    validate_customer_exemption_fields($hasAnyDiscountItem, $customerExemptionType, $customerIdNumber);
 
     $saleGroupId = gen_tx_id('SALE');
     $txList = [];
@@ -292,7 +291,7 @@ function handle_multi_sale(PDO $pdo, array $authUser, array $data, array $items)
                 throw new InvalidArgumentException("Invalid item at position {$index}. Product ID and qty are required.");
             }
 
-            $productStmt = $pdo->prepare('SELECT * FROM products WHERE id = ?');
+            $productStmt = $pdo->prepare('SELECT * FROM products WHERE id = ? AND ' . product_not_deleted_sql($pdo, 'products'));
             $productStmt->execute([$productId]);
             $product = $productStmt->fetch();
             if (!$product) {
@@ -326,23 +325,8 @@ function handle_multi_sale(PDO $pdo, array $authUser, array $data, array $items)
                 $taxAmount    = round($amount - $preTaxAmount, 2);
             }
 
-            $firstBatchStmt = $pdo->prepare(
-                "SELECT batch_id, expiry_date, qty
-                 FROM product_batches
-                 WHERE product_id = ? AND qty > 0
-                 ORDER BY received_date ASC, id ASC
-                 LIMIT 1"
-            );
-            $firstBatchStmt->execute([$productId]);
-            $firstBatch = $firstBatchStmt->fetch();
-            if ($firstBatch && $firstBatch['expiry_date'] !== null) {
-                $daysLeft = (strtotime($firstBatch['expiry_date']) - time()) / 86400;
-                if ($daysLeft <= 30) {
-                    throw new InvalidArgumentException("Cannot sell \"{$product['name']}\" — batch {$firstBatch['batch_id']} expires soon (within 30-day safety gate).");
-                }
-            }
-
             $consumed = fifo_deduct($productId, $qty);
+            assert_sale_batches_safe((string)$product['name'], $consumed);
             $txId = gen_tx_id('TXN');
             $note = $applyCustomerDiscount
                 ? "Customer discount: {$customerExemptionType} ID {$customerIdNumber}"
@@ -404,6 +388,7 @@ function handle_multi_sale(PDO $pdo, array $authUser, array $data, array $items)
 }
 
 function handle_adjustment(PDO $pdo, array $authUser): void {
+    require_role(['inventory_manager']);
     $data = body();
     require_fields($data, ['product_id', 'qty', 'reason', 'adjust_type']);
 

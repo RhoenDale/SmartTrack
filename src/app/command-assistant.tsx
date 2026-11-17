@@ -1,8 +1,7 @@
-import React, { useState, useEffect, useRef, useId } from "react";
+import React, { memo, useState, useEffect, useRef, useId } from "react";
 import { createPortal } from "react-dom";
 import {
   X,
-  ArrowRight,
   TrendingUp,
   DollarSign,
   ShoppingCart,
@@ -11,7 +10,7 @@ import {
   CornerDownLeft,
   LoaderCircle,
 } from "lucide-react";
-import { getReorderUnits, groupCartTransactions, type Product, type Transaction, type AuthUser, type Page } from "./data";
+import { getReorderUnits, groupCartTransactions, hasUserRole, type Product, type Transaction, type AuthUser, type Page } from "./data";
 import { analyticsApi } from "./api";
 import { fmt, InfoTip } from "./shared";
 
@@ -75,7 +74,7 @@ function parseTransactionDate(value: string): Date | null {
   return parsed;
 }
 
-export function SmartBotMascot({ className = "" }: { className?: string }) {
+export function SmartBotMascot({ className = "", floating = true }: { className?: string; floating?: boolean }) {
   const gradientId = useId().replace(/:/g, "");
   const shellGradient = `${gradientId}-shell`;
   const sideGradient = `${gradientId}-side`;
@@ -89,7 +88,7 @@ export function SmartBotMascot({ className = "" }: { className?: string }) {
       focusable="false"
       viewBox="0 0 80 80"
       fill="none"
-      className={`overflow-visible drop-shadow-[0_5px_4px_rgba(12,45,57,0.22)] ${className}`}
+      className={`overflow-visible ${className}`}
     >
       <defs>
         <linearGradient id={shellGradient} x1="20" y1="15" x2="61" y2="59" gradientUnits="userSpaceOnUse">
@@ -117,7 +116,7 @@ export function SmartBotMascot({ className = "" }: { className?: string }) {
         </radialGradient>
       </defs>
       <ellipse cx="40" cy="70" rx="17" ry="3.5" fill="var(--foreground)" opacity=".14" />
-      <g className="smartbot-mascot-float">
+      <g className={floating ? "smartbot-mascot-float" : undefined}>
       <path d="M40 8v7" stroke="var(--muted-foreground)" strokeWidth="3" strokeLinecap="round" />
       <circle cx="40" cy="7" r="4" fill="var(--primary)" />
       <circle cx="40" cy="7" r="2" fill="var(--primary-foreground)" />
@@ -141,7 +140,7 @@ export function SmartBotMascot({ className = "" }: { className?: string }) {
   );
 }
 
-export default function CommandAssistant({
+const CommandAssistant = memo(function CommandAssistant({
   user,
   inventory,
   transactions,
@@ -191,12 +190,34 @@ export default function CommandAssistant({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [enabled, isOpen]);
 
+  const prevMsgCountRef = useRef(messages.length);
+
+  // Focus input AFTER TrackHub/Modal expand transition settles so focus layout + caret
+  // paint never compete with the opening morph frames.
   useEffect(() => {
-    if (isOpen) {
-      setTimeout(() => inputRef.current?.focus(), 150);
+    if (!isOpen) return;
+    const focusTimer = window.setTimeout(() => {
+      inputRef.current?.focus({ preventScroll: true });
+    }, isTrackHubMode ? 280 : 180);
+    const rafId = window.requestAnimationFrame(() => {
+      chatBottomRef.current?.scrollIntoView({ behavior: "auto" });
+    });
+    return () => {
+      window.clearTimeout(focusTimer);
+      window.cancelAnimationFrame(rafId);
+    };
+  }, [isOpen, isTrackHubMode]);
+
+  useEffect(() => {
+    if (!isOpen) {
+      prevMsgCountRef.current = messages.length;
+      return;
+    }
+    if (messages.length !== prevMsgCountRef.current) {
+      prevMsgCountRef.current = messages.length;
       chatBottomRef.current?.scrollIntoView({ behavior: "smooth" });
     }
-  }, [isOpen, messages]);
+  }, [isOpen, messages.length]);
 
   const addMessage = (msg: Omit<Message, "id">) => {
     setMessages(prev => [...prev, { ...msg, id: Math.random().toString(36).substring(2, 9) }]);
@@ -458,8 +479,21 @@ export default function CommandAssistant({
     }
 
     // 5. Quick Action Triggers
+    const canSell = hasUserRole(user, "cashier");
+    const canManageInventory = hasUserRole(user, "inventory_manager");
+
     if (q.includes("new sale") || q.includes("add transaction") || q.includes("create sale") || q === "sell" || q.includes("bag-ong halin") || q.includes("baligya") || q.includes("bagong benta")) {
       setLoading(false);
+      if (!canSell) {
+        addMessage({
+          sender: "bot",
+          text: lang === "ceb"
+            ? "Pasensya, ang Cashier role ra ang makabuhat og bag-ong halin (New Sale)."
+            : "Only users with the Cashier active role can create a New Sale.",
+          type: "warning",
+        });
+        return;
+      }
       addMessage({
         sender: "bot",
         text: lang === "ceb" ? "Gia-ablihan ang POS Bag-ong Halin terminal..." : "Launching POS New Sale terminal...",
@@ -472,6 +506,16 @@ export default function CommandAssistant({
 
     if (q.includes("add product") || q.includes("create product") || q.includes("new item") || q.includes("dugang tambal") || q.includes("magdagdag ng produkto")) {
       setLoading(false);
+      if (!canManageInventory) {
+        addMessage({
+          sender: "bot",
+          text: lang === "ceb"
+            ? "Pasensya, ang Inventory Manager role ra ang makadugang og bag-ong produkto."
+            : "Only users with the Inventory Manager active role can add products.",
+          type: "warning",
+        });
+        return;
+      }
       addMessage({
         sender: "bot",
         text: lang === "ceb" ? "Gia-ablihan ang Dugang Tambal (Add Product) modal..." : "Opening Add Product modal...",
@@ -738,7 +782,7 @@ export default function CommandAssistant({
               isHub ? "bg-blue-500/15 border border-blue-400/20" : "bg-primary/10 ring-1 ring-primary/15"
             }`}
           >
-            <SmartBotMascot className="h-8 w-8" />
+            <SmartBotMascot className="h-8 w-8" floating={isOpen} />
           </div>
           <div>
             <div className="flex items-center gap-1.5">
@@ -746,13 +790,13 @@ export default function CommandAssistant({
                 SmartTrack Assistant
               </h3>
               <InfoTip
-                title="About the SmartTrack Assistant"
+                title="SmartTrack Assistant"
                 color="sky"
                 lines={[
-                  "A rule-based pharmacy shortcut assistant for common tasks.",
-                  { label: "Can help with", value: "Stock checks, sales lookups, demand forecasts, calculations, and navigation" },
-                  { label: "How it responds", value: "Matches supported commands and queries against pharmacy data" },
-                  { label: "Not for", value: "Open-ended questions or medical advice" },
+                  "Quick rule-based command assistant for everyday pharmacy lookups.",
+                  { label: "Can help with", value: "Stock checks, sales summaries, forecasts, calculations, and navigation" },
+                  { label: "How it works", value: "Matches supported queries directly against live pharmacy records" },
+                  { label: "Limitations", value: "Does not answer open-ended questions or give medical advice" },
                 ]}
               />
             </div>
@@ -825,7 +869,7 @@ export default function CommandAssistant({
                   isHub ? "bg-blue-500/15" : "bg-primary/10"
                 }`}
               >
-                <SmartBotMascot className="h-6 w-6" />
+                <SmartBotMascot className="h-6 w-6" floating={false} />
               </span>
             )}
             <div
@@ -862,14 +906,13 @@ export default function CommandAssistant({
                 <button
                   type="button"
                   onClick={m.onAction}
-                  className={`mt-2.5 inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[11px] font-semibold transition-colors cursor-pointer ${
+                  className={`mt-2.5 inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[11px] font-semibold transition-all active:scale-95 cursor-pointer ${
                     isHub
-                      ? "border-blue-400/40 bg-blue-500/20 text-blue-300 hover:bg-blue-500/30"
-                      : "border-primary/30 bg-primary/15 text-primary hover:bg-primary/25"
+                      ? "border-blue-400/40 bg-blue-500/20 text-blue-200 hover:bg-blue-500/30"
+                      : "border-primary/25 bg-primary/12 text-primary hover:bg-primary/20"
                   }`}
                 >
-                  {m.actionLabel}
-                  <ArrowRight size={12} />
+                  <span>{m.actionLabel}</span>
                 </button>
               )}
             </div>
@@ -878,7 +921,7 @@ export default function CommandAssistant({
 
         {loading && (
           <div className="flex items-center gap-2.5 pl-1 text-[11px]">
-            <SmartBotMascot className="h-7 w-7" />
+            <SmartBotMascot className="h-7 w-7" floating={isOpen} />
             <span
               className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 ${
                 isHub
@@ -912,7 +955,7 @@ export default function CommandAssistant({
               value={query}
               onChange={e => setQuery(e.target.value)}
               placeholder="Ask about stock, sales, or a task…"
-              className={`w-full rounded-xl border px-3.5 py-2.5 pr-8 text-xs transition-all focus:outline-none focus:ring-2 ${
+              className={`w-full rounded-xl border px-3.5 py-2.5 pr-8 text-xs transition-colors focus:outline-none focus:ring-2 ${
                 isHub
                   ? "border-white/10 bg-white/[0.06] text-white placeholder:text-white/40 focus:border-blue-500 focus:ring-blue-500/20"
                   : "border-border bg-background text-foreground placeholder:text-muted-foreground focus:border-primary focus:ring-primary/20"
@@ -990,7 +1033,7 @@ export default function CommandAssistant({
           aria-expanded={isOpen}
         >
           <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-blue-500/15">
-            <SmartBotMascot className="h-7 w-7" />
+            <SmartBotMascot className="h-7 w-7" floating={isOpen} />
           </span>
           {sidebarExpanded && (
             <>
@@ -1029,4 +1072,6 @@ export default function CommandAssistant({
         )}
     </>
   );
-}
+});
+
+export default CommandAssistant;

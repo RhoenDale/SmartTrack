@@ -1,9 +1,9 @@
-import { useEffect, useState } from "react";
+import { memo, useEffect, useMemo, useState } from "react";
 import { Package, AlertTriangle, Check, X, Pencil, RefreshCw, Calendar, Search } from "lucide-react";
 import { getReorderUnits, hasUserRole, sortBatchesByExpiry, type Product } from "./data";
-import { StockBadge } from "./shared";
+import { StockBadge, SegmentedTabs, InfoTip } from "./shared";
 
-export default function StockAlertsPage({
+const StockAlertsPage = memo(function StockAlertsPage({
   inventory,
   onGoToInventory,
   onEditProduct,
@@ -18,35 +18,47 @@ export default function StockAlertsPage({
 }) {
   const canManageStock = canManageStockOverride ?? hasUserRole({ roles: userRoles }, "inventory_manager");
 
-  const outOfStock = inventory.filter(i => i.status === "out_of_stock");
-  const critical   = inventory.filter(i => i.status === "critical");
-  const low        = inventory.filter(i => i.status === "low");
-  const moderate   = inventory.filter(i => i.status === "moderate");
-  const alertItems = [...outOfStock, ...critical, ...low, ...moderate];
+  const { outOfStock, critical, low, moderate, alertItems, expiryProducts, expired, expiring30, expiring90, earliestBatchIdById } = useMemo(() => {
+    const out = inventory.filter(i => i.status === "out_of_stock");
+    const crit = inventory.filter(i => i.status === "critical");
+    const lw = inventory.filter(i => i.status === "low");
+    const mod = inventory.filter(i => i.status === "moderate");
+    const alerts = [...out, ...crit, ...lw, ...mod];
 
-  const now = Date.now();
+    const now = Date.now();
+    const batchIdMap = new Map<string, string>();
+    const getExpiryStatus = (p: Product) => {
+      const batches = sortBatchesByExpiry(p.batches);
+      if (batches[0]?.batchId) batchIdMap.set(p.id, batches[0].batchId);
+      if (batches.length === 0 || !batches[0].expiryDate) return null;
+      const daysLeft = (new Date(batches[0].expiryDate).getTime() - now) / (1000 * 60 * 60 * 24);
+      const expiry = batches[0].expiry;
+      if (daysLeft <= 0) return { level: "expired" as const, daysLeft: Math.abs(Math.ceil(daysLeft)), expiry, batchId: batches[0].batchId };
+      if (daysLeft <= 30) return { level: "within30" as const, daysLeft: Math.ceil(daysLeft), expiry, batchId: batches[0].batchId };
+      if (daysLeft <= 90) return { level: "within90" as const, daysLeft: Math.ceil(daysLeft), expiry, batchId: batches[0].batchId };
+      return null;
+    };
 
-  const getExpiryStatus = (p: Product) => {
-    const batches = sortBatchesByExpiry(p.batches);
-    if (batches.length === 0 || !batches[0].expiryDate) return null;
-    const daysLeft = (new Date(batches[0].expiryDate).getTime() - now) / (1000 * 60 * 60 * 24);
-    const expiry = batches[0].expiry;
-    if (daysLeft <= 0)      return { level: "expired"  as const, daysLeft: Math.abs(Math.ceil(daysLeft)), expiry, batchId: batches[0].batchId };
-    if (daysLeft <= 30) return { level: "within30" as const, daysLeft: Math.ceil(daysLeft), expiry, batchId: batches[0].batchId };
-    if (daysLeft <= 90) return { level: "within90" as const, daysLeft: Math.ceil(daysLeft), expiry, batchId: batches[0].batchId };
-    return null;
-  };
+    const expProducts = inventory
+      .map(p => ({ product: p, info: getExpiryStatus(p) }))
+      .filter(x => x.info !== null) as {
+        product: Product;
+        info: { level: "expired" | "within30" | "within90"; daysLeft: number; expiry: string; batchId: string };
+      }[];
 
-  const expiryProducts = inventory
-    .map(p => ({ product: p, info: getExpiryStatus(p) }))
-    .filter(x => x.info !== null) as {
-      product: Product;
-      info: { level: "expired" | "within30" | "within90"; daysLeft: number; expiry: string; batchId: string };
-    }[];
-
-  const expired    = expiryProducts.filter(x => x.info.level === "expired");
-  const expiring30 = expiryProducts.filter(x => x.info.level === "within30");
-  const expiring90 = expiryProducts.filter(x => x.info.level === "within90");
+    return {
+      outOfStock: out,
+      critical: crit,
+      low: lw,
+      moderate: mod,
+      alertItems: alerts,
+      expiryProducts: expProducts,
+      expired: expProducts.filter(x => x.info.level === "expired"),
+      expiring30: expProducts.filter(x => x.info.level === "within30"),
+      expiring90: expProducts.filter(x => x.info.level === "within90"),
+      earliestBatchIdById: batchIdMap,
+    };
+  }, [inventory]);
 
   const severityConfig: Record<Product["status"], { bar: string }> = {
     out_of_stock: { bar: "bg-red-600" },
@@ -72,7 +84,7 @@ export default function StockAlertsPage({
   const [expirySearch, setExpirySearch] = useState("");
   const [expiryStatusFilter, setExpiryStatusFilter] = useState<"all" | "expired" | "within30" | "within90">("all");
 
-  const filteredAlertItems = alertItems.filter(item => {
+  const filteredAlertItems = useMemo(() => alertItems.filter(item => {
     if (stockStatusFilter !== "all" && item.status !== stockStatusFilter) return false;
     const query = stockSearch.trim().toLocaleLowerCase();
     if (!query) return true;
@@ -80,24 +92,37 @@ export default function StockAlertsPage({
     const categories = item.categories?.join(" ") ?? "";
     return [item.name, item.id, item.category, categories, batchIds]
       .some(value => value.toLocaleLowerCase().includes(query));
-  });
-  const filteredExpiryProducts = expiryProducts.filter(({ product, info }) => {
+  }), [alertItems, stockStatusFilter, stockSearch]);
+
+  const filteredExpiryProducts = useMemo(() => expiryProducts.filter(({ product, info }) => {
     if (expiryStatusFilter !== "all" && info.level !== expiryStatusFilter) return false;
     const query = expirySearch.trim().toLocaleLowerCase();
     if (!query) return true;
     const categories = product.categories?.join(" ") ?? "";
     return [product.name, product.id, product.category, categories, info.batchId]
       .some(value => value.toLocaleLowerCase().includes(query));
-  });
+  }), [expiryProducts, expiryStatusFilter, expirySearch]);
 
   return (
-    <div className="flex flex-col w-full max-w-[1480px] mx-auto" style={{ height: "calc(100dvh - 56px)" }}>
+    <div className="flex flex-col w-full overflow-hidden" style={{ height: "calc(100dvh - 56px)" }}>
 
       {/* ── Fixed header ── */}
-      <div className="flex-shrink-0 px-4 sm:px-7 lg:px-8 pt-5 sm:pt-7 pb-0 bg-background border-b border-border/70 z-20">
+      <div className="flex-shrink-0 st-shell-px pt-5 sm:pt-7 pb-0 bg-background border-b border-border/70 z-20">
         <div className="flex items-start sm:items-center justify-between gap-3">
           <div>
-            <h1 className="text-2xl font-semibold tracking-tight text-foreground">Stock alerts</h1>
+            <div className="flex items-center gap-2">
+              <h1 className="text-2xl font-semibold tracking-tight text-foreground">Stock alerts</h1>
+              <InfoTip
+                title="Alert & Expiry Thresholds"
+                color="amber"
+                lines={[
+                  "Flags products needing restock or expiry review before dispensing.",
+                  { label: "Stock Tiers", value: "Moderate (<150% ROP), Low (<100% ROP), Critical (<40% ROP), Out (0)" },
+                  { label: "Expiry Tiers", value: "Groups Expired batches, items within 30 days, and items within 90 days" },
+                  { label: "POS Safeguard", value: "Expired batches are automatically blocked from checkout at POS" },
+                ]}
+              />
+            </div>
             <p className="text-sm text-muted-foreground mt-1">
               {alertItems.length + expiryProducts.length === 0
                 ? "Inventory levels and expiry dates at a glance"
@@ -114,44 +139,41 @@ export default function StockAlertsPage({
         </div>
 
         {/* Tabs */}
-        <div className="flex items-center gap-5 mt-5">
-          <button
-            type="button"
-            onClick={() => setActiveTab("stock")}
-            aria-current={activeTab === "stock" ? "page" : undefined}
-            className={`flex items-center gap-2 border-b-2 px-0.5 py-3 text-sm transition-colors ${activeTab === "stock" ? "border-primary font-semibold text-foreground" : "border-transparent font-medium text-muted-foreground hover:text-foreground"}`}
-          >
-            <AlertTriangle size={14} />Stock levels
-            {alertItems.length > 0 && (
-              <span className="text-xs tabular-nums text-muted-foreground">
-                {alertItems.length}
-              </span>
-            )}
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveTab("expiry")}
-            aria-current={activeTab === "expiry" ? "page" : undefined}
-            className={`flex items-center gap-2 border-b-2 px-0.5 py-3 text-sm transition-colors ${activeTab === "expiry" ? "border-primary font-semibold text-foreground" : "border-transparent font-medium text-muted-foreground hover:text-foreground"}`}
-          >
-            <Calendar size={14} />Expiry dates
-            {expiryProducts.length > 0 && (
-              <span className="text-xs tabular-nums text-muted-foreground">
-                {expiryProducts.length}
-              </span>
-            )}
-          </button>
-        </div>
+        <SegmentedTabs<"stock" | "expiry">
+          variant="underline"
+          ariaLabel="Alert categories"
+          value={activeTab}
+          onChange={setActiveTab}
+          className="mt-5"
+          items={[
+            {
+              id: "stock",
+              label: "Stock levels",
+              icon: <AlertTriangle size={14} />,
+              badge: alertItems.length > 0 ? (
+                <span className="text-xs tabular-nums text-muted-foreground">{alertItems.length}</span>
+              ) : undefined,
+            },
+            {
+              id: "expiry",
+              label: "Expiry dates",
+              icon: <Calendar size={14} />,
+              badge: expiryProducts.length > 0 ? (
+                <span className="text-xs tabular-nums text-muted-foreground">{expiryProducts.length}</span>
+              ) : undefined,
+            },
+          ]}
+        />
       </div>
 
-      {/* ── Scrollable content ── */}
-      <div className="flex-1 overflow-y-auto px-4 sm:px-7 lg:px-8 py-6 space-y-6">
+      {/* ── Fixed workspace content (only table scrolls) ── */}
+      <div className="flex-1 min-h-0 flex flex-col st-shell-px py-5 gap-4 overflow-hidden">
 
       {/* ── Stock Levels tab ──────────────────────────────────────────────── */}
       {activeTab === "stock" && (
         <>
           {/* Summary cards */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+          <div className="flex-shrink-0 grid grid-cols-2 sm:grid-cols-4 gap-4">
             {[
               { label: "Out of Stock", count: outOfStock.length, key: "out_of_stock" as const, color: "text-rose-600 dark:text-rose-400", icon: <X size={15} /> },
               { label: "Critical", count: critical.length, key: "critical" as const, color: "text-red-600 dark:text-red-400", icon: <AlertTriangle size={15} /> },
@@ -163,7 +185,7 @@ export default function StockAlertsPage({
                 type="button"
                 aria-pressed={stockStatusFilter === c.key}
                 onClick={() => setStockStatusFilter(c.key)}
-                className={`rounded-xl border bg-card p-4 text-left transition-all hover:border-primary/40 hover:shadow-sm ${
+                className={`rounded-xl border bg-card p-4 text-left transition-colors hover:border-primary/40 ${
                   stockStatusFilter === c.key ? "border-primary ring-2 ring-primary/15" : "border-border"
                 }`}
               >
@@ -177,7 +199,7 @@ export default function StockAlertsPage({
             ))}
           </div>
 
-          <div className="flex flex-col gap-3 rounded-xl border border-border bg-card p-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex-shrink-0 flex flex-col gap-3 rounded-xl border border-border bg-card p-3 sm:flex-row sm:items-center sm:justify-between">
             <label className="relative block w-full sm:max-w-sm">
               <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
               <input
@@ -224,8 +246,8 @@ export default function StockAlertsPage({
               <p className="text-xs text-muted-foreground mt-1">{alertItems.length === 0 ? "No products currently need reordering" : "Try another search or choose a different status filter."}</p>
             </div>
           ) : (
-            <div className="bg-card border border-border rounded-xl overflow-hidden">
-              <div className="overflow-x-auto" data-table-scroll="fixed">
+            <div className="flex-1 min-h-0 flex flex-col bg-card border border-border rounded-xl overflow-hidden">
+              <div className="flex-1 min-h-0 overflow-x-auto overflow-y-auto" data-table-scroll="fixed">
                 <table className="w-full">
                   <thead className="sticky top-0 z-10 bg-card shadow-sm">
                     <tr className="border-b border-border bg-muted/30">
@@ -235,19 +257,20 @@ export default function StockAlertsPage({
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredAlertItems.map(item => {
+                    {filteredAlertItems.map((item, idx) => {
                       const reorderUnits = getReorderUnits(item);
                       const pct          = reorderUnits > 0 ? Math.min(100, Math.round((item.stock / (reorderUnits * 1.5)) * 100)) : 100;
                       const shortage     = Math.max(0, reorderUnits - item.stock);
                       const cfg          = severityConfig[item.status as keyof typeof severityConfig] ?? severityConfig.good;
+                      const batchId      = earliestBatchIdById.get(item.id);
                       return (
-                        <tr key={item.id} className="border-b border-border/60 last:border-0 hover:bg-muted/20 transition-colors">
+                        <tr key={item.id} className="border-b border-border/60 last:border-0 hover:bg-muted/20">
                           {/* Product */}
                           <td className="px-5 py-3 min-w-[180px]">
                             <p className="text-sm font-medium text-foreground">{item.name}</p>
                             <p className="text-[11px] text-muted-foreground mt-0.5">
                               ID {item.id}
-                              {item.batches.length > 0 && <span> · Batch {sortBatchesByExpiry(item.batches)[0]?.batchId ?? "—"}</span>}
+                              {item.batches.length > 0 && <span> · Batch {batchId ?? "—"}</span>}
                             </p>
                           </td>
                           {/* Category */}
@@ -256,7 +279,10 @@ export default function StockAlertsPage({
                           <td className="px-4 py-3 min-w-[160px]">
                             <span className="text-sm font-semibold tabular-nums text-foreground">{item.stock.toLocaleString()} <span className="text-xs font-normal text-muted-foreground">units</span></span>
                             <div className="mt-2 h-1.5 w-32 bg-muted rounded-full overflow-hidden" role="progressbar" aria-label={`${item.name} stock relative to reorder point`} aria-valuenow={Math.min(100, pct)} aria-valuemin={0} aria-valuemax={100}>
-                              <div className={`h-full rounded-full transition-all ${cfg.bar}`} style={{ width: `${pct}%` }} />
+                              <div
+                                className={`h-full rounded-full st-bar-fill ${cfg.bar}`}
+                                style={{ width: `${pct}%`, animationDelay: `${Math.min(idx * 25, 200)}ms` }}
+                              />
                             </div>
                           </td>
                           {/* Reorder point */}
@@ -292,7 +318,7 @@ export default function StockAlertsPage({
                   </tbody>
                 </table>
               </div>
-              <div className="px-5 py-3 border-t border-border text-xs text-muted-foreground">
+              <div className="flex-shrink-0 px-5 py-3 border-t border-border text-xs text-muted-foreground">
                 Showing {filteredAlertItems.length} of {alertItems.length} products
               </div>
             </div>
@@ -304,7 +330,7 @@ export default function StockAlertsPage({
       {activeTab === "expiry" && (
         <>
           {/* Summary cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="flex-shrink-0 grid grid-cols-1 sm:grid-cols-3 gap-4">
             {[
               { label: "Expired", count: expired.length, key: "expired" as const, color: "text-red-600 dark:text-red-400", icon: <X size={15} /> },
               { label: "Within 30 days", count: expiring30.length, key: "within30" as const, color: "text-orange-600 dark:text-orange-400", icon: <AlertTriangle size={15} /> },
@@ -315,7 +341,7 @@ export default function StockAlertsPage({
                 type="button"
                 aria-pressed={expiryStatusFilter === c.key}
                 onClick={() => setExpiryStatusFilter(c.key)}
-                className={`rounded-xl border bg-card p-4 text-left transition-all hover:border-primary/40 hover:shadow-sm ${
+                className={`rounded-xl border bg-card p-4 text-left transition-colors hover:border-primary/40 ${
                   expiryStatusFilter === c.key ? "border-primary ring-2 ring-primary/15" : "border-border"
                 }`}
               >
@@ -329,7 +355,7 @@ export default function StockAlertsPage({
             ))}
           </div>
 
-          <div className="flex flex-col gap-3 rounded-xl border border-border bg-card p-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex-shrink-0 flex flex-col gap-3 rounded-xl border border-border bg-card p-3 sm:flex-row sm:items-center sm:justify-between">
             <label className="relative block w-full sm:max-w-sm">
               <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
               <input
@@ -375,8 +401,8 @@ export default function StockAlertsPage({
               <p className="text-xs text-muted-foreground mt-1">{expiryProducts.length === 0 ? "No batches are currently within the alert window." : "Try another search or choose a different expiry filter."}</p>
             </div>
           ) : (
-            <div className="bg-card border border-border rounded-xl overflow-hidden">
-              <div className="overflow-x-auto" data-table-scroll="fixed">
+            <div className="flex-1 min-h-0 flex flex-col bg-card border border-border rounded-xl overflow-hidden">
+              <div className="flex-1 min-h-0 overflow-x-auto overflow-y-auto" data-table-scroll="fixed">
                 <table className="w-full">
                   <thead className="sticky top-0 z-10 bg-card shadow-sm">
                     <tr className="border-b border-border bg-muted/30">
@@ -449,7 +475,7 @@ export default function StockAlertsPage({
                   </tbody>
                 </table>
               </div>
-              <div className="px-5 py-3 border-t border-border text-xs text-muted-foreground">
+              <div className="flex-shrink-0 px-5 py-3 border-t border-border text-xs text-muted-foreground">
                 Showing {filteredExpiryProducts.length} of {expiryProducts.length} products
               </div>
             </div>
@@ -459,4 +485,6 @@ export default function StockAlertsPage({
       </div>{/* end scrollable content */}
     </div>
   );
-}
+});
+
+export default StockAlertsPage;

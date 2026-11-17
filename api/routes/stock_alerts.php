@@ -21,12 +21,13 @@ $rows = $pdo->query(
                       FROM product_category_map pcm
                       JOIN categories c ON c.id = pcm.category_id
                       WHERE pcm.product_id = p.id), '') AS category,
-            p.reorder, p.price, p.status,
+            p.reorder, COALESCE(p.units_per_pack, 1) AS units_per_pack, p.price, p.status,
             COALESCE(SUM(b.qty),0) AS stock,
             MIN(b.expiry_date)     AS earliest_expiry
      FROM products p
      LEFT JOIN product_batches b ON b.product_id = p.id AND b.qty > 0
-     GROUP BY p.id, p.name, p.reorder, p.price, p.status"
+     WHERE " . product_not_deleted_sql($pdo, 'p') . "
+     GROUP BY p.id, p.name, p.reorder, p.units_per_pack, p.price, p.status"
 )->fetchAll(PDO::FETCH_ASSOC);
 
 $now = time();
@@ -37,23 +38,25 @@ $expiryAlerts = [];
 foreach ($rows as $r) {
     $stock  = (int)$r['stock'];
     $reorder = (int)$r['reorder'];
+    $reorderUnits = $reorder * max(1, (int)$r['units_per_pack']);
     $expiry = $r['earliest_expiry'];
 
     // Stock alerts
     if (in_array($r['status'], ['out_of_stock','critical','low','moderate'])) {
-        $pct      = $reorder > 0 ? min(100, round(($stock / ($reorder * 1.5)) * 100)) : 100;
-        $shortage = max(0, $reorder - $stock);
+        $pct      = $reorderUnits > 0 ? min(100, round(($stock / ($reorderUnits * 1.5)) * 100)) : 100;
+        $shortage = max(0, $reorderUnits - $stock);
         $stockAlerts[] = [
-            'id'       => $r['id'],
-            'name'     => $r['name'],
-            'category' => $r['category'],
-            'stock'    => $stock,
-            'reorder'  => $reorder,
-            'price'    => (float)$r['price'],
-            'status'   => $r['status'],
-            'shortage' => $shortage,
-            'pct'      => $pct,
-            'expiry'   => $expiry ? date('m/d/Y', strtotime($expiry)) : '—',
+            'id'           => $r['id'],
+            'name'         => $r['name'],
+            'category'     => $r['category'],
+            'stock'        => $stock,
+            'reorder'      => $reorder,
+            'reorderUnits' => $reorderUnits,
+            'price'        => (float)$r['price'],
+            'status'       => $r['status'],
+            'shortage'     => $shortage,
+            'pct'          => $pct,
+            'expiry'       => $expiry ? date('m/d/Y', strtotime($expiry)) : '—',
         ];
     }
 

@@ -18,6 +18,8 @@ export function DatabaseBackupModal({
   const [migrating, setMigrating] = useState(false);
   const [restoreFile, setRestoreFile] = useState<File | null>(null);
   const [confirmRestore, setConfirmRestore] = useState(false);
+  const [confirmDownload, setConfirmDownload] = useState(false);
+  const [confirmMigrate, setConfirmMigrate] = useState(false);
   const [restoring, setRestoring] = useState(false);
   const [statusMsg, setStatusMsg] = useState<{ text: string; type: "success" | "error" } | null>(null);
 
@@ -40,21 +42,17 @@ export function DatabaseBackupModal({
     }
   }, [isOpen]);
 
-  const handleDownloadBackup = () => {
+  const handleDownloadBackup = async () => {
     setDownloading(true);
+    setStatusMsg(null);
     try {
-      const url = backupApi.downloadBackupUrl();
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `smarttrack_backup_${new Date().toISOString().slice(0, 10)}.sql`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
+      await backupApi.downloadBackup();
       if (showToast) showToast("Database backup downloaded successfully.", "success");
       setStatusMsg({ text: "Database backup downloaded successfully.", type: "success" });
       setTimeout(fetchStatus, 1500);
-    } catch {
-      setStatusMsg({ text: "Failed to download backup.", type: "error" });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Failed to download backup.";
+      setStatusMsg({ text: msg, type: "error" });
     } finally {
       setDownloading(false);
     }
@@ -98,7 +96,7 @@ export function DatabaseBackupModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="fixed inset-0 bg-black/45 backdrop-blur-xs" onClick={onClose} />
+      <div className="fixed inset-0 bg-black/45" onClick={onClose} />
       <div className="relative z-10 w-full max-w-lg rounded-2xl border border-border bg-card shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-border px-5 py-4">
@@ -179,7 +177,7 @@ export function DatabaseBackupModal({
               <button
                 type="button"
                 disabled={migrating}
-                onClick={handleRunMigrations}
+                onClick={() => setConfirmMigrate(true)}
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border bg-background hover:bg-muted font-semibold text-foreground text-xs transition-colors cursor-pointer disabled:opacity-50"
               >
                 <RefreshCw size={12} className={migrating ? "animate-spin" : ""} />
@@ -205,7 +203,7 @@ export function DatabaseBackupModal({
             <button
               type="button"
               disabled={downloading}
-              onClick={handleDownloadBackup}
+              onClick={() => setConfirmDownload(true)}
               className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-xs transition-colors cursor-pointer disabled:opacity-50"
             >
               <Download size={14} />
@@ -272,6 +270,28 @@ export function DatabaseBackupModal({
           variant="danger"
           onConfirm={handleConfirmRestore}
           onCancel={() => setConfirmRestore(false)}
+        />
+      )}
+      {confirmDownload && (
+        <ConfirmDialog
+          title="Export Database Backup?"
+          message="Generate and download a full .sql archive of all pharmacy products, staff, and transaction records."
+          confirmLabel="Download .sql"
+          cancelLabel="Cancel"
+          variant="info"
+          onConfirm={() => { setConfirmDownload(false); void handleDownloadBackup(); }}
+          onCancel={() => setConfirmDownload(false)}
+        />
+      )}
+      {confirmMigrate && (
+        <ConfirmDialog
+          title="Run Database Migrations?"
+          message="Check and apply pending schema updates to your local SmartTrack database."
+          confirmLabel="Run Check"
+          cancelLabel="Cancel"
+          variant="warning"
+          onConfirm={() => { setConfirmMigrate(false); void handleRunMigrations(); }}
+          onCancel={() => setConfirmMigrate(false)}
         />
       )}
     </div>

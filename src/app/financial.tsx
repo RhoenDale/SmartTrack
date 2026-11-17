@@ -1,12 +1,12 @@
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { memo, useState, useEffect, useMemo, useCallback } from "react";
 import {
   DollarSign, TrendingUp, TrendingDown, ShoppingCart,
   RotateCcw, Wrench, ChevronLeft, ChevronRight,
   Download, RefreshCw, Calendar, Users, BarChart3,
   ArrowUpRight, Printer, Clock, ChevronUp, ChevronDown,
 } from "lucide-react";
-import { financialApi } from "./api";
-import { fmt, SvgAreaChart, InfoTip, TablePager, ConfirmDialog } from "./shared";
+import { financialApi, clearApiCache } from "./api";
+import { fmt, SvgAreaChart, InfoTip, TablePager, ConfirmDialog, SegmentedTabs, AnimatedMetricText } from "./shared";
 import type { AuthUser } from "./data";
 
 // ─── Types mirroring financialApi return shapes ───────────────────────────────
@@ -60,7 +60,7 @@ function KpiCard({
   icon: typeof DollarSign; trend?: "up" | "down" | "neutral";
 }) {
   return (
-    <div className="bg-card border border-border/80 rounded-2xl p-4 shadow-[0_2px_12px_-4px_rgba(13,148,136,0.06),0_1px_3px_rgba(0,0,0,0.02)] flex flex-col gap-2 hover:shadow-[0_6px_20px_-4px_rgba(13,148,136,0.1),0_2px_4px_rgba(0,0,0,0.03)] transition-all duration-200">
+    <div className="bg-card border border-border/80 rounded-2xl p-4 shadow-[0_2px_12px_-4px_rgba(13,148,136,0.06),0_1px_3px_rgba(0,0,0,0.02)] flex flex-col gap-2 hover:shadow-[0_6px_20px_-4px_rgba(13,148,136,0.1),0_2px_4px_rgba(0,0,0,0.03)] transition-colors duration-150">
       <div className="flex items-center justify-between">
         <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">{label}</p>
         <div className={`w-7 h-7 rounded-lg flex items-center justify-center shadow-2xs ${color.replace("text-", "bg-").split(" ")[0]}/15 border border-current/10`}>
@@ -80,20 +80,20 @@ function KpiCard({
 }
 
 // ─── Main page ────────────────────────────────────────────────────────────────
-export default function FinancialPage({ user, showToast }: { user: AuthUser; showToast?: (msg: string, type?: "success" | "error" | "info") => void }) {
+function FinancialPage({ user, showToast }: { user: AuthUser; showToast?: (msg: string, type?: "success" | "error" | "info") => void }) {
   type Tab = "overview" | "ledger" | "breakdown" | "staff" | "income";
   const [tab, setTab]           = useState<Tab>("overview");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo]     = useState("");
-  const [loading, setLoading]   = useState(true);
+  const [loading, setLoading]   = useState(() => !financialApi.peekSummary("", ""));
   const [refreshing, setRefreshing] = useState(false);
 
   // Data state
-  const [summary,   setSummary]   = useState<Summary | null>(null);
-  const [daily,     setDaily]     = useState<DailyRow[]>([]);
-  const [monthly,   setMonthly]   = useState<MonthlyRow[]>([]);
-  const [breakdown, setBreakdown] = useState<BreakdownRow[]>([]);
-  const [staffData, setStaffData] = useState<StaffRow[]>([]);
+  const [summary,   setSummary]   = useState<Summary | null>(() => (financialApi.peekSummary("", "") as Summary | undefined) ?? null);
+  const [daily,     setDaily]     = useState<DailyRow[]>(() => (financialApi.peekDaily(30) as DailyRow[] | undefined) ?? []);
+  const [monthly,   setMonthly]   = useState<MonthlyRow[]>(() => (financialApi.peekMonthly() as MonthlyRow[] | undefined) ?? []);
+  const [breakdown, setBreakdown] = useState<BreakdownRow[]>(() => (financialApi.peekBreakdown("", "") as BreakdownRow[] | undefined) ?? []);
+  const [staffData, setStaffData] = useState<StaffRow[]>(() => (financialApi.peekStaff("", "") as StaffRow[] | undefined) ?? []);
   const [incomeData,    setIncomeData]    = useState<IncomeRow[]>([]);
   const [incomeTotals,  setIncomeTotals]  = useState<{ revenue: number; costedRevenue: number; totalCost: number; grossProfit: number; margin: number | null } | null>(null);
   const [incomeLoading, setIncomeLoading] = useState(false);
@@ -109,10 +109,6 @@ export default function FinancialPage({ user, showToast }: { user: AuthUser; sho
   const [ledgerLoading, setLedgerLoading] = useState(false);
   const [incomePage,    setIncomePage]    = useState(1);
   const INCOME_PAGE_SIZE = 10;
-  const [breakdownPage, setBreakdownPage] = useState(1);
-  const BREAKDOWN_PAGE_SIZE = 15;
-  const [staffPage,     setStaffPage]     = useState(1);
-  const STAFF_PAGE_SIZE = 10;
   const [showDetailedKpis, setShowDetailedKpis] = useState(false);
 
   // Quick date presets
@@ -205,18 +201,16 @@ export default function FinancialPage({ user, showToast }: { user: AuthUser; sho
     finally { setIncomeLoading(false); }
   }, []);
 
-  // Initial load
+  // Initial load & reload on date filter change (avoid duplicate mount fetches)
   useEffect(() => {
-    setLoading(true);
-    Promise.all([loadOverview("", ""), loadBreakdown("", "")]).finally(() => setLoading(false));
-  }, [loadOverview, loadBreakdown]);
-
-  // Reload on date filter change
-  useEffect(() => {
-    loadOverview(dateFrom, dateTo);
-    loadBreakdown(dateFrom, dateTo);
-    setBreakdownPage(1);
-    setStaffPage(1);
+    let cancelled = false;
+    const isInitialUnfiltered = dateFrom === "" && dateTo === "";
+    const hasWarmSummary = isInitialUnfiltered && Boolean(financialApi.peekSummary("", ""));
+    if (!hasWarmSummary) setLoading(true);
+    Promise.all([loadOverview(dateFrom, dateTo), loadBreakdown(dateFrom, dateTo)]).finally(() => {
+      if (!cancelled) setLoading(false);
+    });
+    return () => { cancelled = true; };
   }, [dateFrom, dateTo, loadOverview, loadBreakdown]);
 
   // Ledger: load when tab opens or filters change
@@ -231,6 +225,7 @@ export default function FinancialPage({ user, showToast }: { user: AuthUser; sho
   }, [dateFrom, dateTo, loadIncome]);
 
   const handleRefresh = async () => {
+    clearApiCache();
     setRefreshing(true);
     await Promise.all([loadOverview(dateFrom, dateTo), loadBreakdown(dateFrom, dateTo)]);
     if (tab === "ledger") await loadLedger(dateFrom, dateTo, ledgerType, ledgerPage);
@@ -248,18 +243,6 @@ export default function FinancialPage({ user, showToast }: { user: AuthUser; sho
     return incomeData.slice(start, start + INCOME_PAGE_SIZE);
   }, [incomeData, incomePage]);
 
-  // Breakdown tab pagination
-  const paginatedBreakdown = useMemo(() => {
-    const start = (breakdownPage - 1) * BREAKDOWN_PAGE_SIZE;
-    return breakdown.slice(start, start + BREAKDOWN_PAGE_SIZE);
-  }, [breakdown, breakdownPage]);
-
-  // Staff tab pagination
-  const paginatedStaff = useMemo(() => {
-    const start = (staffPage - 1) * STAFF_PAGE_SIZE;
-    return staffData.slice(start, start + STAFF_PAGE_SIZE);
-  }, [staffData, staffPage]);
-
   // ── Render helpers ───────────────────────────────────────────────────────────
   const tabs: { id: Tab; label: string; icon: typeof DollarSign }[] = [
     { id: "overview",  label: "Overview",    icon: BarChart3 },
@@ -271,7 +254,7 @@ export default function FinancialPage({ user, showToast }: { user: AuthUser; sho
 
   if (loading) {
     return (
-      <div className="p-4 sm:p-6 space-y-6 w-full max-w-[1400px] mx-auto select-none">
+      <div className="st-shell-px py-4 sm:py-6 space-y-6 w-full select-none">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div className="space-y-2">
             <div className="yt-shimmer-box h-8 w-52 rounded-xl" />
@@ -315,7 +298,7 @@ export default function FinancialPage({ user, showToast }: { user: AuthUser; sho
   }
 
   return (
-    <div className="p-4 sm:p-6 space-y-5 w-full max-w-[1400px] mx-auto printable-financial">
+    <div className="flex flex-col w-full overflow-hidden printable-financial print:!h-auto print:!overflow-visible" style={{ height: "calc(100dvh - 56px)" }}>
       <style>{`@media print {
         body * { visibility: hidden !important; }
         .printable-financial, .printable-financial * { visibility: visible !important; }
@@ -323,23 +306,12 @@ export default function FinancialPage({ user, showToast }: { user: AuthUser; sho
         .no-print { display: none !important; }
       }`}</style>
 
+      {/* ── Fixed Top Controls: Header + Filter Toolbar + Tabs ── */}
+      <div className="flex-shrink-0 st-shell-px pt-4 pb-3 border-b border-border/60 bg-background space-y-3 z-20">
       {/* ── Header & Action Bar ── */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <div className="flex items-center gap-2">
-            <h1 className="text-xl font-bold text-foreground tracking-tight">Financial Management</h1>
-            <InfoTip
-              title="Financial Management Guide"
-              lines={[
-                "Comprehensive revenue, profit margins, tax obligations, and loss ledgers.",
-                { label: "Gross Revenue", value: "Total customer transaction receipts" },
-                { label: "Returns / Refunds", value: "Direct reimbursements deducted from revenue" },
-                { label: "Broken Losses", value: "Cost value of damaged inventory written off" },
-                { label: "12% VAT", value: "Output tax collected and estimated BIR payable" },
-                { label: "Income & COGS", value: "Gross profit margins based on batch purchase cost" },
-              ]}
-            />
-          </div>
+          <h1 className="text-xl font-bold text-foreground tracking-tight">Financial Management</h1>
           <p className="text-xs text-muted-foreground mt-0.5">
             {dateFrom || dateTo
               ? `Filtered: ${dateFrom || "All time"} → ${dateTo || "Present"}`
@@ -348,16 +320,16 @@ export default function FinancialPage({ user, showToast }: { user: AuthUser; sho
         </div>
         <div className="flex items-center gap-2 no-print">
           <button onClick={handleRefresh} disabled={refreshing}
-            className="flex items-center gap-1.5 px-3 py-1.5 border border-border/80 bg-card rounded-xl text-xs font-semibold text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-all shadow-2xs disabled:opacity-50">
+            className="flex items-center gap-1.5 px-3 py-1.5 border border-border/80 bg-card rounded-xl text-xs font-semibold text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors duration-150 shadow-2xs disabled:opacity-50">
             <RefreshCw size={12} className={refreshing ? "animate-spin" : ""} /> Refresh
           </button>
           <button onClick={() => setConfirmExportCsv(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 border border-border/80 bg-card rounded-xl text-xs font-semibold text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-all shadow-2xs"
+            className="flex items-center gap-1.5 px-3 py-1.5 border border-border/80 bg-card rounded-xl text-xs font-semibold text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors duration-150 shadow-2xs"
             title="Download full financial ledger as CSV">
             <Download size={12} /> Export CSV
           </button>
           <button onClick={() => setConfirmPrint(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 border border-border/80 bg-card rounded-xl text-xs font-semibold text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-all shadow-2xs">
+            className="flex items-center gap-1.5 px-3 py-1.5 border border-border/80 bg-card rounded-xl text-xs font-semibold text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors duration-150 shadow-2xs">
             <Printer size={12} /> Print
           </button>
         </div>
@@ -367,28 +339,19 @@ export default function FinancialPage({ user, showToast }: { user: AuthUser; sho
       <div className="flex flex-wrap items-center justify-between gap-2.5 bg-card border border-border/80 rounded-2xl p-2.5 px-3.5 shadow-xs no-print">
         <div className="flex flex-wrap items-center gap-2">
           {/* Quick preset buttons */}
-          <div className="flex items-center gap-1 bg-muted/50 p-1 rounded-xl">
-            {[
+          <SegmentedTabs<"all" | "today" | "week" | "month">
+            size="sm"
+            tone="primary"
+            ariaLabel="Date range presets"
+            value={(activePreset ?? "") as "all" | "today" | "week" | "month"}
+            onChange={id => handlePreset(id)}
+            items={[
               { id: "all", label: "All Time" },
               { id: "today", label: "Today" },
               { id: "week", label: "7 Days" },
               { id: "month", label: "This Month" },
-            ].map(p => {
-              const isActive = activePreset === p.id;
-              return (
-                <button
-                  key={p.id}
-                  type="button"
-                  onClick={() => handlePreset(p.id as any)}
-                  className={`px-2.5 py-1 text-xs font-semibold rounded-lg transition-all ${
-                    isActive ? "bg-primary text-primary-foreground shadow-2xs" : "text-muted-foreground hover:text-foreground"
-                  }`}
-                >
-                  {p.label}
-                </button>
-              );
-            })}
-          </div>
+            ]}
+          />
 
           {/* Custom Date Range Picker */}
           <div className="flex items-center gap-1.5 pl-2 sm:border-l border-border/70 text-xs">
@@ -410,7 +373,7 @@ export default function FinancialPage({ user, showToast }: { user: AuthUser; sho
               <button
                 type="button"
                 onClick={() => { setDateFrom(""); setDateTo(""); setLedgerPage(1); }}
-                className="text-xs text-primary hover:underline font-semibold ml-1"
+                className="st-chip-btn ml-1"
               >
                 Clear
               </button>
@@ -427,30 +390,40 @@ export default function FinancialPage({ user, showToast }: { user: AuthUser; sho
         )}
       </div>
 
+      {/* ── Tabs ── */}
+      <SegmentedTabs<Tab>
+        fullWidth
+        ariaLabel="Financial sections"
+        value={tab}
+        onChange={setTab}
+        className="overflow-x-auto no-print"
+        buttonClassName="py-2"
+        items={tabs.map(t => ({
+          id: t.id,
+          label: t.label,
+          icon: <t.icon size={12} />,
+        }))}
+      />
+      </div>
+
+      {/* ── Tab Viewport Body (only list/tab contents scroll) ── */}
+      <div className="flex-1 min-h-0 flex flex-col st-shell-px py-4 overflow-hidden print:!overflow-visible">
+      {tab === "overview" && (
+        <div className="flex-1 min-h-0 overflow-y-auto space-y-4 print:!overflow-visible" data-table-scroll="fixed">
       {/* ── Executive 4-Pillar Financial Summary ── */}
       {summary && (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
           {/* Pillar 1: Gross Revenue */}
           <div className="bg-card border border-border/80 rounded-2xl p-4 shadow-xs flex flex-col justify-between hover:border-emerald-500/40 transition-all">
             <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center gap-1.5">
-                <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">Gross Revenue</span>
-                <InfoTip
-                  title="Gross Revenue"
-                  lines={[
-                    "Total customer transaction receipts recorded before tax deductions or returns.",
-                    { label: "Tax status", value: "Includes 12% output VAT" },
-                    { label: "Sales count", value: `${summary.salesCount} total completed receipts` },
-                  ]}
-                />
-              </div>
+              <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">Gross Revenue</span>
               <div className="w-7 h-7 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-600 dark:text-emerald-400">
                 <TrendingUp size={14} />
               </div>
             </div>
             <div>
               <p className="text-2xl font-bold tabular-nums tracking-tight text-emerald-600 dark:text-emerald-400">
-                {fmt(summary.totalRevenue)}
+                <AnimatedMetricText value={fmt(summary.totalRevenue)} />
               </p>
               <p className="text-[11px] text-muted-foreground mt-0.5">
                 {summary.salesCount.toLocaleString()} recorded sales · VAT-inclusive
@@ -463,16 +436,16 @@ export default function FinancialPage({ user, showToast }: { user: AuthUser; sho
           </div>
 
           {/* Pillar 2: Net Revenue */}
-          <div className="bg-card border border-border/80 rounded-2xl p-4 shadow-xs flex flex-col justify-between hover:border-primary/40 transition-all">
+          <div className="bg-card border border-border/80 rounded-2xl p-4 shadow-xs flex flex-col justify-between hover:border-primary/40 transition-all st-card">
             <div className="flex items-center justify-between mb-2">
               <div className="flex items-center gap-1.5">
                 <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">Net Revenue</span>
                 <InfoTip
                   title="Net Revenue"
                   lines={[
-                    "Gross customer payments minus customer returns and refunds.",
+                    "Gross customer payments minus returns and refunds.",
                     { label: "Returns deducted", value: fmt(summary.totalReturns) },
-                    { label: "Post-loss net", value: "Net revenue minus damaged stock write-offs" },
+                    { label: "After losses", value: "Net revenue minus damaged stock write-offs" },
                   ]}
                 />
               </div>
@@ -482,7 +455,7 @@ export default function FinancialPage({ user, showToast }: { user: AuthUser; sho
             </div>
             <div>
               <p className="text-2xl font-bold tabular-nums tracking-tight text-primary">
-                {fmt(summary.netRevenue)}
+                <AnimatedMetricText value={fmt(summary.netRevenue)} />
               </p>
               <p className="text-[11px] text-muted-foreground mt-0.5">
                 Revenue minus returns deducted
@@ -495,16 +468,16 @@ export default function FinancialPage({ user, showToast }: { user: AuthUser; sho
           </div>
 
           {/* Pillar 3: Gross Profit */}
-          <div className="bg-card border border-border/80 rounded-2xl p-4 shadow-xs flex flex-col justify-between hover:border-teal-500/40 transition-all">
+          <div className="bg-card border border-border/80 rounded-2xl p-4 shadow-xs flex flex-col justify-between hover:border-teal-500/40 transition-all st-card">
             <div className="flex items-center justify-between mb-2">
               <div className="flex items-center gap-1.5">
                 <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">Gross Profit</span>
                 <InfoTip
                   title="Gross Profit & Margins"
                   lines={[
-                    "Profit calculated from actual FIFO batch purchase costs (Cost of Goods Sold).",
-                    { label: "COGS Basis", value: "Locked unit cost per inventory batch" },
-                    { label: "Scope", value: "Batches with recorded supplier invoice costs" },
+                    "Profit measured using FIFO batch purchase costs (COGS).",
+                    { label: "Cost basis", value: "Locked unit cost per inventory batch" },
+                    { label: "Coverage", value: "Batches with recorded unit costs" },
                   ]}
                 />
               </div>
@@ -516,7 +489,7 @@ export default function FinancialPage({ user, showToast }: { user: AuthUser; sho
               <p className={`text-2xl font-bold tabular-nums tracking-tight ${
                 (incomeTotals?.grossProfit ?? 0) >= 0 ? "text-teal-600 dark:text-teal-400" : "text-red-600 dark:text-red-400"
               }`}>
-                {fmt(incomeTotals?.grossProfit ?? summary.netRevenue * 0.4)}
+                <AnimatedMetricText value={fmt(incomeTotals?.grossProfit ?? summary.netRevenue * 0.4)} />
               </p>
               <p className="text-[11px] text-muted-foreground mt-0.5">
                 Margin: <strong className="text-foreground">{incomeTotals?.margin != null ? `${incomeTotals.margin}%` : "40% est."}</strong>
@@ -530,16 +503,16 @@ export default function FinancialPage({ user, showToast }: { user: AuthUser; sho
           </div>
 
           {/* Pillar 4: Losses & Damage */}
-          <div className="bg-card border border-border/80 rounded-2xl p-4 shadow-xs flex flex-col justify-between hover:border-red-500/40 transition-all">
+          <div className="bg-card border border-border/80 rounded-2xl p-4 shadow-xs flex flex-col justify-between hover:border-red-500/40 transition-all st-card">
             <div className="flex items-center justify-between mb-2">
               <div className="flex items-center gap-1.5">
                 <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">Total Losses</span>
                 <InfoTip
                   title="Total Financial Losses"
                   lines={[
-                    "Comprehensive financial losses from customer reimbursements and damaged/expired stock write-offs.",
+                    "Combined value of customer refunds and written-off stock.",
                     { label: "Returns", value: "Refunds issued to customers" },
-                    { label: "Broken stock", value: "Damaged inventory written off at batch cost" },
+                    { label: "Broken stock", value: "Damaged items valued at batch purchase cost" },
                   ]}
                 />
               </div>
@@ -549,7 +522,7 @@ export default function FinancialPage({ user, showToast }: { user: AuthUser; sho
             </div>
             <div>
               <p className="text-2xl font-bold tabular-nums tracking-tight text-red-600 dark:text-red-400">
-                {fmt(summary.totalLosses)}
+                <AnimatedMetricText value={fmt(summary.totalLosses)} />
               </p>
               <p className="text-[11px] text-muted-foreground mt-0.5">
                 Refunds + damaged stock write-offs
@@ -588,10 +561,10 @@ export default function FinancialPage({ user, showToast }: { user: AuthUser; sho
           <button
             type="button"
             onClick={() => setShowDetailedKpis(v => !v)}
-            className="text-[11px] font-semibold text-primary hover:underline flex items-center gap-1 py-0.5 no-print"
+            className="st-chip-btn no-print"
           >
             {showDetailedKpis ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
-            {showDetailedKpis ? "Hide detailed 13 metric cards" : "Expand all 13 metric cards"}
+            <span>{showDetailedKpis ? "Hide detailed 13 metric cards" : "Expand all 13 metric cards"}</span>
           </button>
         </div>
       )}
@@ -615,39 +588,14 @@ export default function FinancialPage({ user, showToast }: { user: AuthUser; sho
         </div>
       )}
 
-      {/* ── Tabs ── */}
-      <div className="flex items-center gap-1 bg-muted/40 rounded-xl p-1 w-full overflow-x-auto no-print">
-        {tabs.map(t => (
-          <button key={t.id} onClick={() => setTab(t.id)}
-            className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold transition-all whitespace-nowrap flex-1 justify-center ${
-              tab === t.id ? "bg-card text-foreground shadow-2xs border border-border/80" : "text-muted-foreground hover:text-foreground"
-            }`}>
-            <t.icon size={12} />{t.label}
-          </button>
-        ))}
-      </div>
-
       {/* ══════════════════════════════════════════════════════════════════════ */}
-      {/* TAB: OVERVIEW                                                          */}
+      {/* OVERVIEW CHARTS & TREND                                                */}
       {/* ══════════════════════════════════════════════════════════════════════ */}
-      {tab === "overview" && (
-        <div className="space-y-4">
           {/* Daily revenue chart */}
           <div className="bg-card border border-border/80 rounded-2xl p-5 shadow-[0_2px_12px_-4px_rgba(13,148,136,0.06),0_1px_3px_rgba(0,0,0,0.02)]">
             <div className="flex items-center justify-between mb-4">
               <div>
-                <div className="flex items-center gap-2">
-                  <h3 className="text-sm font-bold text-foreground">Daily Revenue — Last 14 Days</h3>
-                  <InfoTip
-                    title="Daily Revenue Timeline"
-                    lines={[
-                      "Day-by-day revenue receipts, customer refunds, and broken stock write-offs over the past 14 days.",
-                      { label: "Blue area", value: "Daily customer sales revenue" },
-                      { label: "Orange line", value: "Refunds issued to customers" },
-                      { label: "Red line", value: "Damaged inventory written off" },
-                    ]}
-                  />
-                </div>
+                <h3 className="text-sm font-bold text-foreground">Daily Revenue — Last 14 Days</h3>
                 <p className="text-[11px] text-muted-foreground mt-0.5">Revenue, refunds, and broken stock write-offs per day</p>
               </div>
               <div className="flex items-center gap-3 text-[11px] text-muted-foreground">
@@ -681,9 +629,9 @@ export default function FinancialPage({ user, showToast }: { user: AuthUser; sho
                 <InfoTip
                   title="Monthly Revenue Trend"
                   lines={[
-                    "12-month historical revenue trajectory, customer refunds, damaged stock losses, and net income after deductions.",
-                    { label: "Profit (est.)", value: "Estimated 40% margin on net sales" },
-                    { label: "Current", value: "Ongoing calendar month" },
+                    "12-month history of sales revenue, refunds, losses, and net income.",
+                    { label: "Est. profit", value: "Estimated 40% margin on net sales" },
+                    { label: "Current row", value: "Month in progress" },
                   ]}
                 />
               </div>
@@ -694,8 +642,8 @@ export default function FinancialPage({ user, showToast }: { user: AuthUser; sho
             ) : (
               <div className="overflow-x-auto max-h-[320px] overflow-y-auto">
                 <table className="w-full text-xs">
-                  <thead className="sticky top-0 bg-muted/95 backdrop-blur-xs z-10">
-                    <tr className="border-b border-border">
+                  <thead className="sticky top-0 bg-card shadow-sm z-10">
+                    <tr className="border-b border-border bg-muted/30">
                       {["Month","Revenue","Returns","Broken Loss","Net After Losses","Sales","Profit (est.)"].map(h => (
                         <th key={h} className="px-4 py-3 text-left font-semibold text-muted-foreground uppercase tracking-wide text-[10px]">{h}</th>
                       ))}
@@ -748,21 +696,10 @@ export default function FinancialPage({ user, showToast }: { user: AuthUser; sho
       {/* TAB: LEDGER                                                            */}
       {/* ══════════════════════════════════════════════════════════════════════ */}
       {tab === "ledger" && (
-        <div className="space-y-4">
+        <div className="flex-1 min-h-0 flex flex-col gap-3 overflow-hidden print:!overflow-visible">
           {/* Filter bar */}
-          <div className="flex flex-wrap items-center gap-2 no-print">
-            <div className="flex items-center gap-1.5">
-              <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Type:</span>
-              <InfoTip
-                title="Financial Audit Ledger"
-                lines={[
-                  "Real-time transaction audit trail across the pharmacy store.",
-                  { label: "Sale", value: "Customer payment received" },
-                  { label: "Return", value: "Customer refund reimbursement" },
-                  { label: "Adjustment", value: "Stock audit discrepancy correction" },
-                ]}
-              />
-            </div>
+          <div className="flex-shrink-0 flex flex-wrap items-center gap-2 no-print">
+            <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Type:</span>
             {["all","sale","return","adjustment"].map(t => (
               <button key={t} onClick={() => { setLedgerType(t); setLedgerPage(1); }}
                 className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all border ${
@@ -776,7 +713,7 @@ export default function FinancialPage({ user, showToast }: { user: AuthUser; sho
             </span>
           </div>
 
-          <div className="bg-card border border-border/80 rounded-2xl shadow-[0_2px_12px_-4px_rgba(13,148,136,0.06),0_1px_3px_rgba(0,0,0,0.02)] overflow-hidden">
+          <div className="flex-1 min-h-0 flex flex-col bg-card border border-border/80 rounded-2xl shadow-[0_2px_12px_-4px_rgba(13,148,136,0.06),0_1px_3px_rgba(0,0,0,0.02)] overflow-hidden print:!overflow-visible">
             {ledgerLoading ? (
               <div className="p-4 space-y-3">
                 {[1, 2, 3, 4, 5].map(i => (
@@ -792,7 +729,7 @@ export default function FinancialPage({ user, showToast }: { user: AuthUser; sho
               <div className="p-10 text-center text-sm text-muted-foreground">No records found for the selected filters</div>
             ) : (
               <>
-                <div className="overflow-x-auto">
+                <div className="flex-1 min-h-0 overflow-x-auto overflow-y-auto print:!overflow-visible" data-table-scroll="fixed">
                   <table className="w-full text-xs">
                     <thead className="sticky top-0 z-10 bg-card shadow-sm">
                       <tr className="border-b border-border/70 bg-muted/30">
@@ -835,7 +772,7 @@ export default function FinancialPage({ user, showToast }: { user: AuthUser; sho
 
                 {/* Pagination */}
                 {ledgerPages > 1 && (
-                  <div className="flex items-center justify-between px-4 py-3 border-t border-border no-print">
+                  <div className="flex-shrink-0 flex items-center justify-between px-4 py-3 border-t border-border no-print">
                     <p className="text-[11px] text-muted-foreground">
                       Page {ledgerPage} of {ledgerPages} · {ledgerTotal.toLocaleString()} total records
                     </p>
@@ -876,24 +813,14 @@ export default function FinancialPage({ user, showToast }: { user: AuthUser; sho
       {/* TAB: BY CATEGORY                                                       */}
       {/* ══════════════════════════════════════════════════════════════════════ */}
       {tab === "breakdown" && (
-        <div className="space-y-4">
+        <div className="flex-1 min-h-0 overflow-y-auto space-y-4 print:!overflow-visible" data-table-scroll="fixed">
           {breakdown.length === 0 ? (
             <div className="bg-card border border-border rounded-xl p-10 text-center text-sm text-muted-foreground">No sales data for the selected range</div>
           ) : (
             <>
               {/* Horizontal bar chart */}
               <div className="bg-card border border-border rounded-xl p-5 shadow-sm">
-                <div className="flex items-center gap-2 mb-4">
-                  <h3 className="text-sm font-bold text-foreground">Revenue by Category</h3>
-                  <InfoTip
-                    title="Category Revenue Breakdown"
-                    lines={[
-                      "Relative revenue share and volume contribution across medicine categories.",
-                      { label: "Share", value: "Percentage of total gross sales" },
-                      { label: "Units", value: "Total quantity dispensed per category" },
-                    ]}
-                  />
-                </div>
+                <h3 className="text-sm font-bold text-foreground mb-4">Revenue by Category</h3>
                 <div className="space-y-3">
                   {breakdown.map((row, i) => (
                     <div key={row.category}>
@@ -903,8 +830,12 @@ export default function FinancialPage({ user, showToast }: { user: AuthUser; sho
                       </div>
                       <div className="w-full h-2.5 bg-muted/40 rounded-full overflow-hidden">
                         <div
-                          className="h-full rounded-full transition-all duration-500"
-                          style={{ width: `${row.share}%`, background: CATEGORY_PALETTE[i % CATEGORY_PALETTE.length] }}
+                          className="h-full rounded-full st-bar-fill"
+                          style={{
+                            width: `${row.share}%`,
+                            background: CATEGORY_PALETTE[i % CATEGORY_PALETTE.length],
+                            animationDelay: `${Math.min(i * 45, 270)}ms`,
+                          }}
                         />
                       </div>
                     </div>
@@ -914,7 +845,7 @@ export default function FinancialPage({ user, showToast }: { user: AuthUser; sho
 
               {/* Breakdown table */}
               <div className="bg-card border border-border rounded-xl shadow-sm overflow-hidden">
-                <div className="overflow-x-auto">
+                <div className="max-h-[min(56dvh,460px)] overflow-x-auto overflow-y-auto print:!max-h-none print:!overflow-visible" data-table-scroll="fixed">
                   <table className="w-full text-xs">
                     <thead className="sticky top-0 z-10 bg-card shadow-sm">
                       <tr className="border-b border-border bg-muted/30">
@@ -924,9 +855,9 @@ export default function FinancialPage({ user, showToast }: { user: AuthUser; sho
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-border">
-                    {paginatedBreakdown.map((row, i) => (
+                    {breakdown.map((row, i) => (
                         <tr key={row.category} className="hover:bg-muted/20 transition-colors">
-                          <td className="px-4 py-3 text-muted-foreground">{i + (breakdownPage - 1) * BREAKDOWN_PAGE_SIZE + 1}</td>
+                          <td className="px-4 py-3 text-muted-foreground">{i + 1}</td>
                           <td className="px-4 py-3">
                             <div className="flex items-center gap-2">
                               <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: CATEGORY_PALETTE[i % CATEGORY_PALETTE.length] }} />
@@ -938,7 +869,14 @@ export default function FinancialPage({ user, showToast }: { user: AuthUser; sho
                           <td className="px-4 py-3">
                             <div className="flex items-center gap-2">
                               <div className="flex-1 h-1.5 bg-muted/40 rounded-full overflow-hidden max-w-[80px]">
-                                <div className="h-full rounded-full" style={{ width: `${row.share}%`, background: CATEGORY_PALETTE[i % CATEGORY_PALETTE.length] }} />
+                                <div
+                                  className="h-full rounded-full st-bar-fill"
+                                  style={{
+                                    width: `${row.share}%`,
+                                    background: CATEGORY_PALETTE[i % CATEGORY_PALETTE.length],
+                                    animationDelay: `${Math.min(i * 35, 245)}ms`,
+                                  }}
+                                />
                               </div>
                               <span className="tabular-nums text-muted-foreground">{row.share}%</span>
                             </div>
@@ -957,7 +895,6 @@ export default function FinancialPage({ user, showToast }: { user: AuthUser; sho
                     </tfoot>
                   </table>
                 </div>
-                <TablePager total={breakdown.length} page={breakdownPage} pageSize={BREAKDOWN_PAGE_SIZE} onPage={setBreakdownPage} />
               </div>
             </>
           )}
@@ -968,23 +905,13 @@ export default function FinancialPage({ user, showToast }: { user: AuthUser; sho
       {/* TAB: BY STAFF                                                          */}
       {/* ══════════════════════════════════════════════════════════════════════ */}
       {tab === "staff" && (
-        <div className="space-y-4">
+        <div className="flex-1 min-h-0 overflow-y-auto space-y-4 print:!overflow-visible" data-table-scroll="fixed">
           {staffData.length === 0 ? (
             <div className="bg-card border border-border rounded-xl p-10 text-center text-sm text-muted-foreground">No staff sales data for the selected range</div>
           ) : (
             <>
               {/* Staff leaderboard cards */}
-              <div className="flex items-center gap-2 mb-1">
-                <h3 className="text-sm font-bold text-foreground">Staff Sales Leaderboard</h3>
-                <InfoTip
-                  title="Staff Sales Performance"
-                  lines={[
-                    "Sales performance and total transactions processed per staff member.",
-                    { label: "Transactions", value: "Total completed sales registered" },
-                    { label: "Share", value: "Relative percentage of top performer" },
-                  ]}
-                />
-              </div>
+              <h3 className="text-sm font-bold text-foreground mb-1">Staff Sales Leaderboard</h3>
               <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
                 {staffData.slice(0, 6).map((s, i) => {
                   const maxRev = staffData[0]?.revenue ?? 1;
@@ -1010,7 +937,10 @@ export default function FinancialPage({ user, showToast }: { user: AuthUser; sho
                           <span>{fillPct}%</span>
                         </div>
                         <div className="w-full h-1.5 bg-muted/40 rounded-full overflow-hidden">
-                          <div className="h-full rounded-full bg-primary transition-all duration-500" style={{ width: `${fillPct}%` }} />
+                          <div
+                            className="h-full rounded-full bg-primary st-bar-fill"
+                            style={{ width: `${fillPct}%`, animationDelay: `${Math.min(i * 55, 275)}ms` }}
+                          />
                         </div>
                       </div>
                       <p className="text-sm font-bold tabular-nums text-emerald-600 dark:text-emerald-400">{fmt(s.revenue)}</p>
@@ -1022,7 +952,7 @@ export default function FinancialPage({ user, showToast }: { user: AuthUser; sho
 
               {/* Full staff table */}
               <div className="bg-card border border-border rounded-xl shadow-sm overflow-hidden">
-                <div className="overflow-x-auto">
+                <div className="max-h-[min(56dvh,460px)] overflow-x-auto overflow-y-auto print:!max-h-none print:!overflow-visible" data-table-scroll="fixed">
                   <table className="w-full text-xs">
                     <thead className="sticky top-0 z-10 bg-card shadow-sm">
                       <tr className="border-b border-border bg-muted/30">
@@ -1032,9 +962,9 @@ export default function FinancialPage({ user, showToast }: { user: AuthUser; sho
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-border">
-                      {paginatedStaff.map((s, i) => (
-                        <tr key={s.staff} className={`hover:bg-muted/20 transition-colors ${i === 0 && staffPage === 1 ? "bg-primary/5" : ""}`}>
-                          <td className="px-4 py-3 text-muted-foreground font-bold">{i + (staffPage - 1) * STAFF_PAGE_SIZE + 1}</td>
+                      {staffData.map((s, i) => (
+                        <tr key={s.staff} className={`hover:bg-muted/20 transition-colors ${i === 0 ? "bg-primary/5" : ""}`}>
+                          <td className="px-4 py-3 text-muted-foreground font-bold">{i + 1}</td>
                           <td className="px-4 py-3 font-semibold text-foreground">{s.staff}</td>
                           <td className="px-4 py-3 tabular-nums text-foreground">{s.transactions.toLocaleString()}</td>
                           <td className="px-4 py-3 tabular-nums text-foreground">{s.unitsSold.toLocaleString()}</td>
@@ -1053,7 +983,6 @@ export default function FinancialPage({ user, showToast }: { user: AuthUser; sho
                     </tfoot>
                   </table>
                 </div>
-                <TablePager total={staffData.length} page={staffPage} pageSize={STAFF_PAGE_SIZE} onPage={setStaffPage} />
               </div>
             </>
           )}
@@ -1064,10 +993,10 @@ export default function FinancialPage({ user, showToast }: { user: AuthUser; sho
       {/* TAB: INCOME (per-product revenue, cost, profit)                        */}
       {/* ══════════════════════════════════════════════════════════════════════ */}
       {tab === "income" && (
-        <div className="space-y-4">
+        <div className="flex-1 min-h-0 flex flex-col gap-3 overflow-hidden print:!overflow-visible">
           {/* Totals bar */}
           {incomeTotals && (
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5">
+            <div className="flex-shrink-0 grid grid-cols-2 lg:grid-cols-4 gap-2.5">
               <div className="bg-card border border-border/80 rounded-xl p-3 shadow-2xs">
                 <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wide">Total Revenue</p>
                 <p className="text-lg font-bold tabular-nums text-emerald-600 dark:text-emerald-400 mt-1">{fmt(incomeTotals.revenue)}</p>
@@ -1118,18 +1047,18 @@ export default function FinancialPage({ user, showToast }: { user: AuthUser; sho
               No sales data for the selected range
             </div>
           ) : (
-            <div className="bg-card border border-border rounded-xl shadow-sm overflow-hidden">
-              <div className="px-5 py-4 border-b border-border flex items-center justify-between">
+            <div className="flex-1 min-h-0 flex flex-col bg-card border border-border rounded-xl shadow-sm overflow-hidden print:!overflow-visible">
+              <div className="flex-shrink-0 px-5 py-4 border-b border-border flex items-center justify-between">
                 <div>
                   <div className="flex items-center gap-2">
                     <h3 className="text-sm font-bold text-foreground">Product Income Breakdown</h3>
                     <InfoTip
                       title="Product Income & COGS"
                       lines={[
-                        "Per-product gross profit calculations utilizing First-In, First-Out (FIFO) batch purchase costs.",
-                        { label: "COGS", value: "Total batch purchase cost from supplier" },
+                        "Per-product gross profit calculated from FIFO batch purchase costs.",
+                        { label: "COGS", value: "Supplier purchase cost of sold batches" },
                         { label: "Margin", value: "Gross profit divided by sales revenue" },
-                        { label: "Mixed costs", value: "Dispensed across batches with varying purchase costs" },
+                        { label: "Mixed costs", value: "Dispensed across batches with varying unit costs" },
                       ]}
                     />
                   </div>
@@ -1140,7 +1069,7 @@ export default function FinancialPage({ user, showToast }: { user: AuthUser; sho
                   </p>
                 </div>
               </div>
-              <div className="overflow-x-auto">
+              <div className="flex-1 min-h-0 overflow-x-auto overflow-y-auto print:!overflow-visible" data-table-scroll="fixed">
                 <table className="w-full text-xs">
                   <thead className="sticky top-0 z-10 bg-card shadow-sm">
                     <tr className="border-b border-border bg-muted/30">
@@ -1181,8 +1110,13 @@ export default function FinancialPage({ user, showToast }: { user: AuthUser; sho
                           {row.margin != null ? (
                             <div className="flex items-center gap-2">
                               <div className="flex-1 h-1.5 bg-muted/40 rounded-full overflow-hidden max-w-[60px]">
-                                <div className={`h-full rounded-full ${row.margin >= 0 ? "bg-primary" : "bg-red-500"}`}
-                                  style={{ width: `${Math.min(Math.abs(row.margin), 100)}%` }} />
+                                <div
+                                  className={`h-full rounded-full st-bar-fill ${row.margin >= 0 ? "bg-primary" : "bg-red-500"}`}
+                                  style={{
+                                    width: `${Math.min(Math.abs(row.margin), 100)}%`,
+                                    animationDelay: `${Math.min(i * 35, 245)}ms`,
+                                  }}
+                                />
                               </div>
                               <span className={`tabular-nums font-semibold ${row.margin >= 0 ? "text-primary" : "text-red-600 dark:text-red-400"}`}>
                                 {row.margin}%
@@ -1215,11 +1149,14 @@ export default function FinancialPage({ user, showToast }: { user: AuthUser; sho
                   )}
                 </table>
               </div>
-              <TablePager total={incomeData.length} page={incomePage} pageSize={INCOME_PAGE_SIZE} onPage={setIncomePage} />
+              <div className="flex-shrink-0">
+                <TablePager total={incomeData.length} page={incomePage} pageSize={INCOME_PAGE_SIZE} onPage={setIncomePage} />
+              </div>
             </div>
           )}
         </div>
       )}
+      </div>
       {confirmExportCsv && (
         <ConfirmDialog
           title="Export Financial CSV?"
@@ -1249,3 +1186,5 @@ export default function FinancialPage({ user, showToast }: { user: AuthUser; sho
     </div>
   );
 }
+
+export default memo(FinancialPage);

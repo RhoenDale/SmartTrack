@@ -9,12 +9,8 @@ require_once __DIR__ . '/../migrator.php';
 
 require_auth();
 
-// Restrict database backup & migration actions to Admin / Owner roles
-$user = current_user();
-$roles = $user['roles'] ?? [$user['role'] ?? ''];
-if (!in_array('owner', $roles, true) && !in_array('admin', $roles, true)) {
-    json_response(['error' => 'Permission denied. Only Pharmacy Owners and Admins can manage database backups.'], 403);
-}
+// Restrict database backup & migration actions to Admin / Admin/Owner active roles
+require_role(['admin/owner', 'admin']);
 
 $action = $id ?? 'status';
 

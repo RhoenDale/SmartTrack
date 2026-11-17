@@ -2,6 +2,7 @@ import { Component, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import Login from "./app/login.tsx";
 import { initializeElectron, logToElectron } from "./app/electron-init.ts";
+import { applySavedDisplayPreferences } from "./app/preferences.ts";
 import "./styles/index.css";
 
 // ─── Error boundary — shows a readable message instead of blank screen ────────
@@ -64,6 +65,9 @@ class ErrorBoundary extends Component<
 // ─── Initialize Electron and mount ────────────────────────────────────────────
 async function main() {
   try {
+    // Apply display preferences synchronously to avoid flash of unscaled text
+    applySavedDisplayPreferences();
+
     // Initialize Electron if running in Electron
     await initializeElectron();
 

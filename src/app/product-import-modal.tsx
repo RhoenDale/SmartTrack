@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from "react";
-import { Upload, Download, FileSpreadsheet, CheckCircle2, AlertTriangle, X, HelpCircle, ArrowRight, RefreshCw, FileText } from "lucide-react";
+import { Upload, Download, FileSpreadsheet, CheckCircle2, AlertTriangle, X, HelpCircle, RefreshCw, FileText } from "lucide-react";
 import { productsApi } from "./api";
+import { ConfirmDialog, SegmentedTabs } from "./shared";
 
 interface ParsedProductRow {
   barcode: string;
@@ -42,6 +43,7 @@ export function ProductImportModal({
   const [pastedText, setPastedText] = useState("");
   const [showPasteArea, setShowPasteArea] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [confirmImport, setConfirmImport] = useState(false);
   const [resultMsg, setResultMsg] = useState<{ text: string; type: "success" | "error" } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -226,7 +228,7 @@ export function ProductImportModal({
   return (
     <div
       onClick={onClose}
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-in fade-in duration-150"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 animate-in fade-in duration-150"
     >
       <div
         onClick={e => e.stopPropagation()}
@@ -256,48 +258,44 @@ export function ProductImportModal({
         </div>
 
         {/* Tab Switcher */}
-        <div className="flex items-center gap-2 pt-3 pb-2 border-b border-border/40">
-          <button
-            type="button"
-            onClick={() => setActiveTab("upload")}
-            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
-              activeTab === "upload"
-                ? "bg-primary text-primary-foreground shadow-xs"
-                : "text-muted-foreground hover:text-foreground hover:bg-muted/40"
-            }`}
-          >
-            <Upload size={13} />
-            <span>Upload &amp; Preview</span>
-            {parsedRows.length > 0 && (
-              <span className="ml-1 rounded-full bg-white/20 px-1.5 py-0.2 text-[10px] font-bold">
-                {parsedRows.length}
-              </span>
-            )}
-          </button>
+        <div className="flex flex-wrap items-center justify-between gap-2 pt-3 pb-2 border-b border-border/40">
+          <SegmentedTabs<"upload" | "instructions">
+            size="sm"
+            tone="primary"
+            ariaLabel="Import steps"
+            value={activeTab}
+            onChange={setActiveTab}
+            items={[
+              {
+                id: "upload",
+                icon: <Upload size={13} />,
+                label: "Upload & Preview",
+                badge: parsedRows.length > 0 ? (
+                  <span
+                    className={`rounded-full px-1.5 py-0.2 text-[10px] font-bold tabular-nums ${
+                      activeTab === "upload" ? "bg-white/20 text-white" : "bg-primary/15 text-primary"
+                    }`}
+                  >
+                    {parsedRows.length}
+                  </span>
+                ) : undefined,
+              },
+              {
+                id: "instructions",
+                icon: <HelpCircle size={13} />,
+                label: "Guide & Format Instructions",
+              },
+            ]}
+          />
 
           <button
             type="button"
-            onClick={() => setActiveTab("instructions")}
-            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
-              activeTab === "instructions"
-                ? "bg-primary text-primary-foreground shadow-xs"
-                : "text-muted-foreground hover:text-foreground hover:bg-muted/40"
-            }`}
+            onClick={handleDownloadTemplate}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-border/80 bg-card hover:bg-muted font-semibold text-foreground text-xs transition-all active:scale-95 cursor-pointer shadow-2xs"
           >
-            <HelpCircle size={13} />
-            <span>Guide &amp; Format Instructions</span>
+            <Download size={13} className="text-primary" />
+            <span>Download Excel/CSV Template</span>
           </button>
-
-          <div className="ml-auto">
-            <button
-              type="button"
-              onClick={handleDownloadTemplate}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border bg-background hover:bg-muted font-medium text-foreground text-xs transition-colors cursor-pointer"
-            >
-              <Download size={13} className="text-primary" />
-              <span>Download Excel/CSV Template</span>
-            </button>
-          </div>
         </div>
 
         {/* Content Body */}
@@ -440,9 +438,9 @@ export function ProductImportModal({
                 <button
                   type="button"
                   onClick={() => setShowPasteArea(v => !v)}
-                  className="text-xs text-primary hover:underline font-semibold flex items-center gap-1 cursor-pointer"
+                  className="st-chip-btn"
                 >
-                  <FileText size={13} />
+                  <FileText size={12} />
                   <span>{showPasteArea ? "Hide direct paste box" : "Or copy & paste directly from Excel / Sheets"}</span>
                 </button>
               </div>
@@ -567,15 +565,15 @@ export function ProductImportModal({
               <button
                 type="button"
                 onClick={() => setActiveTab("upload")}
-                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-primary text-primary-foreground font-semibold text-xs shadow-xs hover:opacity-90 transition-opacity cursor-pointer"
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full bg-primary text-primary-foreground font-semibold text-xs shadow-xs hover:opacity-90 transition-all active:scale-95 cursor-pointer st-btn"
               >
+                <Upload size={13} />
                 <span>Continue to Upload</span>
-                <ArrowRight size={13} />
               </button>
             ) : validCount > 0 ? (
               <button
                 type="button"
-                onClick={handleConfirmImport}
+                onClick={() => setConfirmImport(true)}
                 disabled={importing}
                 className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs shadow-xs transition-colors disabled:opacity-40 cursor-pointer"
               >
@@ -586,6 +584,18 @@ export function ProductImportModal({
           </div>
         </div>
       </div>
+
+      {confirmImport && (
+        <ConfirmDialog
+          title="Import Products to Inventory?"
+          message={`Import ${validCount} validated product${validCount === 1 ? "" : "s"} from "${fileName || "spreadsheet"}" into the live pharmacy inventory?`}
+          confirmLabel={`Import ${validCount} Items`}
+          cancelLabel="Cancel"
+          variant="warning"
+          onConfirm={() => { setConfirmImport(false); void handleConfirmImport(); }}
+          onCancel={() => setConfirmImport(false)}
+        />
+      )}
     </div>
   );
 }

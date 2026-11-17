@@ -42,6 +42,7 @@ if ($id === 'cashier') {
         "SELECT p.id, p.status, MIN(b.expiry_date) AS earliest_expiry
          FROM products p
          LEFT JOIN product_batches b ON b.product_id = p.id AND b.qty > 0
+         WHERE " . product_not_deleted_sql($pdo, 'p') . "
          GROUP BY p.id, p.status"
     );
     $lowStockCount = 0;
@@ -128,6 +129,7 @@ $invStmt = $pdo->query(
             MIN(b.expiry_date)     AS earliest_expiry
      FROM products p
      LEFT JOIN product_batches b ON b.product_id = p.id AND b.qty > 0
+     WHERE " . product_not_deleted_sql($pdo, 'p') . "
      GROUP BY p.id, p.name, p.status, p.reorder"
 );
 $allProducts = $invStmt->fetchAll(PDO::FETCH_ASSOC);

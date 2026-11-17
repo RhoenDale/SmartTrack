@@ -89,6 +89,7 @@ function attach_user_roles(array $user): array {
     $activeRole = trim($_SERVER['HTTP_X_ACTIVE_ROLE'] ?? '');
     if ($activeRole !== '') {
         if (!in_array($activeRole, $user['roles'], true)) {
+            $GLOBALS['smarttrack_activity_actor'] = $user;
             json_response(['error' => 'The selected role is not assigned to this account. Please sign in again and choose an assigned role.'], 403);
         }
         $user['active_role'] = $activeRole;

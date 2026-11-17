@@ -65,11 +65,12 @@ switch ($tab) {
                               FROM product_category_map pcm
                               JOIN categories c ON c.id = pcm.category_id
                               WHERE pcm.product_id = p.id), '') AS category,
-                    p.reorder, p.status,
+                    p.reorder, COALESCE(p.units_per_pack, 1) AS units_per_pack, p.status,
                     COALESCE(SUM(b.qty),0) AS stock
              FROM products p
              LEFT JOIN product_batches b ON b.product_id = p.id AND b.qty > 0
-             GROUP BY p.id, p.name, p.reorder, p.status
+             WHERE " . product_not_deleted_sql($pdo, 'p') . "
+             GROUP BY p.id, p.name, p.reorder, p.units_per_pack, p.status
              ORDER BY FIELD(p.status,'out_of_stock','critical','low','moderate','good')"
         )->fetchAll(PDO::FETCH_ASSOC);
 
@@ -83,14 +84,16 @@ switch ($tab) {
                 default:         $good++;
             }
             if ($r['status'] !== 'good') {
+                $reorderUnits = (int)$r['reorder'] * max(1, (int)$r['units_per_pack']);
                 $items[] = [
-                    'id'       => $r['id'],
-                    'name'     => $r['name'],
-                    'category' => $r['category'],
-                    'stock'    => (int)$r['stock'],
-                    'reorder'  => (int)$r['reorder'],
-                    'shortage' => max(0, (int)$r['reorder'] - (int)$r['stock']),
-                    'status'   => $r['status'],
+                    'id'           => $r['id'],
+                    'name'         => $r['name'],
+                    'category'     => $r['category'],
+                    'stock'        => (int)$r['stock'],
+                    'reorder'      => (int)$r['reorder'],
+                    'reorderUnits' => $reorderUnits,
+                    'shortage'     => max(0, $reorderUnits - (int)$r['stock']),
+                    'status'       => $r['status'],
                 ];
             }
         }
@@ -116,6 +119,7 @@ switch ($tab) {
                     MIN(b.expiry_date)     AS earliest_expiry
              FROM products p
              LEFT JOIN product_batches b ON b.product_id = p.id AND b.qty > 0
+             WHERE " . product_not_deleted_sql($pdo, 'p') . "
              GROUP BY p.id, p.name, p.price, p.status
              ORDER BY p.id ASC"
         )->fetchAll(PDO::FETCH_ASSOC);

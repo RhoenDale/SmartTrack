@@ -1,9 +1,9 @@
-import { useState, useMemo, useEffect } from "react";
+import { memo, useState, useMemo, useEffect } from "react";
 import { ShoppingCart, AlertTriangle, Package, Printer } from "lucide-react";
 import { getReorderUnits, type AuthUser, type Product, type Transaction } from "./data";
-import { fmt, StockBadge, InfoTip, ConfirmDialog } from "./shared";
+import { fmt, StockBadge, InfoTip, ConfirmDialog, SegmentedTabs, AnimatedMetricText } from "./shared";
 
-export default function ReportsPage({
+const ReportsPage = memo(function ReportsPage({
   inventory,
   transactions,
   user: _user,
@@ -33,44 +33,77 @@ export default function ReportsPage({
   };
 
   const filteredTransactions = useMemo(() => {
+    if (!dateFrom && !dateTo) return transactions;
+    const fromDate = dateFrom ? new Date(`${dateFrom}T00:00:00`) : null;
+    const toDate = dateTo ? new Date(`${dateTo}T23:59:59`) : null;
     return transactions.filter(tx => {
       const txDate = parseTransactionDate(tx.date);
-      if (dateFrom) {
-        const fromDate = new Date(`${dateFrom}T00:00:00`);
-        if (txDate < fromDate) return false;
-      }
-      if (dateTo) {
-        const toDate = new Date(`${dateTo}T23:59:59`);
-        if (txDate > toDate) return false;
-      }
+      if (fromDate && txDate < fromDate) return false;
+      if (toDate && txDate > toDate) return false;
       return true;
     });
   }, [transactions, dateFrom, dateTo]);
 
-  const sales   = filteredTransactions.filter(t => t.type === "sale");
-  const returns = filteredTransactions.filter(t => t.type === "return");
-  const totalRevenue = sales.reduce((s, t) => s + t.amount, 0);
-  const totalReturns = returns.reduce((s, t) => s + t.amount, 0);
-  const netRevenue   = totalRevenue - totalReturns;
-
-  const salesByProduct = useMemo(() => {
+  const { sales, returns, totalRevenue, totalReturns, netRevenue, salesByProduct } = useMemo(() => {
+    const salesList: Transaction[] = [];
+    const returnsList: Transaction[] = [];
+    let rev = 0;
+    let ret = 0;
     const map: Record<string, { product: string; qty: number; amount: number }> = {};
-    sales.forEach(t => {
-      if (!map[t.product]) map[t.product] = { product: t.product, qty: 0, amount: 0 };
-      map[t.product].qty    += t.qty;
-      map[t.product].amount += t.amount;
-    });
-    return Object.values(map).sort((a, b) => b.amount - a.amount);
-  }, [sales]);
 
-  const totalStock = inventory.reduce((s, p) => s + p.stock, 0);
-  const totalValue = inventory.reduce((s, p) => s + p.stock * p.price, 0);
-  const outOfStock = inventory.filter(i => i.status === "out_of_stock");
-  const critical   = inventory.filter(i => i.status === "critical");
-  const low        = inventory.filter(i => i.status === "low");
-  const moderate   = inventory.filter(i => i.status === "moderate");
-  const good       = inventory.filter(i => i.status === "good");
-  const actionItems = useMemo(() => [...outOfStock, ...critical, ...low, ...moderate], [outOfStock, critical, low, moderate]);
+    for (const t of filteredTransactions) {
+      if (t.type === "sale") {
+        salesList.push(t);
+        rev += t.amount;
+        if (!map[t.product]) map[t.product] = { product: t.product, qty: 0, amount: 0 };
+        map[t.product].qty += t.qty;
+        map[t.product].amount += t.amount;
+      } else if (t.type === "return") {
+        returnsList.push(t);
+        ret += t.amount;
+      }
+    }
+
+    return {
+      sales: salesList,
+      returns: returnsList,
+      totalRevenue: rev,
+      totalReturns: ret,
+      netRevenue: rev - ret,
+      salesByProduct: Object.values(map).sort((a, b) => b.amount - a.amount),
+    };
+  }, [filteredTransactions]);
+
+  const { totalStock, totalValue, outOfStock, critical, low, moderate, good, actionItems } = useMemo(() => {
+    let stock = 0;
+    let value = 0;
+    const out: Product[] = [];
+    const crit: Product[] = [];
+    const lw: Product[] = [];
+    const mod: Product[] = [];
+    const gd: Product[] = [];
+
+    for (const i of inventory) {
+      stock += i.stock;
+      value += i.stock * i.price;
+      if (i.status === "out_of_stock") out.push(i);
+      else if (i.status === "critical") crit.push(i);
+      else if (i.status === "low") lw.push(i);
+      else if (i.status === "moderate") mod.push(i);
+      else gd.push(i);
+    }
+
+    return {
+      totalStock: stock,
+      totalValue: value,
+      outOfStock: out,
+      critical: crit,
+      low: lw,
+      moderate: mod,
+      good: gd,
+      actionItems: [...out, ...crit, ...lw, ...mod],
+    };
+  }, [inventory]);
 
   const tabs: { id: "sales" | "stock" | "inventory"; label: string; icon: any }[] = [
     { id: "sales",     label: "Sales Report", icon: ShoppingCart },
@@ -79,7 +112,7 @@ export default function ReportsPage({
   ];
 
   return (
-    <div className="flex flex-col w-full max-w-[1400px] mx-auto printable-report" style={{ height: "calc(100dvh - 56px)" }}>
+    <div className="flex flex-col w-full printable-report overflow-hidden print:!h-auto print:!overflow-visible" style={{ height: "calc(100dvh - 56px)" }}>
       <style>{`@media print {
         body * { visibility: hidden !important; }
         .printable-report, .printable-report * { visibility: visible !important; }
@@ -88,27 +121,17 @@ export default function ReportsPage({
       }`}</style>
 
       {/* ── Fixed header ── */}
-      <div className="flex-shrink-0 px-4 sm:px-6 pt-4 sm:pt-6 pb-3 bg-background border-b border-border/50 z-20 space-y-3">
+      <div className="flex-shrink-0 st-shell-px pt-4 sm:pt-6 pb-3 bg-background border-b border-border/50 z-20 space-y-3">
         {/* Title + Print */}
         <div className="flex items-start sm:items-center justify-between gap-3">
           <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-xl font-bold text-foreground">Reports</h1>
-              <InfoTip title="Audit & Compliance Reports"
-                lines={[
-                  "Generate printable audit summaries and regulatory records.",
-                  { label: "Sales Report",  value: "Revenue summary, return totals, and item sales breakdowns" },
-                  { label: "Stock Alerts",  value: "Snapshot of products currently below reorder thresholds" },
-                  { label: "Inventory",     value: "Complete valuation report and pack/unit quantities" },
-                  { label: "Print / PDF",   value: "Exports clean, paper-ready documents for archiving" },
-                ]} />
-            </div>
+            <h1 className="text-xl font-bold text-foreground">Reports</h1>
             <p className="text-sm text-muted-foreground mt-0.5">
               {dateFrom || dateTo ? <>Filtered: {dateFrom || "All time"} to {dateTo || "Present"}</> : <>All-time data</>}
             </p>
           </div>
           <button onClick={() => setConfirmPrint(true)}
-            className="flex items-center gap-2 px-3 py-2 border border-border rounded-xl text-xs font-bold text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-all flex-shrink-0 no-print">
+            className="flex items-center gap-2 px-3 py-2 border border-border rounded-xl text-xs font-bold text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors flex-shrink-0 no-print">
             <Printer size={13} /> Print
           </button>
         </div>
@@ -125,45 +148,50 @@ export default function ReportsPage({
               <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
                 className="rounded-xl border border-border/80 bg-background/90 px-3 py-1.5 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary/25 focus:border-primary" />
               {(dateFrom || dateTo) && (
-                <button onClick={() => { setDateFrom(""); setDateTo(""); }}
-                  className="text-xs text-primary hover:text-primary/80 font-semibold">Clear</button>
+                <button type="button" onClick={() => { setDateFrom(""); setDateTo(""); }}
+                  className="st-chip-btn">Clear</button>
               )}
             </div>
           </div>
         </div>
 
         {/* Tab bar */}
-        <div className="flex items-center gap-1 bg-muted/40 rounded-xl p-1 w-full overflow-x-auto no-print">
-          {tabs.map(t => (
-            <button key={t.id} onClick={() => setActiveTab(t.id)}
-              className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold transition-all whitespace-nowrap flex-1 justify-center ${
-                activeTab === t.id ? "bg-card text-foreground shadow-2xs border border-border/80" : "text-muted-foreground hover:text-foreground"
-              }`}>
-              <t.icon size={12} />{t.label}
-            </button>
-          ))}
-        </div>
+        <SegmentedTabs<"sales" | "stock" | "inventory">
+          fullWidth
+          ariaLabel="Report sections"
+          value={activeTab}
+          onChange={setActiveTab}
+          className="overflow-x-auto no-print"
+          buttonClassName="py-2"
+          items={tabs.map(t => ({
+            id: t.id,
+            label: t.label,
+            icon: <t.icon size={12} />,
+          }))}
+        />
       </div>
 
-      {/* ── Scrollable content ── */}
-      <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-4 space-y-4">
+      {/* ── Fixed tab body (table scrolls internally) ── */}
+      <div className="flex-1 min-h-0 flex flex-col st-shell-px py-4 overflow-hidden print:!overflow-visible">
 
         {/* ── Sales Report ── */}
         {activeTab === "sales" && (
-          <div className="space-y-4">
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div className="flex-1 min-h-0 flex flex-col gap-4 overflow-hidden print:!overflow-visible">
+            <div className="flex-shrink-0 grid grid-cols-1 sm:grid-cols-3 gap-3">
               {[
                 { label: "Total Revenue", value: fmt(totalRevenue), color: "text-emerald-600 dark:text-emerald-400" },
                 { label: "Net Revenue",   value: fmt(netRevenue),   color: "text-primary" },
                 { label: "Total Returns", value: fmt(totalReturns), color: "text-violet-600 dark:text-violet-400" },
               ].map(c => (
-                <div key={c.label} className="bg-card border border-border/80 rounded-2xl p-4 shadow-sm">
+                <div key={c.label} className="bg-card border border-border/80 rounded-2xl p-4 shadow-sm st-card">
                   <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">{c.label}</p>
-                  <p className={`text-lg font-bold mt-2 tabular-nums tracking-tight ${c.color}`}>{c.value}</p>
+                  <p className={`text-lg font-bold mt-2 tabular-nums tracking-tight ${c.color}`}>
+                    <AnimatedMetricText value={c.value} />
+                  </p>
                 </div>
               ))}
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="flex-shrink-0 grid grid-cols-1 sm:grid-cols-2 gap-3">
               {[
                 { label: "Sales",   count: sales.length,   color: "text-emerald-600 dark:text-emerald-400" },
                 { label: "Returns", count: returns.length,  color: "text-orange-600 dark:text-orange-400" },
@@ -175,22 +203,14 @@ export default function ReportsPage({
               ))}
             </div>
 
-            <div className="bg-card border border-border/80 rounded-2xl overflow-hidden shadow-sm">
-              <div className="px-5 py-4 border-b border-border/70">
-                <div className="flex items-center gap-2">
-                  <h3 className="text-sm font-bold text-foreground">Sales by Product</h3>
-                  <InfoTip title="Product Sales Audit Report"
-                    lines={[
-                      "Cumulative sales receipts, units dispensed, and gross revenue grouped per product line.",
-                      { label: "Scope",   value: "Verified sales records only" },
-                      { label: "Revenue", value: "Total monetary receipts collected" },
-                    ]} />
-                </div>
+            <div className="flex-1 min-h-0 flex flex-col bg-card border border-border/80 rounded-2xl overflow-hidden shadow-sm print:!overflow-visible">
+              <div className="flex-shrink-0 px-5 py-4 border-b border-border/70">
+                <h3 className="text-sm font-bold text-foreground">Sales by Product</h3>
                 <p className="text-[11px] text-muted-foreground mt-0.5">
                   {dateFrom || dateTo ? `${dateFrom || "All time"} to ${dateTo || "Present"}` : "All time"} · {salesByProduct.length} products
                 </p>
               </div>
-              <div className="overflow-x-auto">
+              <div className="flex-1 min-h-0 overflow-x-auto overflow-y-auto print:!overflow-visible" data-table-scroll="fixed">
                 <table className="w-full">
                   <thead className="sticky top-0 z-10 bg-card shadow-sm">
                     <tr className="border-b border-border/70 bg-muted/30">
@@ -200,7 +220,7 @@ export default function ReportsPage({
                     </tr>
                   </thead>
                   <tbody>
-                    {salesByProduct.map(row => (
+                    {salesByProduct.map((row, idx) => (
                       <tr key={row.product} className="border-b border-border/40 hover:bg-muted/30 transition-colors">
                         <td className="px-5 py-3 text-xs font-semibold text-foreground">{row.product}</td>
                         <td className="px-4 py-3 text-xs text-muted-foreground">{row.qty}</td>
@@ -208,7 +228,13 @@ export default function ReportsPage({
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-2">
                             <div className="w-16 h-1.5 bg-muted rounded-full overflow-hidden">
-                              <div className="h-full bg-primary rounded-full" style={{ width: `${Math.round((row.amount / totalRevenue) * 100)}%` }} />
+                              <div
+                                className="h-full bg-primary rounded-full st-bar-fill"
+                                style={{
+                                  width: `${Math.round((row.amount / totalRevenue) * 100)}%`,
+                                  animationDelay: `${Math.min(idx * 30, 240)}ms`,
+                                }}
+                              />
                             </div>
                             <span className="text-[11px] text-muted-foreground w-7">{Math.round((row.amount / totalRevenue) * 100)}%</span>
                           </div>
@@ -227,8 +253,8 @@ export default function ReportsPage({
 
         {/* ── Stock Alerts ── */}
         {activeTab === "stock" && (
-          <div className="space-y-4">
-            <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+          <div className="flex-1 min-h-0 flex flex-col gap-4 overflow-hidden print:!overflow-visible">
+            <div className="flex-shrink-0 grid grid-cols-2 sm:grid-cols-5 gap-3">
               {[
                 { label: "Out of Stock", count: outOfStock.length, color: "text-red-800 dark:text-red-300",       bg: "bg-red-100 dark:bg-red-500/15",       border: "border-red-300 dark:border-red-500/40" },
                 { label: "Critical",     count: critical.length,   color: "text-red-600 dark:text-red-400",       bg: "bg-red-50 dark:bg-red-500/10",        border: "border-red-200 dark:border-red-500/20" },
@@ -243,22 +269,22 @@ export default function ReportsPage({
               ))}
             </div>
 
-            <div className="bg-card border border-border rounded-xl overflow-hidden shadow-sm">
-              <div className="px-5 py-4 border-b border-border">
+            <div className="flex-1 min-h-0 flex flex-col bg-card border border-border rounded-xl overflow-hidden shadow-sm print:!overflow-visible">
+              <div className="flex-shrink-0 px-5 py-4 border-b border-border">
                 <div className="flex items-center gap-2">
                   <h3 className="text-sm font-bold text-foreground">Items Requiring Action</h3>
-                  <InfoTip title="Restocking Priority Report"
+                  <InfoTip title="Restocking Priority"
                     lines={[
-                      "Urgent list of inventory items currently out of stock, critical, or approaching reorder points.",
-                      { label: "Threshold",    value: "Configured reorder point per product" },
-                      { label: "Recommended",  value: "Review replenishment orders in Supplier Orders" },
+                      "Out-of-stock, critical, and low-inventory products needing attention.",
+                      { label: "Threshold", value: "Configured reorder point per item" },
+                      { label: "Next step", value: "Create orders in Supplier Orders" },
                     ]} />
                 </div>
                 <p className="text-[11px] text-muted-foreground mt-0.5">
                   {actionItems.length} products below or near reorder threshold
                 </p>
               </div>
-              <div className="overflow-x-auto">
+              <div className="flex-1 min-h-0 overflow-x-auto overflow-y-auto print:!overflow-visible" data-table-scroll="fixed">
                 <table className="w-full">
                   <thead className="sticky top-0 z-10 bg-card shadow-sm">
                     <tr className="border-b border-border bg-muted/30">
@@ -294,8 +320,8 @@ export default function ReportsPage({
 
         {/* ── Inventory ── */}
         {activeTab === "inventory" && (
-          <div className="space-y-4">
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+          <div className="flex-1 min-h-0 flex flex-col gap-4 overflow-hidden print:!overflow-visible">
+            <div className="flex-shrink-0 grid grid-cols-2 sm:grid-cols-3 gap-3">
               {[
                 { label: "Total Products",       value: String(inventory.length),    color: "text-foreground" },
                 { label: "Total Stock Units",     value: totalStock.toLocaleString(), color: "text-primary" },
@@ -308,19 +334,12 @@ export default function ReportsPage({
               ))}
             </div>
 
-            <div className="bg-card border border-border rounded-xl overflow-hidden shadow-sm">
-              <div className="px-5 py-4 border-b border-border">
-                <div className="flex items-center gap-2">
-                  <h3 className="text-sm font-bold text-foreground">Complete Inventory</h3>
-                  <InfoTip title="Inventory Audit Report"
-                    lines={[
-                      "Comprehensive snapshot of all product catalog records, stock levels, unit pricing, and supplier info.",
-                      { label: "Export", value: "Can be downloaded via Export CSV or printed directly" },
-                    ]} />
-                </div>
+            <div className="flex-1 min-h-0 flex flex-col bg-card border border-border rounded-xl overflow-hidden shadow-sm print:!overflow-visible">
+              <div className="flex-shrink-0 px-5 py-4 border-b border-border">
+                <h3 className="text-sm font-bold text-foreground">Complete Inventory</h3>
                 <p className="text-[11px] text-muted-foreground mt-0.5">All {inventory.length} products as of {new Date().toLocaleDateString()}</p>
               </div>
-              <div className="overflow-x-auto">
+              <div className="flex-1 min-h-0 overflow-x-auto overflow-y-auto print:!overflow-visible" data-table-scroll="fixed">
                 <table className="w-full">
                   <thead className="sticky top-0 z-10 bg-card shadow-sm">
                     <tr className="border-b border-border bg-muted/30">
@@ -366,4 +385,6 @@ export default function ReportsPage({
       )}
     </div>
   );
-}
+});
+
+export default ReportsPage;

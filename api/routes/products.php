@@ -21,7 +21,7 @@ $pdo = db();
 // product batches or other product details.
 if ($id && $sub === 'supplier') {
     if ($method !== 'POST') json_response(['error' => 'Method not allowed.'], 405);
-    require_role(['admin/owner', 'admin', 'inventory_manager']);
+    require_role(['inventory_manager']);
     $data = body();
     require_fields($data, ['supplier']);
     $supplier = trim((string)$data['supplier']);
@@ -43,7 +43,7 @@ if ($id && $sub === 'batches' && isset($sub2)) {
     $batchId = $sub2;
 
     if ($method === 'DELETE') {
-        require_role($ADMIN_ROLES + ['inventory_manager']);
+        require_role(['inventory_manager']);
         $delete = $pdo->prepare('DELETE FROM product_batches WHERE batch_id = ? AND product_id = ?');
         $delete->execute([$batchId, $id]);
         if ($delete->rowCount() === 0) json_response(['error' => 'Batch not found.'], 404);
@@ -75,7 +75,7 @@ if ($id && $sub === 'batches') {
     }
 
     if ($method === 'POST') {
-        require_role(['admin/owner', 'admin', 'inventory_manager']);
+        require_role(['inventory_manager']);
         $data = body();
         require_fields($data, ['qty']);
         $qty = filter_var($data['qty'], FILTER_VALIDATE_INT);
@@ -189,7 +189,7 @@ if ($id && $id !== 'deleted' && $sub === 'purge' && $method === 'DELETE') {
 // ── POST /products/import — Bulk CSV/Excel Product Importer ──────────────────
 if ($id === 'import') {
     if ($method !== 'POST') json_response(['error' => 'Method not allowed.'], 405);
-    require_role(['admin/owner', 'admin', 'inventory_manager']);
+    require_role(['inventory_manager']);
     
     $payload = body();
     $items = $payload['items'] ?? [];
@@ -344,7 +344,7 @@ if ($id && $id !== 'deleted' && $id !== 'import') {
 
     // PUT update product
     if ($method === 'PUT') {
-        require_role(['admin/owner', 'admin', 'inventory_manager']);
+        require_role(['inventory_manager']);
         $data = body();
         require_fields($data, ['name', 'supplier', 'reorder', 'price']);
         $categoryNames = product_category_names($data);
@@ -418,7 +418,7 @@ if ($id && $id !== 'deleted' && $id !== 'import') {
 
     // DELETE product — soft-delete (column now always present after migration)
     if ($method === 'DELETE') {
-        require_role(['admin/owner', 'admin', 'inventory_manager']);
+        require_role(['inventory_manager']);
         $actor = current_user();
         $cols  = $pdo->query("SHOW COLUMNS FROM products LIKE 'deleted_at'")->fetchAll();
         if (!empty($cols)) {
@@ -488,7 +488,7 @@ if ($method === 'GET') {
 
 // POST create product
 if ($method === 'POST') {
-    require_role(['admin/owner', 'admin', 'inventory_manager']);
+    require_role(['inventory_manager']);
     $data = body();
     require_fields($data, ['barcode', 'name', 'supplier', 'reorder', 'price', 'batches']);
     if (!is_array($data['batches'])) {

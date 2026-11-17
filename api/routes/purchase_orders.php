@@ -12,7 +12,8 @@
  */
 
 $actor = require_auth();
-// Read access for all authenticated roles; write operations check role individually below.
+// Restrict purchase order & supplier telemetry access to Admin and Inventory Manager roles
+require_role(['admin/owner', 'admin', 'inventory_manager']);
 $pdo = db();
 
 foreach (['purchase_orders', 'purchase_order_items', 'purchase_order_receipts'] as $requiredTable) {
@@ -115,7 +116,7 @@ if ($method === 'GET' && $id === null) {
 }
 
 if ($method === 'POST' && $id === null) {
-    require_role(['admin/owner', 'admin', 'inventory_manager']);
+    require_role(['inventory_manager']);
     if (!purchase_order_actor_columns_ready($pdo)) {
         json_response(['error' => 'Purchase-order audit migration is required. Apply harden_purchase_order_relations.sql before creating orders.'], 503);
     }
@@ -170,7 +171,7 @@ if ($method === 'POST' && $id === null) {
 }
 
 if ($method === 'POST' && ctype_digit((string)$id) && $sub === 'receipts') {
-    require_role(['admin/owner', 'admin', 'inventory_manager']);
+    require_role(['inventory_manager']);
     if (!purchase_order_actor_columns_ready($pdo)) {
         json_response(['error' => 'Purchase-order audit migration is required. Apply harden_purchase_order_relations.sql before recording deliveries.'], 503);
     }
@@ -194,6 +195,10 @@ if ($method === 'POST' && ctype_digit((string)$id) && $sub === 'receipts') {
         if ($order['status'] === 'received') {
             $pdo->rollBack();
             json_response(['error' => 'This purchase order is already fully received.'], 409);
+        }
+        if ($order['status'] === 'cancelled') {
+            $pdo->rollBack();
+            json_response(['error' => 'Cannot record a delivery for a cancelled purchase order.'], 409);
         }
 
         $receiptInsert = $pdo->prepare(
@@ -331,7 +336,7 @@ if ($method === 'GET' && ctype_digit((string)$id)) {
 
 // ─── PUT edit purchase order (only when status = ordered) ─────────────────────
 if ($method === 'PUT' && ctype_digit((string)$id)) {
-    require_role(['admin/owner', 'admin', 'inventory_manager']);
+    require_role(['inventory_manager']);
     $data = body();
 
     $pdo->beginTransaction();
@@ -430,7 +435,7 @@ if ($method === 'PUT' && ctype_digit((string)$id)) {
 
 // ─── DELETE cancel purchase order (only when status = ordered) ───────────────
 if ($method === 'DELETE' && ctype_digit((string)$id)) {
-    require_role(['admin/owner', 'admin', 'inventory_manager']);
+    require_role(['inventory_manager']);
     if (!purchase_order_cancellation_ready($pdo)) {
         json_response(['error' => 'Purchase-order cancellation migration is required. Apply add_cancelled_status_to_purchase_orders.sql before cancelling orders.'], 503);
     }

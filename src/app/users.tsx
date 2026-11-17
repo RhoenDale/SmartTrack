@@ -1,13 +1,14 @@
-import { useState, useMemo, useEffect, useCallback } from "react";
+import { memo, useState, useMemo, useEffect, useCallback } from "react";
 import {
   Plus, Pencil, Trash2, Shield, UsersRound, ShieldCheck, KeyRound,
-  Eye, EyeOff, RotateCcw, ShieldPlus, Lock, Unlock,
+  Eye, EyeOff, RotateCcw, ShieldPlus, Lock,
   ArchiveRestore, Flame, Clock, AlertTriangle, Activity,
-  UserX, RefreshCw, Search, Filter, Pill, UserRound,
+  UserX, RefreshCw, Search, Pill, UserRound,
+  LayoutGrid, List, X,
 } from "lucide-react";
 import { type StaffMember, type CustomRole, ROLE_LABELS, PERMISSION_MODULES } from "./data";
 import { activityApi, rolesApi, usersApi, productsApi, type ActivityLogEntry, type DeletedUser, type DeletedProduct } from "./api";
-import { UserInfoModal, InfoTip, TablePager, ConfirmDialog } from "./shared";
+import { UserInfoModal, InfoTip, TablePager, ConfirmDialog, SegmentedTabs } from "./shared";
 import { appendLog } from "./activity";
 export { appendLog } from "./activity";
 
@@ -43,156 +44,350 @@ function CreatePasswordModal({ user, onClose, onSave }: {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/50 st-overlay-in" onClick={onClose} />
-      <div className="relative bg-card border border-border rounded-2xl shadow-2xl w-full max-w-sm p-6 space-y-4 st-modal-in">
-        <div className="flex items-center gap-3 pb-3 border-b border-border">
-          <div className="w-10 h-10 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center text-sm font-bold text-primary">{user.initials}</div>
-          <div>
-            <h3 className="text-sm font-bold text-foreground">Set Password</h3>
-            <p className="text-[11px] text-muted-foreground">{user.name} · {ROLE_LABELS[user.role] ?? user.role}</p>
-          </div>
-        </div>
-        {success ? (
-          <div className="text-center py-4 space-y-2">
-            <div className="w-12 h-12 rounded-full bg-emerald-50 dark:bg-emerald-500/10 flex items-center justify-center mx-auto"><ShieldCheck size={24} className="text-emerald-500" /></div>
-            <p className="text-sm font-bold text-foreground">Password Set</p>
-            <p className="text-xs text-muted-foreground">{user.name} can now log in.</p>
-          </div>
-        ) : (
-          <form onSubmit={handleSubmit} className="space-y-3">
-            {[
-              { label: "New Password", val: newPwd, set: setNewPwd, show: showNew, toggle: () => setShowNew(v => !v) },
-              { label: "Confirm", val: confirmPwd, set: setConfirmPwd, show: showConf, toggle: () => setShowConf(v => !v) },
-            ].map(f => (
-              <div key={f.label}>
-                <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-1">{f.label}</label>
-                <div className="relative">
-                  <input type={f.show ? "text" : "password"} value={f.val} onChange={e => f.set(e.target.value)}
-                    required minLength={6}
-                    className="w-full rounded-lg border border-border bg-background px-3 py-2.5 pr-10 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all" />
-                  <button type="button" tabIndex={-1} onClick={f.toggle} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
-                    {f.show ? <EyeOff size={14} /> : <Eye size={14} />}
-                  </button>
-                </div>
-              </div>
-            ))}
-            {confirmPwd && newPwd && newPwd !== confirmPwd && <p className="text-xs text-amber-600">Passwords do not match</p>}
-            {error && <p className="text-xs text-red-500">{error}</p>}
-            <div className="flex gap-2 pt-1">
-              <button type="button" onClick={onClose} className="flex-1 py-2 border border-border rounded-lg text-sm font-semibold text-muted-foreground hover:bg-muted/50 transition-all">Cancel</button>
-              <button type="submit" disabled={loading} className="flex-1 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-bold hover:opacity-90 disabled:opacity-60 transition-opacity">{loading ? "Setting…" : "Set Password"}</button>
+      <div className="relative bg-card border border-border/80 rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden st-modal-in">
+        <div className="flex items-center justify-between gap-3 px-5 py-4 border-b border-border/60 bg-muted/20">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-10 h-10 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center text-xs font-semibold text-primary shrink-0">
+              {user.initials}
             </div>
-          </form>
+            <div className="min-w-0">
+              <h3 className="text-sm font-semibold tracking-tight text-foreground">Set Password</h3>
+              <p className="text-xs text-muted-foreground truncate">{user.name} · {ROLE_LABELS[user.role] ?? user.role}</p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close modal"
+            className="w-7 h-7 rounded-full bg-muted/80 hover:bg-muted flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors shrink-0"
+          >
+            <X size={14} />
+          </button>
+        </div>
+
+        <div className="p-5">
+          {success ? (
+            <div className="text-center py-4 space-y-2.5">
+              <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center mx-auto">
+                <ShieldCheck size={24} className="text-emerald-500" />
+              </div>
+              <p className="text-sm font-semibold text-foreground">Password Updated</p>
+              <p className="text-xs text-muted-foreground">{user.name} can now sign in with the new password.</p>
+            </div>
+          ) : (
+            <form onSubmit={handleSubmit} className="space-y-3.5">
+              {[
+                { label: "New Password", val: newPwd, set: setNewPwd, show: showNew, toggle: () => setShowNew(v => !v), placeholder: "Minimum 6 characters" },
+                { label: "Confirm Password", val: confirmPwd, set: setConfirmPwd, show: showConf, toggle: () => setShowConf(v => !v), placeholder: "Re-enter password" },
+              ].map(f => (
+                <div key={f.label} className="space-y-1.5">
+                  <label className="block text-[11px] font-medium text-muted-foreground">{f.label}</label>
+                  <div className="relative">
+                    <input
+                      type={f.show ? "text" : "password"}
+                      value={f.val}
+                      onChange={e => f.set(e.target.value)}
+                      placeholder={f.placeholder}
+                      required
+                      minLength={6}
+                      className="w-full rounded-xl border border-border/80 bg-background/80 px-3.5 py-2.5 pr-10 text-sm text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-primary/25 focus:border-primary transition-all"
+                    />
+                    <button
+                      type="button"
+                      tabIndex={-1}
+                      onClick={f.toggle}
+                      aria-label={f.show ? "Hide password" : "Show password"}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                      {f.show ? <EyeOff size={14} /> : <Eye size={14} />}
+                    </button>
+                  </div>
+                </div>
+              ))}
+
+              {confirmPwd && newPwd && newPwd !== confirmPwd && (
+                <p className="text-xs text-amber-600 dark:text-amber-400">Passwords do not match yet.</p>
+              )}
+              {error && (
+                <div className="flex items-center gap-2 rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs text-red-600 dark:text-red-400">
+                  <AlertTriangle size={13} className="shrink-0" />
+                  <span>{error}</span>
+                </div>
+              )}
+
+              <div className="flex items-center justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="rounded-full border border-border/80 px-4 py-2 text-xs font-semibold text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-all"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="rounded-full bg-primary px-5 py-2 text-xs font-semibold text-primary-foreground shadow-sm hover:opacity-95 disabled:opacity-60 transition-opacity"
+                >
+                  {loading ? "Saving…" : "Set Password"}
+                </button>
+              </div>
+            </form>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Role & user styling helpers ──────────────────────────────────────────────
+const ROLE_CHIP_STYLES: Record<string, { pill: string; dot: string }> = {
+  "admin/owner":       { pill: "bg-purple-500/10 text-purple-600 border-purple-500/20 dark:text-purple-300", dot: "bg-purple-500" },
+  "admin":             { pill: "bg-blue-500/10 text-blue-600 border-blue-500/20 dark:text-blue-300",         dot: "bg-blue-500" },
+  "inventory_manager": { pill: "bg-amber-500/10 text-amber-700 border-amber-500/20 dark:text-amber-300",      dot: "bg-amber-500" },
+  "cashier":           { pill: "bg-teal-500/10 text-teal-700 border-teal-500/20 dark:text-teal-300",         dot: "bg-teal-500" },
+};
+
+const AVATAR_TONES: Record<string, string> = {
+  "admin/owner":       "bg-purple-500/12 text-purple-600 border-purple-500/25 dark:text-purple-300",
+  "admin":             "bg-blue-500/12 text-blue-600 border-blue-500/25 dark:text-blue-300",
+  "inventory_manager": "bg-amber-500/12 text-amber-600 border-amber-500/25 dark:text-amber-300",
+  "cashier":           "bg-teal-500/12 text-teal-600 border-teal-500/25 dark:text-teal-300",
+};
+
+function roleChip(role: string, labelMap: Record<string, string>) {
+  const tone = ROLE_CHIP_STYLES[role] ?? { pill: "bg-muted/70 text-foreground/80 border-border/70", dot: "bg-muted-foreground/60" };
+  return (
+    <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-medium border ${tone.pill}`}>
+      <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${tone.dot}`} />
+      {labelMap[role] ?? role}
+    </span>
+  );
+}
+
+interface UserItemProps {
+  s: StaffMember;
+  canManage: boolean;
+  pwdManageable: boolean;
+  isSelf: boolean;
+  onView: () => void;
+  onEdit: () => void;
+  onDelete: () => void;
+  onToggleStatus: () => void;
+  onReset: () => void;
+  onSetPassword: () => void;
+  roleLabelsMap: Record<string, string>;
+}
+
+function UserStatusBadge({ isActive, canManage, onToggleStatus }: {
+  isActive: boolean; canManage: boolean; onToggleStatus: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={canManage ? onToggleStatus : undefined}
+      disabled={!canManage}
+      title={canManage ? (isActive ? "Click to deactivate account" : "Click to activate account") : undefined}
+      className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[11px] font-medium transition-all shrink-0 ${
+        isActive
+          ? "bg-emerald-500/10 text-emerald-700 border-emerald-500/20 dark:text-emerald-400"
+          : "bg-muted/70 text-muted-foreground border-border/70"
+      } ${canManage ? "hover:brightness-95 cursor-pointer" : "cursor-default opacity-75"}`}
+    >
+      <span className={`w-1.5 h-1.5 rounded-full ${isActive ? "bg-emerald-500" : "bg-muted-foreground/50"}`} />
+      {isActive ? "Active" : "Inactive"}
+    </button>
+  );
+}
+
+function UserActionControls({
+  canManage, pwdManageable, isSelf, onView, onEdit, onDelete, onReset, onSetPassword,
+}: Pick<UserItemProps, "canManage" | "pwdManageable" | "isSelf" | "onView" | "onEdit" | "onDelete" | "onReset" | "onSetPassword">) {
+  if (!canManage && !pwdManageable) {
+    return (
+      <div className="flex items-center justify-between gap-2 w-full">
+        <span className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground/80">
+          {isSelf ? "Current session" : <><Lock size={11} /> Protected account</>}
+        </span>
+        <button
+          type="button"
+          onClick={onView}
+          className="inline-flex items-center gap-1.5 rounded-full border border-border/70 bg-background/70 px-3 py-1 text-[11px] font-medium text-foreground hover:bg-muted transition-colors"
+        >
+          <UserRound size={11} />
+          {isSelf ? "Profile" : "View"}
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex items-center justify-between gap-2 w-full">
+      <div className="flex items-center gap-1.5 flex-wrap">
+        {canManage && (
+          <button
+            type="button"
+            onClick={onEdit}
+            className="inline-flex items-center gap-1.5 rounded-full border border-border/70 bg-background/70 px-2.5 py-1 text-[11px] font-medium text-foreground hover:border-primary/30 hover:text-primary hover:bg-primary/5 transition-all"
+          >
+            <Pencil size={11} /> Edit
+          </button>
+        )}
+        {pwdManageable && (
+          <button
+            type="button"
+            onClick={onSetPassword}
+            className="inline-flex items-center gap-1.5 rounded-full border border-border/70 bg-background/70 px-2.5 py-1 text-[11px] font-medium text-foreground hover:border-primary/30 hover:text-primary hover:bg-primary/5 transition-all"
+          >
+            <KeyRound size={11} /> Password
+          </button>
+        )}
+      </div>
+
+      <div className="flex items-center gap-1 shrink-0">
+        {pwdManageable && (
+          <button
+            type="button"
+            onClick={onReset}
+            title="Clear saved password"
+            aria-label="Clear saved password"
+            className="p-1.5 rounded-full text-muted-foreground hover:text-amber-600 dark:hover:text-amber-400 hover:bg-amber-500/10 transition-colors"
+          >
+            <RotateCcw size={13} />
+          </button>
+        )}
+        {canManage && (
+          <button
+            type="button"
+            onClick={onDelete}
+            title="Move to recycle bin"
+            aria-label="Move to recycle bin"
+            className="p-1.5 rounded-full text-muted-foreground hover:text-red-500 hover:bg-red-500/10 transition-colors"
+          >
+            <Trash2 size={13} />
+          </button>
         )}
       </div>
     </div>
   );
 }
 
-// ─── Role colour helper ───────────────────────────────────────────────────────
-function roleChip(role: string, labelMap: Record<string, string>) {
-  const colours: Record<string, string> = {
-    "admin/owner": "bg-purple-100 text-purple-700 border-purple-200 dark:bg-purple-500/15 dark:text-purple-300 dark:border-purple-500/25",
-    "admin":       "bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-500/15 dark:text-blue-300 dark:border-blue-500/25",
-    "inventory_manager": "bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-500/15 dark:text-amber-300 dark:border-amber-500/25",
-    "cashier":     "bg-teal-100 text-teal-700 border-teal-200 dark:bg-teal-500/15 dark:text-teal-300 dark:border-teal-500/25",
-  };
-  const cls = colours[role] ?? "bg-muted text-muted-foreground border-border";
-  return <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border ${cls}`}>{labelMap[role] ?? role}</span>;
-}
-
-// ─── User card ────────────────────────────────────────────────────────────────
+// ─── User card (Apple grid view) ──────────────────────────────────────────────
 function UserCard({
   s, canManage, pwdManageable, isSelf,
   onView, onEdit, onDelete, onToggleStatus, onReset, onSetPassword, roleLabelsMap,
-}: {
-  s: StaffMember;
-  canManage: boolean; pwdManageable: boolean; isSelf: boolean;
-  onView: () => void; onEdit: () => void; onDelete: () => void;
-  onToggleStatus: () => void; onReset: () => void; onSetPassword: () => void;
-  roleLabelsMap: Record<string, string>;
-}) {
-  const avatarColours: Record<string, string> = {
-    "admin/owner": "bg-purple-500/15 text-purple-600 border-purple-300/50 dark:text-purple-300",
-    "admin":       "bg-blue-500/15 text-blue-600 border-blue-300/50 dark:text-blue-300",
-    "inventory_manager": "bg-amber-500/15 text-amber-600 border-amber-300/50 dark:text-amber-300",
-    "cashier":     "bg-teal-500/15 text-teal-600 border-teal-300/50 dark:text-teal-300",
-  };
-  const av = avatarColours[s.role] ?? "bg-muted text-muted-foreground border-border";
+}: UserItemProps) {
+  const av = AVATAR_TONES[s.role] ?? "bg-muted text-muted-foreground border-border";
   const isActive = s.status === "active";
+  const lastActiveText = s.lastLogin && s.lastLogin !== "Never" ? `Last active ${s.lastLogin}` : "Never signed in";
 
   return (
-    <div className="group relative bg-card border border-border/80 rounded-xl p-4 flex flex-col gap-3 hover:border-primary/30 hover:shadow-[0_4px_16px_-4px_rgba(37,99,235,0.1)] transition-all st-card">
-      {/* Status dot */}
-      <span className={`absolute top-3 right-3 w-2 h-2 rounded-full ${isActive ? "bg-emerald-500" : "bg-muted-foreground/40"}`} title={isActive ? "Active" : "Inactive"} />
+    <div className="group bg-card border border-border/70 rounded-2xl p-4 sm:p-5 flex flex-col justify-between gap-4 shadow-sm hover:border-primary/30 hover:shadow-md transition-all st-card">
+      <div className="space-y-3.5">
+        <div className="flex items-start justify-between gap-3">
+          <button type="button" onClick={onView} className="flex items-center gap-3 text-left min-w-0 flex-1 group/btn">
+            <div className={`w-11 h-11 rounded-full border flex items-center justify-center text-sm font-semibold shrink-0 ${av}`}>
+              {s.initials}
+            </div>
+            <div className="min-w-0">
+              <div className="flex items-center gap-1.5 min-w-0">
+                <p className="text-sm font-semibold text-foreground truncate group-hover/btn:text-primary transition-colors">{s.name}</p>
+                {isSelf && (
+                  <span className="shrink-0 rounded-full bg-primary/10 border border-primary/20 px-2 py-0.5 text-[10px] font-medium text-primary">
+                    You
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-muted-foreground truncate mt-0.5">{s.email}</p>
+            </div>
+          </button>
 
-      {/* Avatar + name */}
-      <button type="button" onClick={onView} className="flex items-center gap-3 text-left w-full">
-        <div className={`w-11 h-11 rounded-xl border-2 flex items-center justify-center text-sm font-bold flex-shrink-0 ${av}`}>
+          <UserStatusBadge isActive={isActive} canManage={canManage} onToggleStatus={onToggleStatus} />
+        </div>
+
+        <div className="flex flex-wrap gap-1.5">
+          {(s.roles ?? [s.role]).map(role => <span key={role}>{roleChip(role, roleLabelsMap)}</span>)}
+        </div>
+
+        <p className="text-[11px] text-muted-foreground flex items-center gap-1.5">
+          <Clock size={11} className="shrink-0 opacity-75" />
+          <span>{lastActiveText}</span>
+        </p>
+      </div>
+
+      <div className="border-t border-border/50 pt-3">
+        <UserActionControls
+          canManage={canManage}
+          pwdManageable={pwdManageable}
+          isSelf={isSelf}
+          onView={onView}
+          onEdit={onEdit}
+          onDelete={onDelete}
+          onReset={onReset}
+          onSetPassword={onSetPassword}
+        />
+      </div>
+    </div>
+  );
+}
+
+// ─── User grouped list row (Apple System Settings style) ──────────────────────
+function UserListRow({
+  s, canManage, pwdManageable, isSelf,
+  onView, onEdit, onDelete, onToggleStatus, onReset, onSetPassword, roleLabelsMap,
+}: UserItemProps) {
+  const av = AVATAR_TONES[s.role] ?? "bg-muted text-muted-foreground border-border";
+  const isActive = s.status === "active";
+  const lastActiveText = s.lastLogin && s.lastLogin !== "Never" ? `Last active ${s.lastLogin}` : "Never signed in";
+
+  return (
+    <div className="px-4 sm:px-5 py-3.5 flex flex-col lg:flex-row lg:items-center justify-between gap-3 hover:bg-muted/25 transition-colors">
+      <button type="button" onClick={onView} className="flex items-center gap-3.5 text-left min-w-0 flex-1 group/btn">
+        <div className={`w-10 h-10 rounded-full border flex items-center justify-center text-xs font-semibold shrink-0 ${av}`}>
           {s.initials}
         </div>
-        <div className="min-w-0">
-          <p className="text-sm font-bold text-foreground truncate leading-tight">{s.name}</p>
-          <p className="text-[10px] text-muted-foreground truncate mt-0.5">{s.email}</p>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2 flex-wrap">
+            <p className="text-sm font-semibold text-foreground truncate group-hover/btn:text-primary transition-colors">{s.name}</p>
+            {isSelf && (
+              <span className="rounded-full bg-primary/10 border border-primary/20 px-2 py-0.5 text-[10px] font-medium text-primary">
+                You
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-2 text-xs text-muted-foreground flex-wrap mt-0.5">
+            <span className="truncate">{s.email}</span>
+            <span className="opacity-40">·</span>
+            <span className="inline-flex items-center gap-1 text-[11px]">
+              <Clock size={10} /> {lastActiveText}
+            </span>
+          </div>
         </div>
       </button>
 
-      {/* Role + status row */}
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex flex-wrap gap-1">
+      <div className="flex flex-wrap items-center justify-between lg:justify-end gap-3 shrink-0">
+        <div className="flex flex-wrap items-center gap-1.5">
           {(s.roles ?? [s.role]).map(role => <span key={role}>{roleChip(role, roleLabelsMap)}</span>)}
         </div>
-        <button
-          type="button"
-          onClick={canManage ? onToggleStatus : undefined}
-          disabled={!canManage}
-          className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border transition-all ${
-            isActive
-              ? "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/20 hover:bg-emerald-100"
-              : "bg-muted text-muted-foreground border-border hover:bg-muted/80"
-          } ${!canManage ? "opacity-40 cursor-default" : "cursor-pointer"}`}
-        >
-          {isActive ? "Active" : "Inactive"}
-        </button>
-      </div>
-
-      {/* Last login */}
-      <p className="text-[10px] text-muted-foreground flex items-center gap-1 -mt-1">
-        <Clock size={10} />
-        {s.lastLogin ? `Last login ${s.lastLogin}` : "Never logged in"}
-      </p>
-
-      {/* Actions — visible on hover */}
-      {(canManage || isSelf) && (
-        <div className="flex items-center gap-1 border-t border-border/60 pt-2 -mb-1 flex-wrap">
-          {canManage && (
-            <button onClick={onEdit} title="Edit user" className="p-1.5 rounded-lg text-muted-foreground hover:text-primary hover:bg-primary/10 transition-all st-btn-ghost">
-              <Pencil size={13} />
-            </button>
-          )}
-          {canManage && (
-            <button onClick={onDelete} title="Move to recycle bin" className="p-1.5 rounded-lg text-muted-foreground hover:text-red-500 hover:bg-red-500/10 transition-all st-btn-ghost">
-              <Trash2 size={13} />
-            </button>
-          )}
-          {pwdManageable && <span className="w-px h-4 bg-border" />}
-          {pwdManageable && (
-            <button onClick={onReset} title="Clear password" className="p-1.5 rounded-lg text-muted-foreground hover:text-amber-500 hover:bg-amber-500/10 transition-all st-btn-ghost">
-              <RotateCcw size={13} />
-            </button>
-          )}
-          {pwdManageable && (
-            <button onClick={onSetPassword} title="Set new password" className="p-1.5 rounded-lg text-muted-foreground hover:text-primary hover:bg-primary/10 transition-all st-btn-ghost">
-              <KeyRound size={13} />
-            </button>
-          )}
+        <UserStatusBadge isActive={isActive} canManage={canManage} onToggleStatus={onToggleStatus} />
+        <div className="min-w-[180px] flex justify-end">
+          <UserActionControls
+            canManage={canManage}
+            pwdManageable={pwdManageable}
+            isSelf={isSelf}
+            onView={onView}
+            onEdit={onEdit}
+            onDelete={onDelete}
+            onReset={onReset}
+            onSetPassword={onSetPassword}
+          />
         </div>
-      )}
+      </div>
     </div>
   );
 }
 
 // ─── Activity Log panel ───────────────────────────────────────────────────────
-export function ActivityLogPanel({ isAdmin = true }: { isAdmin?: boolean }) {
+export const ActivityLogPanel = memo(function ActivityLogPanel({ isAdmin = true }: { isAdmin?: boolean }) {
   const [log, setLog] = useState<ActivityLogEntry[]>([]);
   const [actors, setActors] = useState<{ id: string | null; name: string }[]>([]);
   const [filterActor, setFilterActor] = useState("");
@@ -240,141 +435,158 @@ export function ActivityLogPanel({ isAdmin = true }: { isAdmin?: boolean }) {
   };
 
   return (
-    <div className="p-4 sm:p-6 space-y-5 w-full max-w-[1400px] mx-auto st-page-in">
-      <header className="flex items-start justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <span className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-2xl border border-primary/15 bg-primary/10 text-primary">
-            <Activity size={20} />
-          </span>
-          <div>
-            <h1 className="text-xl font-semibold tracking-tight text-foreground">Activity Log</h1>
-            <p className="mt-0.5 text-sm text-muted-foreground">
-              {isAdmin ? "A searchable record of activity across accounts." : "A searchable record of your activity."}
-            </p>
+    <div
+      className="flex flex-col w-full overflow-hidden"
+      style={{ height: "calc(100dvh - 56px)" }}
+    >
+      {/* ── Fixed top content: header + search/filter ── */}
+      <div className="flex-shrink-0 st-shell-px pt-4 sm:pt-6 pb-4 bg-background border-b border-border/60 z-20 space-y-4">
+        <header className="flex items-start justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <span className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-2xl border border-primary/15 bg-primary/10 text-primary">
+              <Activity size={20} />
+            </span>
+            <div>
+              <h1 className="text-xl font-semibold tracking-tight text-foreground">Activity Log</h1>
+              <p className="mt-0.5 text-sm text-muted-foreground">
+                {isAdmin ? "A searchable record of activity across accounts." : "A searchable record of your activity."}
+              </p>
+            </div>
           </div>
-        </div>
-        <button type="button" onClick={() => void loadLogs()} disabled={loading}
-          className="inline-flex flex-shrink-0 items-center gap-2 rounded-full border border-border bg-card px-3.5 py-2 text-xs font-medium text-foreground transition-colors hover:bg-muted/60 disabled:opacity-50">
-          <RefreshCw size={13} className={loading ? "animate-spin" : ""} /> Refresh
-        </button>
-      </header>
-
-      <section className="flex flex-col gap-3 rounded-2xl border border-border/70 bg-card/80 p-3 shadow-sm sm:flex-row sm:items-center">
-        <div className="relative min-w-0 flex-1">
-          <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-          <input
-            type="search"
-            value={search}
-            onChange={event => setSearch(event.target.value)}
-            placeholder="Search actor, endpoint, method, or status"
-            aria-label="Search activity log"
-            className="w-full rounded-xl border border-border/70 bg-background py-2.5 pl-9 pr-3 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary/40 focus:outline-none focus:ring-2 focus:ring-primary/15"
-          />
-        </div>
-        {isAdmin && (
-          <select
-            id="activity-user-filter"
-            aria-label="Filter activity by user"
-            value={filterActor}
-            onChange={event => {
-              setLog([]);
-              setNextCursor(null);
-              setHasMore(false);
-              setFilterActor(event.target.value);
-            }}
-            className="app-select w-full rounded-xl border border-border/70 bg-background px-3 py-2.5 text-sm text-foreground focus:border-primary/40 focus:outline-none focus:ring-2 focus:ring-primary/15 sm:w-52"
-          >
-            <option value="">All users</option>
-            {actors.map((actor, index) => (
-              <option key={actor.id ?? `anonymous-${index}`} value={actor.id ?? "anonymous"}>{actor.name}</option>
-            ))}
-          </select>
-        )}
-        <span className="flex-shrink-0 px-1 text-xs tabular-nums text-muted-foreground" aria-live="polite">
-          {filteredLog.length} {filteredLog.length === 1 ? "match" : "matches"} · {log.length} loaded
-        </span>
-      </section>
-
-      {error && (
-        <div role="alert" className="flex items-center justify-between gap-3 rounded-2xl border border-rose-500/25 bg-rose-500/5 px-4 py-3 text-sm text-rose-700 dark:text-rose-300">
-          <span>{error}</span>
-          <button type="button" onClick={() => void loadLogs()} className="flex-shrink-0 font-semibold underline underline-offset-2">Retry</button>
-        </div>
-      )}
-
-      {loading && log.length === 0 ? (
-        <div className="flex flex-col items-center justify-center gap-3 rounded-2xl border border-border/70 bg-card py-16 text-center">
-          <RefreshCw size={20} className="animate-spin text-muted-foreground" />
-          <p className="text-sm text-muted-foreground">Loading activity…</p>
-        </div>
-      ) : log.length === 0 ? (
-        <div className="flex flex-col items-center justify-center gap-3 rounded-2xl border border-border/70 bg-card py-16 text-center">
-          <Activity size={28} className="text-muted-foreground/50" />
-          <p className="text-sm text-muted-foreground">No activity records found.</p>
-        </div>
-      ) : filteredLog.length === 0 ? (
-        <div className="flex flex-col items-center justify-center gap-3 rounded-2xl border border-border/70 bg-card py-14 text-center">
-          <Search size={24} className="text-muted-foreground/50" />
-          <p className="text-sm text-muted-foreground">No activity matches this search.</p>
-        </div>
-      ) : (
-        <div className="max-h-[calc(100dvh-270px)] overflow-y-auto rounded-2xl border border-border/70 bg-card shadow-sm">
-          <div className="divide-y divide-border/60">
-            {filteredLog.map(entry => {
-              const actorInitials = entry.actor.trim().split(/\s+/).slice(0, 2).map(part => part[0]).join("").toUpperCase() || "?";
-              const timestamp = new Date(entry.ts);
-              const timestampLabel = Number.isNaN(timestamp.getTime())
-                ? entry.ts
-                : `${timestamp.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })} ${timestamp.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", second: "2-digit" })}`;
-              return (
-                <article key={entry.id} className="flex flex-col gap-3 px-4 py-4 transition-colors hover:bg-muted/25 sm:flex-row sm:items-center sm:gap-4">
-                  <div className="flex min-w-0 flex-1 items-center gap-3">
-                    <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl border border-primary/15 bg-primary/10 text-xs font-semibold text-primary">
-                      {actorInitials}
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="truncate text-sm font-medium text-foreground">{entry.actor || "Unknown actor"}</span>
-                        <span className="rounded-full border border-border/80 bg-muted/50 px-2 py-0.5 text-[10px] text-muted-foreground">
-                          {entry.actorId ? "Account" : "Unattributed"}
-                        </span>
-                      </div>
-                      <p className="mt-1 break-all font-mono text-xs leading-relaxed text-muted-foreground">{entry.path}</p>
-                    </div>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-2 sm:flex-shrink-0">
-                    <span className={`inline-flex min-w-14 justify-center rounded-full border px-2.5 py-1 font-mono text-[10px] font-semibold ${methodColour(entry.method)}`}>
-                      {entry.method}
-                    </span>
-                    <span className={`rounded-full border px-2.5 py-1 font-mono text-[10px] font-semibold ${
-                      entry.status >= 400
-                        ? "border-rose-500/20 bg-rose-500/10 text-rose-600 dark:text-rose-400"
-                        : "border-emerald-500/20 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
-                    }`}>
-                      {entry.status}
-                    </span>
-                    <time dateTime={entry.ts} className="font-mono text-[10px] tabular-nums text-muted-foreground sm:min-w-40 sm:text-right">
-                      {timestampLabel}
-                    </time>
-                  </div>
-                </article>
-              );
-            })}
-          </div>
-        </div>
-      )}
-      {hasMore && nextCursor && (
-        <div className="flex justify-center">
-          <button type="button" disabled={loading} onClick={() => void loadLogs(nextCursor)}
-            className="inline-flex items-center gap-2 rounded-full border border-border bg-card px-4 py-2.5 text-xs font-medium text-foreground shadow-sm transition-colors hover:bg-muted/60 disabled:opacity-50">
-            {loading && <RefreshCw size={13} className="animate-spin" />}
-            {loading ? "Loading…" : "Load More"}
+          <button type="button" onClick={() => void loadLogs()} disabled={loading}
+            className="inline-flex flex-shrink-0 items-center gap-2 rounded-full border border-border bg-card px-3.5 py-2 text-xs font-medium text-foreground transition-colors hover:bg-muted/60 disabled:opacity-50">
+            <RefreshCw size={13} className={loading ? "animate-spin" : ""} /> Refresh
           </button>
-        </div>
-      )}
+        </header>
+
+        <section className="flex flex-col gap-3 rounded-2xl border border-border/70 bg-card/80 p-3 shadow-sm sm:flex-row sm:items-center">
+          <div className="relative min-w-0 flex-1">
+            <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+            <input
+              type="search"
+              value={search}
+              onChange={event => setSearch(event.target.value)}
+              placeholder="Search actor, endpoint, method, or status"
+              aria-label="Search activity log"
+              className="w-full rounded-xl border border-border/70 bg-background py-2.5 pl-9 pr-3 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary/40 focus:outline-none focus:ring-2 focus:ring-primary/15"
+            />
+          </div>
+          {isAdmin && (
+            <select
+              id="activity-user-filter"
+              aria-label="Filter activity by user"
+              value={filterActor}
+              onChange={event => {
+                setLog([]);
+                setNextCursor(null);
+                setHasMore(false);
+                setFilterActor(event.target.value);
+              }}
+              className="app-select w-full rounded-xl border border-border/70 bg-background px-3 py-2.5 text-sm text-foreground focus:border-primary/40 focus:outline-none focus:ring-2 focus:ring-primary/15 sm:w-52"
+            >
+              <option value="">All users</option>
+              {actors.map((actor, index) => (
+                <option key={actor.id ?? `anonymous-${index}`} value={actor.id ?? "anonymous"}>{actor.name}</option>
+              ))}
+            </select>
+          )}
+          <span className="flex-shrink-0 px-1 text-xs tabular-nums text-muted-foreground" aria-live="polite">
+            {filteredLog.length} {filteredLog.length === 1 ? "match" : "matches"} · {log.length} loaded
+          </span>
+        </section>
+
+        {error && (
+          <div role="alert" className="flex items-center justify-between gap-3 rounded-2xl border border-rose-500/25 bg-rose-500/5 px-4 py-3 text-sm text-rose-700 dark:text-rose-300">
+            <span>{error}</span>
+            <button type="button" onClick={() => void loadLogs()} className="st-chip-btn st-chip-btn--rose flex-shrink-0">Retry</button>
+          </div>
+        )}
+      </div>
+
+      {/* ── Scrollable log list only ── */}
+      <div className="flex-1 min-h-0 flex flex-col st-shell-px py-4 overflow-hidden">
+        {loading && log.length === 0 ? (
+          <div className="flex flex-col items-center justify-center gap-3 rounded-2xl border border-border/70 bg-card py-16 text-center">
+            <RefreshCw size={20} className="animate-spin text-muted-foreground" />
+            <p className="text-sm text-muted-foreground">Loading activity…</p>
+          </div>
+        ) : log.length === 0 ? (
+          <div className="flex flex-col items-center justify-center gap-3 rounded-2xl border border-border/70 bg-card py-16 text-center">
+            <Activity size={28} className="text-muted-foreground/50" />
+            <p className="text-sm text-muted-foreground">No activity records found.</p>
+          </div>
+        ) : filteredLog.length === 0 ? (
+          <div className="flex flex-col items-center justify-center gap-3 rounded-2xl border border-border/70 bg-card py-14 text-center">
+            <Search size={24} className="text-muted-foreground/50" />
+            <p className="text-sm text-muted-foreground">No activity matches this search.</p>
+          </div>
+        ) : (
+          <div className="flex-1 min-h-0 flex flex-col rounded-2xl border border-border/70 bg-card shadow-sm overflow-hidden">
+            <div className="flex-shrink-0 hidden sm:flex items-center justify-between px-4 py-2.5 border-b border-border/60 bg-muted/35 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+              <span>Account &amp; Request</span>
+              <div className="flex items-center gap-2">
+                <span className="min-w-14 text-center">Method</span>
+                <span className="min-w-12 text-center">Status</span>
+                <span className="sm:min-w-40 text-right">Timestamp</span>
+              </div>
+            </div>
+            <div className="flex-1 min-h-0 overflow-y-auto divide-y divide-border/60" data-table-scroll="fixed">
+              {filteredLog.map(entry => {
+                const actorInitials = entry.actor.trim().split(/\s+/).slice(0, 2).map(part => part[0]).join("").toUpperCase() || "?";
+                const timestamp = new Date(entry.ts);
+                const timestampLabel = Number.isNaN(timestamp.getTime())
+                  ? entry.ts
+                  : `${timestamp.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })} ${timestamp.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", second: "2-digit" })}`;
+                return (
+                  <article key={entry.id} className="flex flex-col gap-3 px-4 py-4 transition-colors hover:bg-muted/25 sm:flex-row sm:items-center sm:gap-4">
+                    <div className="flex min-w-0 flex-1 items-center gap-3">
+                      <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl border border-primary/15 bg-primary/10 text-xs font-semibold text-primary">
+                        {actorInitials}
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="truncate text-sm font-medium text-foreground">{entry.actor || "Unknown actor"}</span>
+                          <span className="rounded-full border border-border/80 bg-muted/50 px-2 py-0.5 text-[10px] text-muted-foreground">
+                            {entry.actorId ? "Account" : "Unattributed"}
+                          </span>
+                        </div>
+                        <p className="mt-1 break-all font-mono text-xs leading-relaxed text-muted-foreground">{entry.path}</p>
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2 sm:flex-shrink-0">
+                      <span className={`inline-flex min-w-14 justify-center rounded-full border px-2.5 py-1 font-mono text-[10px] font-semibold ${methodColour(entry.method)}`}>
+                        {entry.method}
+                      </span>
+                      <span className={`min-w-12 text-center rounded-full border px-2.5 py-1 font-mono text-[10px] font-semibold ${
+                        entry.status >= 400
+                          ? "border-rose-500/20 bg-rose-500/10 text-rose-600 dark:text-rose-400"
+                          : "border-emerald-500/20 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                      }`}>
+                        {entry.status}
+                      </span>
+                      <time dateTime={entry.ts} className="font-mono text-[10px] tabular-nums text-muted-foreground sm:min-w-40 sm:text-right">
+                        {timestampLabel}
+                      </time>
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+            {hasMore && nextCursor && (
+              <div className="flex-shrink-0 border-t border-border/60 bg-card px-4 py-3 flex justify-center">
+                <button type="button" disabled={loading} onClick={() => void loadLogs(nextCursor)}
+                  className="inline-flex items-center gap-2 rounded-full border border-border bg-card px-4 py-2 text-xs font-medium text-foreground shadow-sm transition-colors hover:bg-muted/60 disabled:opacity-50">
+                  {loading && <RefreshCw size={13} className="animate-spin" />}
+                  {loading ? "Loading…" : "Load More"}
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
-}
+});
 
 // ─── Recycle Bin types (module-level to avoid re-declaration issues) ──────────
 type RecycleConfirmState =
@@ -385,7 +597,7 @@ type RecycleConfirmState =
 // ─── Recycle Bin panel ────────────────────────────────────────────────────────
 const AUTO_PURGE_DAYS = 30;
 
-export function RecycleBinPanel({
+export const RecycleBinPanel = memo(function RecycleBinPanel({
   currentUserRoles, currentUserName, onRestored, showToast,
 }: {
   currentUserRoles: string[]; currentUserName: string; onRestored: () => void;
@@ -422,8 +634,13 @@ export function RecycleBinPanel({
 
   useEffect(() => { void load(); }, [load]);
 
-  const allItems = [...deletedUsers, ...deletedProducts];
-  const expired  = allItems.filter(i => i.daysSinceDelete >= AUTO_PURGE_DAYS);
+  const { allItems, expired } = useMemo(() => {
+    const combined = [...deletedUsers, ...deletedProducts];
+    return {
+      allItems: combined,
+      expired: combined.filter(i => i.daysSinceDelete >= AUTO_PURGE_DAYS),
+    };
+  }, [deletedUsers, deletedProducts]);
 
   const handleRestore = async (state: RecycleConfirmState) => {
     if (!state) return;
@@ -472,131 +689,142 @@ export function RecycleBinPanel({
     finally { setBusy(null); setConfirmPurgeAll(false); }
   };
 
-  const currentItems = (activeTab === "users" ? deletedUsers : deletedProducts).filter(i => {
-    if (!search.trim()) return true;
-    const q = search.toLowerCase();
-    return (
-      i.name.toLowerCase().includes(q) ||
-      (i.deleteNote && i.deleteNote.toLowerCase().includes(q)) ||
-      (i.deletedByName && i.deletedByName.toLowerCase().includes(q))
-    );
-  });
-  const pageItems = currentItems.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  const { currentItems, pageItems } = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    const filtered = (activeTab === "users" ? deletedUsers : deletedProducts).filter(i => {
+      if (!q) return true;
+      return (
+        i.name.toLowerCase().includes(q) ||
+        (i.deleteNote && i.deleteNote.toLowerCase().includes(q)) ||
+        (i.deletedByName && i.deletedByName.toLowerCase().includes(q))
+      );
+    });
+    return {
+      currentItems: filtered,
+      pageItems: filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE),
+    };
+  }, [activeTab, deletedUsers, deletedProducts, search, page]);
 
   useEffect(() => {
     setPage(current => Math.min(current, Math.max(1, Math.ceil(currentItems.length / PAGE_SIZE))));
   }, [currentItems.length]);
 
   return (
-    <div className="p-4 sm:p-6 space-y-5 w-full max-w-[1400px] mx-auto st-page-in">
-      <header className="flex flex-wrap items-start justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <span className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-2xl border border-border/70 bg-muted/60 text-muted-foreground">
-            <Trash2 size={20} />
-          </span>
-          <div>
-            <h1 className="text-xl font-semibold tracking-tight text-foreground">Recycle Bin</h1>
-            <p className="mt-0.5 text-sm text-muted-foreground">Restore deleted items or remove them permanently.</p>
+    <div
+      className="flex flex-col w-full overflow-hidden"
+      style={{ height: "calc(100dvh - 56px)" }}
+    >
+      {/* ── Fixed top content: header + notice + tabs + search ── */}
+      <div className="flex-shrink-0 st-shell-px pt-4 sm:pt-6 pb-3 bg-background border-b border-border/60 z-20 space-y-3.5">
+        <header className="flex flex-wrap items-start justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <span className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-2xl border border-border/70 bg-muted/60 text-muted-foreground">
+              <Trash2 size={20} />
+            </span>
+            <div>
+              <h1 className="text-xl font-semibold tracking-tight text-foreground">Recycle Bin</h1>
+              <p className="mt-0.5 text-sm text-muted-foreground">Restore deleted items or remove them permanently.</p>
+            </div>
           </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <button type="button" onClick={() => void load()} disabled={loading}
-            className="inline-flex items-center gap-2 rounded-full border border-border bg-card px-3.5 py-2 text-xs font-medium text-foreground transition-colors hover:bg-muted/60 disabled:opacity-50">
-            <RefreshCw size={13} className={loading ? "animate-spin" : ""} /> Refresh
-          </button>
-          {isOwner && expired.length > 0 && (
-            <button type="button" onClick={() => setConfirmPurgeAll(true)}
-              className="inline-flex items-center gap-2 rounded-full border border-rose-500/20 bg-rose-500/10 px-3.5 py-2 text-xs font-medium text-rose-600 transition-colors hover:bg-rose-500/15 dark:text-rose-400">
-              <Flame size={13} /> Purge expired ({expired.length})
+          <div className="flex items-center gap-2">
+            <button type="button" onClick={() => void load()} disabled={loading}
+              className="inline-flex items-center gap-2 rounded-full border border-border bg-card px-3.5 py-2 text-xs font-medium text-foreground transition-colors hover:bg-muted/60 disabled:opacity-50">
+              <RefreshCw size={13} className={loading ? "animate-spin" : ""} /> Refresh
             </button>
-          )}
-        </div>
-      </header>
+            {isOwner && expired.length > 0 && (
+              <button type="button" onClick={() => setConfirmPurgeAll(true)}
+                className="inline-flex items-center gap-2 rounded-full border border-rose-500/20 bg-rose-500/10 px-3.5 py-2 text-xs font-medium text-rose-600 transition-colors hover:bg-rose-500/15 dark:text-rose-400">
+                <Flame size={13} /> Purge expired ({expired.length})
+              </button>
+            )}
+          </div>
+        </header>
 
-      <div className="flex items-start gap-3 rounded-2xl border border-border/70 bg-muted/35 p-4">
-        <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl border border-border/70 bg-card text-muted-foreground shadow-sm">
-          <Clock size={17} />
-        </span>
-        <div>
-          <p className="text-sm font-medium text-foreground">Items in Trash are automatically deleted after {AUTO_PURGE_DAYS} days.</p>
-          <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">Restore an item before then, or permanently purge it now.</p>
+        <div className="flex items-center gap-3 rounded-2xl border border-border/70 bg-muted/35 px-4 py-2.5">
+          <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-xl border border-border/70 bg-card text-muted-foreground shadow-sm">
+            <Clock size={15} />
+          </span>
+          <p className="text-xs leading-relaxed text-muted-foreground">
+            <span className="font-medium text-foreground">Items in Trash are automatically deleted after {AUTO_PURGE_DAYS} days.</span>{" "}
+            Restore an item before then, or permanently purge it now.
+          </p>
+        </div>
+
+        {error && (
+          <div role="alert" className="flex items-center justify-between gap-3 rounded-2xl border border-rose-500/25 bg-rose-500/5 px-4 py-3 text-sm text-rose-700 dark:text-rose-300">
+            <span>{error}</span>
+            <button type="button" onClick={() => void load()} className="st-chip-btn st-chip-btn--rose flex-shrink-0">Retry</button>
+          </div>
+        )}
+
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <SegmentedTabs<"products" | "users">
+            ariaLabel="Recycle Bin item type"
+            value={activeTab}
+            onChange={id => { setActiveTab(id); setPage(1); }}
+            className="w-full sm:w-auto"
+            buttonClassName="flex-1 sm:flex-initial px-4 py-2 text-sm gap-2"
+            items={[
+              {
+                id: "products",
+                label: "Products",
+                badge: <span className="rounded-full bg-muted px-2 py-0.5 text-xs tabular-nums text-muted-foreground">{deletedProducts.length}</span>,
+              },
+              {
+                id: "users",
+                label: "Users",
+                badge: <span className="rounded-full bg-muted px-2 py-0.5 text-xs tabular-nums text-muted-foreground">{deletedUsers.length}</span>,
+              },
+            ]}
+          />
+          <div className="flex items-center gap-3 w-full sm:w-auto">
+            <span className="hidden md:inline text-xs text-muted-foreground whitespace-nowrap">
+              {currentItems.length} {currentItems.length === 1 ? "item" : "items"} in {activeTab === "products" ? "Products" : "Users"}
+              {search.trim() ? " matching" : ""}
+            </span>
+            <div className="relative w-full sm:w-64">
+              <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+              <input
+                type="search"
+                value={search}
+                onChange={event => { setSearch(event.target.value); setPage(1); }}
+                placeholder={`Search deleted ${activeTab}…`}
+                aria-label={`Search deleted ${activeTab}`}
+                className="w-full rounded-xl border border-border/70 bg-background py-2 pl-9 pr-3 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary/40 focus:outline-none focus:ring-2 focus:ring-primary/15"
+              />
+            </div>
+          </div>
         </div>
       </div>
 
-      {error && (
-        <div role="alert" className="flex items-center justify-between gap-3 rounded-2xl border border-rose-500/25 bg-rose-500/5 px-4 py-3 text-sm text-rose-700 dark:text-rose-300">
-          <span>{error}</span>
-          <button type="button" onClick={() => void load()} className="flex-shrink-0 font-semibold underline underline-offset-2">Retry</button>
-        </div>
-      )}
-
-      <section className="space-y-4">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div role="tablist" aria-label="Recycle Bin item type" className="inline-flex w-full rounded-xl border border-border/70 bg-muted/45 p-1 sm:w-auto">
-            {([
-              { id: "products" as const, label: "Products", count: deletedProducts.length },
-              { id: "users" as const, label: "Users", count: deletedUsers.length },
-            ]).map(tab => (
-              <button
-                key={tab.id}
-                type="button"
-                role="tab"
-                aria-selected={activeTab === tab.id}
-                onClick={() => { setActiveTab(tab.id); setPage(1); }}
-                className={`flex flex-1 items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm transition-all sm:flex-initial ${
-                  activeTab === tab.id
-                    ? "bg-card font-semibold text-foreground shadow-sm"
-                    : "font-medium text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                {tab.label}
-                <span className="rounded-full bg-muted px-2 py-0.5 text-xs tabular-nums text-muted-foreground">{tab.count}</span>
-              </button>
-            ))}
-          </div>
-          <div className="relative w-full sm:max-w-xs">
-            <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-            <input
-              type="search"
-              value={search}
-              onChange={event => { setSearch(event.target.value); setPage(1); }}
-              placeholder={`Search deleted ${activeTab}…`}
-              aria-label={`Search deleted ${activeTab}`}
-              className="w-full rounded-xl border border-border/70 bg-background py-2.5 pl-9 pr-3 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary/40 focus:outline-none focus:ring-2 focus:ring-primary/15"
-            />
-          </div>
-        </div>
-
-        <p className="text-xs text-muted-foreground">
-          {currentItems.length} {currentItems.length === 1 ? "item" : "items"} in {activeTab === "products" ? "Products" : "Users"}
-          {search.trim() ? " matching your search" : ""}
-        </p>
-
-        {loading ? (
-          <div className="flex flex-col items-center justify-center gap-3 rounded-2xl border border-border/70 bg-card py-16 text-center">
-            <RefreshCw size={20} className="animate-spin text-muted-foreground" />
-            <p className="text-sm text-muted-foreground">Loading Trash…</p>
-          </div>
-        ) : currentItems.length === 0 ? (
-          <div className="flex flex-col items-center justify-center gap-3 rounded-2xl border border-border/70 bg-card px-6 py-16 text-center">
-            <span className="flex h-16 w-16 items-center justify-center rounded-3xl border border-border/70 bg-muted/50 text-muted-foreground/70">
-              {search.trim() ? <Search size={26} /> : <Trash2 size={27} />}
-            </span>
-            <div>
-              <p className="text-sm font-semibold text-foreground">
-                {search.trim() ? "No matching items" : deletedUsers.length + deletedProducts.length === 0 ? "Trash is Empty" : `No deleted ${activeTab}`}
-              </p>
-              <p className="mt-1 max-w-sm text-xs leading-relaxed text-muted-foreground">
-                {search.trim()
-                  ? "Try a different search term."
-                  : deletedUsers.length + deletedProducts.length === 0
-                  ? `Deleted items from the last ${AUTO_PURGE_DAYS} days will appear here.`
-                  : `There are no deleted ${activeTab} to show.`}
-              </p>
+      {/* ── Scrollable deleted items only ── */}
+      <div className="flex-1 min-h-0 flex flex-col st-shell-px pt-4 pb-3 overflow-hidden">
+        <div className="flex-1 min-h-0 overflow-y-auto pr-0.5 pb-1" data-table-scroll="fixed">
+          {loading ? (
+            <div className="flex flex-col items-center justify-center gap-3 rounded-2xl border border-border/70 bg-card py-16 text-center">
+              <RefreshCw size={20} className="animate-spin text-muted-foreground" />
+              <p className="text-sm text-muted-foreground">Loading Trash…</p>
             </div>
-          </div>
-        ) : (
-          <div className="grid gap-3 md:grid-cols-2">
+          ) : currentItems.length === 0 ? (
+            <div className="flex flex-col items-center justify-center gap-3 rounded-2xl border border-border/70 bg-card px-6 py-16 text-center">
+              <span className="flex h-16 w-16 items-center justify-center rounded-3xl border border-border/70 bg-muted/50 text-muted-foreground/70">
+                {search.trim() ? <Search size={26} /> : <Trash2 size={27} />}
+              </span>
+              <div>
+                <p className="text-sm font-semibold text-foreground">
+                  {search.trim() ? "No matching items" : deletedUsers.length + deletedProducts.length === 0 ? "Trash is Empty" : `No deleted ${activeTab}`}
+                </p>
+                <p className="mt-1 max-w-sm text-xs leading-relaxed text-muted-foreground">
+                  {search.trim()
+                    ? "Try a different search term."
+                    : deletedUsers.length + deletedProducts.length === 0
+                    ? `Deleted items from the last ${AUTO_PURGE_DAYS} days will appear here.`
+                    : `There are no deleted ${activeTab} to show.`}
+                </p>
+              </div>
+            </div>
+          ) : (
+            <div className="grid gap-3 md:grid-cols-2">
             {pageItems.map(item => {
               const isExpired = item.daysSinceDelete >= AUTO_PURGE_DAYS;
               const isRecent = item.daysSinceDelete < 1;
@@ -667,13 +895,15 @@ export function RecycleBinPanel({
                 </article>
               );
             })}
+            </div>
+          )}
+        </div>
+        {!loading && currentItems.length > 0 && (
+          <div className="flex-shrink-0 pt-2">
+            <TablePager total={currentItems.length} page={page} pageSize={PAGE_SIZE} onPage={setPage} />
           </div>
         )}
-      </section>
-
-      {!loading && currentItems.length > 0 && (
-        <TablePager total={currentItems.length} page={page} pageSize={PAGE_SIZE} onPage={setPage} />
-      )}
+      </div>
 
       {confirmRestore && (
         <ConfirmDialog
@@ -706,9 +936,9 @@ export function RecycleBinPanel({
       )}
     </div>
   );
-}
+});
 // ─── Users Page ───────────────────────────────────────────────────────────────
-export default function UsersPage({
+function UsersPage({
   staff, currentUserId, currentUserRoles, currentUserName = "Admin",
   roles, onAddUser, onEditUser, onDeleteUser, onToggleStatus,
   onResetPassword, onCreatePassword, onRolesChanged,
@@ -727,9 +957,14 @@ export default function UsersPage({
   onRolesChanged?: () => void;
 }) {
   type MainTab = "users" | "roles";
-  const [activeTab, setActiveTab]         = useState<MainTab>("users");
-  const [staffSearch, setStaffSearch]     = useState("");
-  const [staffFilter, setStaffFilter]     = useState<string>("all");
+  type StatusFilter = "all" | "active" | "inactive";
+  type StaffViewMode = "grid" | "list";
+
+  const [activeTab,         setActiveTab]         = useState<MainTab>("users");
+  const [staffSearch,       setStaffSearch]       = useState("");
+  const [staffFilter,       setStaffFilter]       = useState<string>("all");
+  const [staffStatusFilter, setStaffStatusFilter] = useState<StatusFilter>("all");
+  const [staffViewMode,     setStaffViewMode]     = useState<StaffViewMode>("grid");
 
   const roleLabelsMap = useMemo(() => {
     const map: Record<string, string> = { ...ROLE_LABELS };
@@ -745,8 +980,7 @@ export default function UsersPage({
   const [resetTarget,     setResetTarget]     = useState<StaffMember | null>(null);
   const [createPwdTarget, setCreatePwdTarget] = useState<StaffMember | null>(null);
   const [resetSuccess,    setResetSuccess]    = useState<string | null>(null);
-  const [staffPage,       setStaffPage]       = useState(1);
-  const PAGE_SIZE = 12;
+  const [actionError,     setActionError]     = useState<string | null>(null);
 
   const isSuperAdmin = currentUserRoles.includes("admin/owner");
   const isAdmin      = isSuperAdmin || currentUserRoles.includes("admin");
@@ -769,25 +1003,25 @@ export default function UsersPage({
 
   const handleConfirmReset = async () => {
     if (!resetTarget) return;
+    setActionError(null);
     try {
       await onResetPassword(resetTarget);
       setResetSuccess(`${resetTarget.name}'s password has been cleared.`);
-    } catch (e) { alert(e instanceof Error ? e.message : "Failed to reset password."); }
+    } catch (e) { setActionError(e instanceof Error ? e.message : "Failed to reset password."); }
     finally { setResetTarget(null); }
   };
 
   const filteredStaff = useMemo(() => {
+    const q = staffSearch.trim().toLowerCase();
     return staff.filter(s => {
       const matchRole = staffFilter === "all" || (s.roles ?? [s.role]).includes(staffFilter);
-      const matchSearch = !staffSearch || s.name.toLowerCase().includes(staffSearch.toLowerCase()) || s.email.toLowerCase().includes(staffSearch.toLowerCase());
-      return matchRole && matchSearch;
+      const matchStatus =
+        staffStatusFilter === "all" ||
+        (staffStatusFilter === "active" ? s.status === "active" : s.status !== "active");
+      const matchSearch = !q || s.name.toLowerCase().includes(q) || s.email.toLowerCase().includes(q);
+      return matchRole && matchStatus && matchSearch;
     });
-  }, [staff, staffSearch, staffFilter]);
-
-  const paginatedStaff = useMemo(() => {
-    const start = (staffPage - 1) * PAGE_SIZE;
-    return filteredStaff.slice(start, start + PAGE_SIZE);
-  }, [filteredStaff, staffPage]);
+  }, [staff, staffSearch, staffFilter, staffStatusFilter]);
 
   // ── Roles tab state ──────────────────────────────────────────────────────────
   const [showRoleForm,  setShowRoleForm]  = useState(false);
@@ -801,6 +1035,22 @@ export default function UsersPage({
   const openAddRole = () => { setEditingRole(null); setRoleForm({ name: "", description: "", permissions: [] }); setRoleFormError(""); setShowRoleForm(true); };
   const openEditRole = (r: CustomRole) => { setEditingRole(r); setRoleForm({ name: r.name, description: r.description ?? "", permissions: [...r.permissions] }); setRoleFormError(""); setShowRoleForm(true); };
   const togglePermission = (pid: string) => setRoleForm(f => ({ ...f, permissions: f.permissions.includes(pid) ? f.permissions.filter(p => p !== pid) : [...f.permissions, pid] }));
+  const toggleCategoryPermissions = (modIds: string[]) => {
+    setRoleForm(f => {
+      const allSelected = modIds.every(id => f.permissions.includes(id));
+      const next = allSelected
+        ? f.permissions.filter(id => !modIds.includes(id))
+        : Array.from(new Set([...f.permissions, ...modIds]));
+      return { ...f, permissions: next };
+    });
+  };
+  const toggleAllPermissions = () => {
+    const allIds = PERMISSION_MODULES.map(m => m.id);
+    setRoleForm(f => ({
+      ...f,
+      permissions: f.permissions.length === allIds.length ? [] : allIds,
+    }));
+  };
 
   const handleSaveRole = async () => {
     setRoleFormError("");
@@ -821,10 +1071,11 @@ export default function UsersPage({
   };
 
   const handleDeleteRole = async (r: CustomRole) => {
+    setActionError(null);
     try {
       await rolesApi.delete(r.id);
       setRoleSuccess(`Role "${r.name}" deleted.`); setDeletingRole(null); onRolesChanged?.();
-    } catch (e) { alert(e instanceof Error ? e.message : "Failed to delete role."); setDeletingRole(null); }
+    } catch (e) { setActionError(e instanceof Error ? e.message : "Failed to delete role."); setDeletingRole(null); }
   };
 
   const permissionsByCategory = useMemo(() => {
@@ -837,244 +1088,610 @@ export default function UsersPage({
   const staffRoles = useMemo(() => [...new Set(staff.flatMap(s => s.roles ?? [s.role]))], [staff]);
 
   // Stats
-  const activeCount   = staff.filter(s => s.status === "active").length;
-  const inactiveCount = staff.filter(s => s.status !== "active").length;
+  const { activeCount, inactiveCount, roleList, systemRoleCount, customRoleCount } = useMemo(() => {
+    const active = staff.filter(s => s.status === "active").length;
+    const list = roles ?? [];
+    const sysCount = list.filter(r => r.isSystem).length;
+    return {
+      activeCount: active,
+      inactiveCount: staff.length - active,
+      roleList: list,
+      systemRoleCount: sysCount,
+      customRoleCount: list.length - sysCount,
+    };
+  }, [staff, roles]);
+  const hasStaffFilters = Boolean(staffSearch.trim() || staffFilter !== "all" || staffStatusFilter !== "all");
+
+  const resetStaffFilters = () => {
+    setStaffSearch("");
+    setStaffFilter("all");
+    setStaffStatusFilter("all");
+  };
 
   return (
-    <div className="p-4 sm:p-6 space-y-4 w-full max-w-[1400px] mx-auto st-page-in">
-
-      {/* ── Header ── */}
-      <div className="flex items-start sm:items-center justify-between gap-3">
-        <div>
-          <div className="flex items-center gap-2">
-            <h1 className="text-xl font-bold text-foreground">Users & Roles</h1>
-            <InfoTip title="Staff Accounts & Role Management" lines={[
-              "Manage employee credentials and define custom access roles.",
-              { label: "Staff", value: "Add, activate/deactivate, reset passwords" },
-              { label: "Roles", value: "Create custom roles with specific permissions" },
-              { label: "Settings", value: "Activity log and recycle bin for deleted users" },
-            ]} />
-          </div>
-          {/* KPI strip */}
-          <div className="flex items-center gap-3 mt-1.5 flex-wrap">
-            <span className="text-xs text-muted-foreground">{staff.length} total staff</span>
-            <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 border border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/20 font-semibold">{activeCount} active</span>
-            {inactiveCount > 0 && <span className="text-[10px] px-2 py-0.5 rounded-full bg-muted text-muted-foreground border border-border font-semibold">{inactiveCount} inactive</span>}
-            <span className="text-[10px] text-muted-foreground">{(roles ?? []).filter(r => !r.isSystem).length} custom roles</span>
-          </div>
-        </div>
-        {activeTab === "users" && (
-          <button onClick={onAddUser} className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-bold hover:opacity-90 transition-opacity shadow-sm shadow-primary/20 flex-shrink-0 st-btn">
-            <Plus size={14} /> Add User
-          </button>
-        )}
-        {activeTab === "roles" && (
-          <button onClick={openAddRole} className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-bold hover:opacity-90 transition-opacity shadow-sm shadow-primary/20 flex-shrink-0 st-btn">
-            <ShieldPlus size={14} /> New Role
-          </button>
-        )}
-      </div>
-
-      {/* ── Tab bar ── */}
-      <div className="flex gap-1 border-b border-border">
-        {([
-          { id: "users", label: "Users", icon: UsersRound },
-          { id: "roles", label: "Roles", icon: Shield },
-        ] as const).map(({ id, label, icon: Icon }) => (
-          <button key={id} type="button" onClick={() => setActiveTab(id)}
-            className={`inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold border-b-2 transition-colors ${
-              activeTab === id ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground"
-            }`}>
-            <Icon size={13} /> {label}
-            {id === "users" && <span className="ml-1 text-[9px] opacity-70">({staff.length})</span>}
-          </button>
-        ))}
-      </div>
-
-      {/* ── Success banner ── */}
-      {(resetSuccess || roleSuccess) && (
-        <div className="flex items-center gap-3 bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/20 rounded-lg px-4 py-3">
-          <ShieldCheck size={14} className="text-emerald-500 flex-shrink-0" />
-          <p className="text-xs text-emerald-700 dark:text-emerald-400 flex-1">{resetSuccess ?? roleSuccess}</p>
-          <button onClick={() => { setResetSuccess(null); setRoleSuccess(null); }} className="text-emerald-500 hover:text-emerald-700 text-xs font-bold leading-none">✕</button>
-        </div>
-      )}
-
-      {/* ══════════════════════ USERS TAB ══════════════════════════════════════ */}
-      {activeTab === "users" && (
-        <div className="space-y-3">
-          {/* Search + filter bar */}
-          <div className="flex flex-wrap gap-2 items-center">
-            <div className="relative flex-1 min-w-[180px]">
-              <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-              <input value={staffSearch} onChange={e => { setStaffSearch(e.target.value); setStaffPage(1); }}
-                placeholder="Search staff…"
-                className="w-full rounded-lg border border-border bg-background pl-8 pr-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-primary/25 focus:border-primary transition-all" />
+    <div
+      className="flex flex-col w-full overflow-hidden"
+      style={{ height: "calc(100dvh - 56px)" }}
+    >
+      {/* ── Fixed top content: header + tabs + alerts + toolbar ── */}
+      <div className="flex-shrink-0 st-shell-px pt-4 sm:pt-6 pb-3.5 bg-background border-b border-border/60 z-20 space-y-3.5">
+        {/* ── Header ── */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex items-center gap-3.5">
+            <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-primary/15 bg-primary/10 text-primary shrink-0">
+              {activeTab === "users" ? <UsersRound size={20} /> : <Shield size={20} />}
             </div>
-            <div className="flex items-center gap-1.5">
-              <Filter size={12} className="text-muted-foreground" />
-              <select value={staffFilter} onChange={e => { setStaffFilter(e.target.value); setStaffPage(1); }}
-                className="app-select rounded-lg border border-border bg-background px-2.5 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-primary/25">
+            <div>
+              <div className="flex items-center gap-2">
+                <h1 className="text-xl font-semibold tracking-tight text-foreground">Users & Roles</h1>
+                <InfoTip title="Role & Account Rules" lines={[
+                  "Controls permissions, active status, and admin recovery safeguards.",
+                  { label: "Multiple roles", value: "Users assigned multiple roles can switch workspace views without signing out" },
+                  { label: "Deactivated users", value: "Blocks sign-in while preserving past sales receipts and audit logs" },
+                  { label: "Owner safeguard", value: "System Admin/Owner privileges remain protected against accidental lockout" },
+                ]} />
+              </div>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                {staff.length} total accounts · {activeCount} active
+                {inactiveCount > 0 ? ` · ${inactiveCount} inactive` : ""} · {roleList.length} roles
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            {activeTab === "users" ? (
+              <button
+                type="button"
+                onClick={onAddUser}
+                className="inline-flex items-center gap-1.5 rounded-full bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground shadow-sm hover:opacity-95 transition-opacity st-btn"
+              >
+                <Plus size={14} /> Add User
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={openAddRole}
+                className="inline-flex items-center gap-1.5 rounded-full bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground shadow-sm hover:opacity-95 transition-opacity st-btn"
+              >
+                <ShieldPlus size={14} /> New Role
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* ── Segmented switcher ── */}
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <SegmentedTabs<MainTab>
+            ariaLabel="Users and roles sections"
+            value={activeTab}
+            onChange={setActiveTab}
+            buttonClassName="px-3.5 py-1.5 gap-2"
+            items={([
+              { id: "users", label: "Users", count: staff.length, icon: UsersRound },
+              { id: "roles", label: "Roles", count: roleList.length, icon: Shield },
+            ] as const).map(({ id, label, count, icon: Icon }) => ({
+              id,
+              label,
+              icon: <Icon size={13} />,
+              badge: (
+                <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-medium tabular-nums ${
+                  activeTab === id ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"
+                }`}>
+                  {count}
+                </span>
+              ),
+            }))}
+          />
+        </div>
+
+        {/* ── Feedback banners ── */}
+        {(resetSuccess || roleSuccess) && (
+          <div className="flex items-center gap-3 rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-2.5">
+            <ShieldCheck size={15} className="text-emerald-500 shrink-0" />
+            <p className="text-xs font-medium text-emerald-700 dark:text-emerald-300 flex-1">{resetSuccess ?? roleSuccess}</p>
+            <button
+              type="button"
+              onClick={() => { setResetSuccess(null); setRoleSuccess(null); }}
+              aria-label="Dismiss notice"
+              className="p-1 rounded-full text-emerald-600 dark:text-emerald-300 hover:bg-emerald-500/15 transition-colors"
+            >
+              <X size={13} />
+            </button>
+          </div>
+        )}
+
+        {actionError && (
+          <div className="flex items-center gap-3 rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-2.5">
+            <AlertTriangle size={15} className="text-red-500 shrink-0" />
+            <p className="text-xs font-medium text-red-700 dark:text-red-300 flex-1">{actionError}</p>
+            <button
+              type="button"
+              onClick={() => setActionError(null)}
+              aria-label="Dismiss error"
+              className="p-1 rounded-full text-red-500 hover:bg-red-500/15 transition-colors"
+            >
+              <X size={13} />
+            </button>
+          </div>
+        )}
+
+        {/* ── Active tab fixed toolbar ── */}
+        {activeTab === "users" ? (
+          <div className="rounded-2xl border border-border/70 bg-card/80 p-3 shadow-sm flex flex-col lg:flex-row lg:items-center justify-between gap-2.5">
+            <div className="relative flex-1 min-w-[200px]">
+              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+              <input
+                value={staffSearch}
+                onChange={e => setStaffSearch(e.target.value)}
+                placeholder="Search by name or email…"
+                aria-label="Search staff accounts"
+                className="w-full rounded-xl border border-border/70 bg-background/80 pl-9 pr-8 py-2 text-xs text-foreground placeholder:text-muted-foreground/70 focus:outline-none focus:ring-2 focus:ring-primary/25 focus:border-primary transition-all"
+              />
+              {staffSearch && (
+                <button
+                  type="button"
+                  onClick={() => setStaffSearch("")}
+                  aria-label="Clear search"
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 p-0.5 rounded-full text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                >
+                  <X size={12} />
+                </button>
+              )}
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              {/* Status filter pill */}
+              <SegmentedTabs<typeof staffStatusFilter>
+                size="sm"
+                ariaLabel="Filter staff status"
+                value={staffStatusFilter}
+                onChange={setStaffStatusFilter}
+                items={([
+                  { id: "all",      label: "All",      count: staff.length },
+                  { id: "active",   label: "Active",   count: activeCount },
+                  { id: "inactive", label: "Inactive", count: inactiveCount },
+                ] as const).map(opt => ({
+                  id: opt.id,
+                  label: opt.label,
+                  badge: (
+                    <span className={`rounded-full px-1.5 py-0.2 text-[10px] tabular-nums ${
+                      staffStatusFilter === opt.id
+                        ? "bg-primary/15 text-primary dark:bg-blue-400/20 dark:text-blue-100"
+                        : "text-muted-foreground/80"
+                    }`}>
+                      {opt.count}
+                    </span>
+                  ),
+                }))}
+              />
+
+              {/* Role dropdown */}
+              <select
+                value={staffFilter}
+                onChange={e => setStaffFilter(e.target.value)}
+                aria-label="Filter by role"
+                className="app-select rounded-xl border border-border/70 bg-background/80 px-3 py-1.5 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary/25"
+              >
                 <option value="all">All roles</option>
                 {staffRoles.map(r => <option key={r} value={r}>{roleLabelsMap[r] ?? r}</option>)}
               </select>
+
+              {/* Grid / List segmented toggle */}
+              <SegmentedTabs<"grid" | "list">
+                size="sm"
+                ariaLabel="View layout"
+                value={staffViewMode}
+                onChange={setStaffViewMode}
+                buttonClassName="!px-2 !py-1.5"
+                items={[
+                  { id: "grid", label: <LayoutGrid size={13} aria-label="Card view" /> },
+                  { id: "list", label: <List size={13} aria-label="List view" /> },
+                ]}
+              />
             </div>
           </div>
+        ) : (
+          <div className="rounded-2xl border border-border/70 bg-card/80 px-4 py-3 shadow-sm flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+            <span>
+              {systemRoleCount} built-in system · {customRoleCount} custom roles
+            </span>
+            <span>Configure updates module access; only unassigned custom roles can be deleted.</span>
+          </div>
+        )}
+      </div>
 
-          {/* Cards grid */}
+      {/* ══════════════════════ USERS TAB (Scrollable list/grid only) ════════ */}
+      {activeTab === "users" && (
+        <div className="flex-1 min-h-0 flex flex-col st-shell-px pt-4 pb-3 overflow-hidden">
           {filteredStaff.length === 0 ? (
-            <div className="flex flex-col items-center py-16 gap-2 text-center">
-              <UserX size={28} className="text-muted-foreground/30" />
-              <p className="text-sm text-muted-foreground">{staff.length === 0 ? "No staff accounts yet." : "No staff match your search."}</p>
+            <div className="flex-1 min-h-0 overflow-y-auto flex items-center justify-center" data-table-scroll="fixed">
+              <div className="w-full rounded-2xl border border-border/70 bg-card/60 py-14 px-6 flex flex-col items-center justify-center gap-3 text-center">
+                <div className="h-11 w-11 rounded-2xl bg-muted/70 border border-border/60 flex items-center justify-center text-muted-foreground">
+                  <UserX size={20} />
+                </div>
+                <div className="space-y-1">
+                  <p className="text-sm font-semibold text-foreground">
+                    {staff.length === 0 ? "No staff accounts yet" : "No matching staff accounts"}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {staff.length === 0
+                      ? "Create the first user account to grant access to SmartTrack."
+                      : "Try clearing your search term or switching filters."}
+                  </p>
+                </div>
+                {hasStaffFilters && (
+                  <button
+                    type="button"
+                    onClick={resetStaffFilters}
+                    className="rounded-full border border-border/80 bg-background px-4 py-1.5 text-xs font-semibold text-foreground hover:bg-muted transition-colors"
+                  >
+                    Reset filters
+                  </button>
+                )}
+              </div>
+            </div>
+          ) : staffViewMode === "grid" ? (
+            <div className="flex-1 min-h-0 overflow-y-auto pr-0.5 pb-1" data-table-scroll="fixed">
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3.5 st-grid">
+                {filteredStaff.map(s => (
+                  <UserCard
+                    key={s.id}
+                    s={s}
+                    canManage={canManage(s)}
+                    pwdManageable={canManage(s)}
+                    isSelf={s.id === currentUserId}
+                    roleLabelsMap={roleLabelsMap}
+                    onView={() => setViewingUser(s)}
+                    onEdit={() => onEditUser(s)}
+                    onDelete={() => setDeleteTarget(s)}
+                    onToggleStatus={() => handleStatusClick(s)}
+                    onReset={() => setResetTarget(s)}
+                    onSetPassword={() => setCreatePwdTarget(s)}
+                  />
+                ))}
+              </div>
             </div>
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 st-grid">
-              {paginatedStaff.map(s => (
-                <UserCard
-                  key={s.id}
-                  s={s}
-                  canManage={canManage(s)}
-                  pwdManageable={canManage(s)}
-                  isSelf={s.id === currentUserId}
-                  roleLabelsMap={roleLabelsMap}
-                  onView={() => setViewingUser(s)}
-                  onEdit={() => onEditUser(s)}
-                  onDelete={() => setDeleteTarget(s)}
-                  onToggleStatus={() => handleStatusClick(s)}
-                  onReset={() => setResetTarget(s)}
-                  onSetPassword={() => setCreatePwdTarget(s)}
-                />
-              ))}
+            <div className="flex-1 min-h-0 flex flex-col rounded-2xl border border-border/70 bg-card shadow-sm overflow-hidden">
+              <div className="flex-shrink-0 hidden lg:flex items-center justify-between gap-3 px-4 sm:px-5 py-2.5 border-b border-border/60 bg-muted/35 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                <span>Account &amp; Last Active</span>
+                <div className="flex items-center gap-3 shrink-0">
+                  <span>Roles</span>
+                  <span className="w-16 text-center">Status</span>
+                  <span className="min-w-[180px] text-right">Actions</span>
+                </div>
+              </div>
+              <div className="flex-1 min-h-0 overflow-y-auto divide-y divide-border/60" data-table-scroll="fixed">
+                {filteredStaff.map(s => (
+                  <UserListRow
+                    key={s.id}
+                    s={s}
+                    canManage={canManage(s)}
+                    pwdManageable={canManage(s)}
+                    isSelf={s.id === currentUserId}
+                    roleLabelsMap={roleLabelsMap}
+                    onView={() => setViewingUser(s)}
+                    onEdit={() => onEditUser(s)}
+                    onDelete={() => setDeleteTarget(s)}
+                    onToggleStatus={() => handleStatusClick(s)}
+                    onReset={() => setResetTarget(s)}
+                    onSetPassword={() => setCreatePwdTarget(s)}
+                  />
+                ))}
+              </div>
             </div>
           )}
-          <TablePager total={filteredStaff.length} page={staffPage} pageSize={PAGE_SIZE} onPage={setStaffPage} />
         </div>
       )}
 
-      {/* ══════════════════════ ROLES TAB ══════════════════════════════════════ */}
+      {/* ══════════════════════ ROLES TAB (Scrollable role cards) ════════════ */}
       {activeTab === "roles" && (
-        <div className="space-y-4">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {(roles ?? []).map(role => (
-              <div key={role.id}
-                className="bg-card border border-border/80 rounded-xl p-4 space-y-3 shadow-sm hover:border-primary/30 transition-all group st-card">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${role.isSystem ? "bg-blue-500/10 border border-blue-500/20" : "bg-indigo-500/10 border border-indigo-500/20"}`}>
-                      {role.isSystem ? <Lock size={13} className="text-blue-500" /> : <Unlock size={13} className="text-indigo-500" />}
+        <div className="flex-1 min-h-0 flex flex-col st-shell-px pt-4 pb-3 overflow-hidden">
+          <div className="flex-1 min-h-0 overflow-y-auto pr-0.5 pb-2" data-table-scroll="fixed">
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3.5 st-grid">
+            {roleList.map((role, idx) => {
+              const totalModules = PERMISSION_MODULES.length || 1;
+              const coveragePct = Math.min(100, Math.round((role.permissions.length / totalModules) * 100));
+              const visiblePerms = role.permissions.slice(0, 5);
+              const extraPermsCount = Math.max(0, role.permissions.length - visiblePerms.length);
+
+              return (
+                <div
+                  key={role.id}
+                  className="bg-card border border-border/70 rounded-2xl p-5 flex flex-col justify-between gap-4 shadow-sm hover:border-primary/30 hover:shadow-md transition-colors duration-150 st-card"
+                >
+                  <div className="space-y-3.5">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className={`w-10 h-10 rounded-2xl border flex items-center justify-center shrink-0 ${
+                          role.isSystem
+                            ? "bg-blue-500/10 border-blue-500/20 text-blue-500"
+                            : "bg-indigo-500/10 border-indigo-500/20 text-indigo-500"
+                        }`}>
+                          {role.isSystem ? <Lock size={16} /> : <ShieldCheck size={17} />}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold text-foreground truncate">{role.name}</p>
+                          <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium mt-1 ${
+                            role.isSystem
+                              ? "bg-blue-500/10 text-blue-600 border-blue-500/20 dark:text-blue-300"
+                              : "bg-indigo-500/10 text-indigo-600 border-indigo-500/20 dark:text-indigo-300"
+                          }`}>
+                            {role.isSystem ? "System Role" : "Custom Role"}
+                          </span>
+                        </div>
+                      </div>
                     </div>
-                    <div className="min-w-0">
-                      <p className="text-sm font-bold text-foreground truncate">{role.name}</p>
-                      <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full border inline-block mt-0.5 ${role.isSystem ? "bg-blue-500/10 text-blue-500 border-blue-500/20" : "bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-500/20"}`}>
-                        {role.isSystem ? "System" : "Custom"}
-                      </span>
+
+                    <p className="text-xs text-muted-foreground leading-relaxed min-h-[2.25rem]">
+                      {role.description || "No role summary added yet."}
+                    </p>
+
+                    <div className="rounded-xl border border-border/60 bg-muted/25 p-3 space-y-2.5">
+                      <div className="flex items-center justify-between text-[11px]">
+                        <span className="font-medium text-muted-foreground">Module access</span>
+                        <span className="font-semibold text-foreground tabular-nums">
+                          {role.permissions.length} of {PERMISSION_MODULES.length}
+                        </span>
+                      </div>
+                      <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
+                        <div
+                          className={`h-full rounded-full st-bar-fill ${role.isSystem ? "bg-blue-500" : "bg-indigo-500"}`}
+                          style={{ width: `${coveragePct}%`, animationDelay: `${Math.min(idx * 45, 270)}ms` }}
+                        />
+                      </div>
+                      <div className="flex flex-wrap gap-1.5 pt-0.5">
+                        {visiblePerms.map(pid => {
+                          const mod = PERMISSION_MODULES.find(m => m.id === pid);
+                          return (
+                            <span
+                              key={pid}
+                              className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-background/80 border border-border/70 text-foreground/85"
+                            >
+                              {mod?.name ?? pid}
+                            </span>
+                          );
+                        })}
+                        {extraPermsCount > 0 && (
+                          <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-muted text-muted-foreground border border-border/60">
+                            +{extraPermsCount} more
+                          </span>
+                        )}
+                        {role.permissions.length === 0 && (
+                          <span className="text-[11px] text-muted-foreground italic">No modules enabled</span>
+                        )}
+                      </div>
                     </div>
                   </div>
-                  <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <button onClick={() => openEditRole(role)} title="Edit role"
-                      className="p-1.5 rounded-lg text-muted-foreground hover:text-primary hover:bg-primary/10 transition-all st-btn-ghost">
-                      <Pencil size={12} />
-                    </button>
-                    {!role.isSystem && (
-                      <button onClick={() => setDeletingRole(role)} title="Delete role"
-                        className="p-1.5 rounded-lg text-muted-foreground hover:text-red-500 hover:bg-red-500/10 transition-all st-btn-ghost">
-                        <Trash2 size={12} />
+
+                  <div className="border-t border-border/50 pt-3 flex items-center justify-between gap-2">
+                    <span className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                      <UsersRound size={12} className="shrink-0 opacity-75" />
+                      {role.userCount === undefined
+                        ? "Assigned users"
+                        : role.userCount === 0
+                          ? "0 users assigned"
+                          : `${role.userCount} user${role.userCount > 1 ? "s" : ""} assigned`}
+                    </span>
+
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => openEditRole(role)}
+                        className="inline-flex items-center gap-1.5 rounded-full border border-border/70 bg-background/70 px-3 py-1 text-[11px] font-medium text-foreground hover:border-primary/30 hover:text-primary hover:bg-primary/5 transition-all"
+                      >
+                        <Pencil size={11} /> Configure
                       </button>
-                    )}
+                      {!role.isSystem && (
+                        <button
+                          type="button"
+                          onClick={() => setDeletingRole(role)}
+                          title="Delete custom role"
+                          aria-label={`Delete ${role.name}`}
+                          className="p-1.5 rounded-full text-muted-foreground hover:text-red-500 hover:bg-red-500/10 transition-colors"
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
-                {role.description && <p className="text-[11px] text-muted-foreground leading-relaxed">{role.description}</p>}
+              );
+            })}
+
+            {roleList.length === 0 && (
+              <div className="col-span-full rounded-2xl border border-border/70 bg-card/60 py-16 px-6 flex flex-col items-center gap-3 text-center">
+                <div className="h-11 w-11 rounded-2xl bg-muted/70 border border-border/60 flex items-center justify-center text-muted-foreground">
+                  <ShieldPlus size={20} />
+                </div>
                 <div className="space-y-1">
-                  <p className="text-[9px] font-bold text-muted-foreground uppercase tracking-wide">Permissions ({role.permissions.length})</p>
-                  <div className="flex flex-wrap gap-1">
-                    {role.permissions.map(pid => {
-                      const mod = PERMISSION_MODULES.find(m => m.id === pid);
-                      return <span key={pid} className="text-[9px] px-1.5 py-0.5 rounded bg-muted/70 border border-border font-medium text-foreground/80">{mod?.name ?? pid}</span>;
-                    })}
-                    {role.permissions.length === 0 && <span className="text-[9px] text-muted-foreground italic">No permissions</span>}
-                  </div>
+                  <p className="text-sm font-semibold text-foreground">No roles configured</p>
+                  <p className="text-xs text-muted-foreground">Create your first custom role to define tailored staff permissions.</p>
                 </div>
-                {role.userCount !== undefined && (
-                  <p className="text-[10px] text-muted-foreground border-t border-border pt-2">{role.userCount === 0 ? "No users assigned" : `${role.userCount} user${role.userCount > 1 ? "s" : ""} assigned`}</p>
-                )}
-              </div>
-            ))}
-            {(roles ?? []).length === 0 && (
-              <div className="col-span-3 flex flex-col items-center py-16 gap-2 text-center">
-                <ShieldPlus size={28} className="text-muted-foreground/30" />
-                <p className="text-sm text-muted-foreground">No roles yet. Create your first custom role.</p>
               </div>
             )}
+            </div>
           </div>
 
-          {/* Role Form Modal */}
+          {/* Apple-style Role Form Modal */}
           {showRoleForm && (
             <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
               <div className="absolute inset-0 bg-black/50 st-overlay-in" onClick={() => setShowRoleForm(false)} />
-              <div className="relative bg-card border border-border rounded-xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto st-modal-in">
-                <div className="p-5 border-b border-border flex items-center justify-between">
-                  <div>
-                    <h2 className="text-sm font-bold text-foreground">{editingRole ? `Edit: ${editingRole.name}` : "Create New Role"}</h2>
-                    <p className="text-xs text-muted-foreground mt-0.5">{editingRole ? "Update permissions and description." : "Define access for a new role."}</p>
-                  </div>
-                  <button onClick={() => setShowRoleForm(false)} className="w-7 h-7 rounded-full bg-muted hover:bg-muted/80 flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors text-xs">✕</button>
-                </div>
-                <div className="p-5 space-y-4">
-                  <div>
-                    <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">Role Name <span className="text-red-500">*</span></label>
-                    <input type="text" value={roleForm.name} onChange={e => setRoleForm(f => ({ ...f, name: e.target.value }))}
-                      placeholder="e.g. Store Auditor" disabled={editingRole?.isSystem}
-                      className="w-full rounded-lg border border-border bg-background px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all disabled:opacity-50" />
-                    {editingRole?.isSystem && <p className="text-[11px] text-blue-500 mt-1 flex items-center gap-1"><Lock size={10} /> System role — name is protected.</p>}
-                  </div>
-                  <div>
-                    <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">Description</label>
-                    <textarea value={roleForm.description} onChange={e => setRoleForm(f => ({ ...f, description: e.target.value }))}
-                      placeholder="What does this role do?" rows={2}
-                      className="w-full rounded-lg border border-border bg-background px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all resize-none" />
-                  </div>
-                  <div>
-                    <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-2">
-                      Permissions <span className="text-red-500">*</span>
-                      <span className="ml-2 font-normal normal-case text-muted-foreground/70">({roleForm.permissions.length} selected)</span>
-                    </label>
-                    <div className="border border-border rounded-lg overflow-hidden divide-y divide-border">
-                      {Object.entries(permissionsByCategory).map(([category, mods]) => (
-                        <div key={category}>
-                          <div className="px-3 py-1.5 bg-muted/40"><span className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider">{category}</span></div>
-                          {mods.map(mod => (
-                            <label key={mod.id} className="flex items-start gap-3 px-3 py-2.5 hover:bg-muted/30 cursor-pointer transition-colors">
-                              <div className="relative flex-shrink-0 mt-0.5">
-                                <input type="checkbox" checked={roleForm.permissions.includes(mod.id)} onChange={() => togglePermission(mod.id)} className="sr-only" />
-                                <div className={`w-4 h-4 rounded border-2 flex items-center justify-center transition-all ${roleForm.permissions.includes(mod.id) ? "bg-primary border-primary" : "border-border bg-background"}`}>
-                                  {roleForm.permissions.includes(mod.id) && <svg width="8" height="6" viewBox="0 0 8 6" fill="none"><path d="M1 3l2 2 4-4" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>}
-                                </div>
-                              </div>
-                              <div className="min-w-0">
-                                <p className="text-xs font-semibold text-foreground">{mod.name}</p>
-                                <p className="text-[11px] text-muted-foreground mt-0.5 leading-relaxed">{mod.description}</p>
-                              </div>
-                            </label>
-                          ))}
-                        </div>
-                      ))}
+              <div className="relative bg-card border border-border/80 rounded-2xl shadow-2xl w-full max-w-xl max-h-[90vh] flex flex-col overflow-hidden st-modal-in">
+                <div className="px-5 py-4 border-b border-border/60 bg-muted/20 flex items-center justify-between gap-3 shrink-0">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="h-10 w-10 rounded-2xl border border-primary/15 bg-primary/10 text-primary flex items-center justify-center shrink-0">
+                      {editingRole ? <Shield size={18} /> : <ShieldPlus size={18} />}
+                    </div>
+                    <div className="min-w-0">
+                      <h2 className="text-sm font-semibold tracking-tight text-foreground truncate">
+                        {editingRole ? editingRole.name : "New Custom Role"}
+                      </h2>
+                      <p className="text-xs text-muted-foreground truncate mt-0.5">
+                        {editingRole ? "Adjust module permissions and description." : "Name this role and toggle which modules it can access."}
+                      </p>
                     </div>
                   </div>
-                  {roleFormError && <div className="text-xs text-red-500 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">{roleFormError}</div>}
+                  <button
+                    type="button"
+                    onClick={() => setShowRoleForm(false)}
+                    aria-label="Close modal"
+                    className="w-8 h-8 rounded-full bg-muted/80 hover:bg-muted flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors shrink-0"
+                  >
+                    <X size={14} />
+                  </button>
                 </div>
-                <div className="p-5 border-t border-border flex gap-3">
-                  <button onClick={() => setShowRoleForm(false)} disabled={roleSaving} className="flex-1 py-2.5 border border-border rounded-lg text-sm font-semibold text-muted-foreground hover:bg-muted/50 transition-all disabled:opacity-50">Cancel</button>
-                  <button onClick={handleSaveRole} disabled={roleSaving} className="flex-1 py-2.5 bg-primary text-primary-foreground rounded-lg text-sm font-bold hover:opacity-90 disabled:opacity-60 transition-opacity st-btn">
+
+                <div className="flex-1 overflow-y-auto p-5 space-y-5">
+                  {/* Identity grouped card */}
+                  <div className="rounded-2xl border border-border/70 bg-muted/20 p-4 space-y-3.5">
+                    <div className="space-y-1.5">
+                      <label className="block text-[11px] font-medium text-muted-foreground">
+                        Role Name <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        value={roleForm.name}
+                        onChange={e => setRoleForm(f => ({ ...f, name: e.target.value }))}
+                        placeholder="e.g. Store Auditor"
+                        disabled={editingRole?.isSystem}
+                        className="w-full rounded-xl border border-border/80 bg-background/80 px-3.5 py-2.5 text-sm text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-primary/25 focus:border-primary transition-all disabled:opacity-60"
+                      />
+                      {editingRole?.isSystem && (
+                        <p className="text-[11px] text-blue-600 dark:text-blue-400 flex items-center gap-1.5 pt-0.5">
+                          <Lock size={11} /> Built-in system role name is locked; module permissions remain configurable.
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="block text-[11px] font-medium text-muted-foreground">Description</label>
+                      <textarea
+                        value={roleForm.description}
+                        onChange={e => setRoleForm(f => ({ ...f, description: e.target.value }))}
+                        placeholder="Briefly describe what this role is responsible for…"
+                        rows={2}
+                        className="w-full rounded-xl border border-border/80 bg-background/80 px-3.5 py-2.5 text-sm text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-primary/25 focus:border-primary transition-all resize-none"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Permissions grouped switches */}
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <div>
+                        <p className="text-xs font-semibold text-foreground">
+                          Module Permissions <span className="text-red-500">*</span>
+                        </p>
+                        <p className="text-[11px] text-muted-foreground">
+                          {roleForm.permissions.length} of {PERMISSION_MODULES.length} enabled
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={toggleAllPermissions}
+                        className="rounded-full border border-border/70 bg-background/80 px-3 py-1 text-[11px] font-medium text-foreground hover:bg-muted transition-colors"
+                      >
+                        {roleForm.permissions.length === PERMISSION_MODULES.length ? "Clear all" : "Select all"}
+                      </button>
+                    </div>
+
+                    <div className="space-y-3">
+                      {Object.entries(permissionsByCategory).map(([category, mods]) => {
+                        const modIds = mods.map(m => m.id);
+                        const selectedInCat = modIds.filter(id => roleForm.permissions.includes(id)).length;
+                        const allCatSelected = selectedInCat === mods.length;
+
+                        return (
+                          <div key={category} className="rounded-2xl border border-border/70 bg-card overflow-hidden divide-y divide-border/50">
+                            <div className="px-4 py-2 bg-muted/35 flex items-center justify-between gap-2">
+                              <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
+                                {category} · {selectedInCat}/{mods.length}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => toggleCategoryPermissions(modIds)}
+                                className="st-chip-btn"
+                              >
+                                {allCatSelected ? "Clear" : "Select all"}
+                              </button>
+                            </div>
+
+                            {mods.map(mod => {
+                              const checked = roleForm.permissions.includes(mod.id);
+                              return (
+                                <label
+                                  key={mod.id}
+                                  className="flex items-center justify-between gap-4 px-4 py-3 hover:bg-muted/25 cursor-pointer transition-colors"
+                                >
+                                  <div className="min-w-0">
+                                    <p className="text-xs font-semibold text-foreground">{mod.name}</p>
+                                    <p className="text-[11px] text-muted-foreground mt-0.5 leading-relaxed">{mod.description}</p>
+                                  </div>
+
+                                  <div className="relative shrink-0">
+                                    <input
+                                      type="checkbox"
+                                      checked={checked}
+                                      onChange={() => togglePermission(mod.id)}
+                                      className="sr-only"
+                                    />
+                                    <div
+                                      aria-hidden="true"
+                                      className={`w-9 h-5 rounded-full p-0.5 transition-colors ${
+                                        checked ? "bg-primary" : "bg-muted-foreground/30"
+                                      }`}
+                                    >
+                                      <div
+                                        className={`w-4 h-4 rounded-full bg-white shadow-sm transition-transform ${
+                                          checked ? "translate-x-4" : "translate-x-0"
+                                        }`}
+                                      />
+                                    </div>
+                                  </div>
+                                </label>
+                              );
+                            })}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {roleFormError && (
+                    <div className="flex items-center gap-2 rounded-xl border border-red-500/20 bg-red-500/10 px-3.5 py-2.5 text-xs text-red-600 dark:text-red-400">
+                      <AlertTriangle size={14} className="shrink-0" />
+                      <span>{roleFormError}</span>
+                    </div>
+                  )}
+                </div>
+
+                <div className="px-5 py-4 border-t border-border/60 bg-card flex items-center justify-end gap-2.5 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setShowRoleForm(false)}
+                    disabled={roleSaving}
+                    className="rounded-full border border-border/80 px-4 py-2 text-xs font-semibold text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-all disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSaveRole}
+                    disabled={roleSaving}
+                    className="rounded-full bg-primary px-5 py-2 text-xs font-semibold text-primary-foreground shadow-sm hover:opacity-95 disabled:opacity-60 transition-opacity st-btn"
+                  >
                     {roleSaving ? "Saving…" : editingRole ? "Save Changes" : "Create Role"}
                   </button>
                 </div>
               </div>
             </div>
           )}
+
           {deletingRole && (
             <ConfirmDialog
               title="Delete Role?"
-              message={<>Permanently delete <span className="font-semibold text-foreground">"{deletingRole.name}"</span>? Users assigned to this role must be reassigned first.</>}
+              message={<>Permanently delete <span className="font-semibold text-foreground">"{deletingRole.name}"</span>? Any users assigned to this role must be reassigned first.</>}
               confirmLabel="Yes, Delete" variant="danger"
               onCancel={() => setDeletingRole(null)}
               onConfirm={() => handleDeleteRole(deletingRole)}
@@ -1126,3 +1743,5 @@ export default function UsersPage({
     </div>
   );
 }
+
+export default memo(UsersPage);
