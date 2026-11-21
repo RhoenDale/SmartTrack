@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useId, useMemo, useState } from "react";
+import { memo, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   Package,
   TrendingUp,
@@ -17,6 +17,8 @@ import {
   ChevronLeft,
   ChevronRight,
   Minus,
+  Pencil,
+  Check,
 } from "lucide-react";
 import {
   ComposedChart,
@@ -99,6 +101,44 @@ function formatNextMonthLabel(rows: { month?: string }[]) {
   if (monthIndex < 0 || !yearLabel) return "Next month";
   const next = new Date(Number(yearLabel), monthIndex + 1, 1);
   return `${SHORT_MONTHS[next.getMonth()]} ${next.getFullYear()}`;
+}
+
+function formatSalesPaceShort(monthlyUnits: number): string {
+  if (monthlyUnits <= 0) return "No recent sales";
+  const daily = monthlyUnits / DAYS_PER_MONTH;
+  if (daily >= 1) {
+    return `about ${Math.round(daily)}/day`;
+  }
+  const weekly = Math.max(1, Math.round(daily * 7));
+  return `about ${weekly}/week`;
+}
+
+function formatSupplyDuration(months: number): string {
+  if (months < 1) {
+    const days = Math.max(1, Math.round(months * 30));
+    return days >= 14 ? `About ${Math.round(days / 7)} weeks` : `About ${days} ${days === 1 ? "day" : "days"}`;
+  }
+  const totalMonths = Math.max(1, Math.round(months));
+  if (totalMonths < 12) {
+    return `About ${totalMonths} ${totalMonths === 1 ? "month" : "months"}`;
+  }
+  const years = Math.floor(totalMonths / 12);
+  const remMonths = totalMonths % 12;
+  const yearLabel = `${years} ${years === 1 ? "year" : "years"}`;
+  if (remMonths === 0) return `About ${yearLabel}`;
+  return `About ${yearLabel}, ${remMonths} ${remMonths === 1 ? "month" : "months"}`;
+}
+
+function formatDaysRemaining(days: number): string {
+  if (days < 60) {
+    return `About ${days} ${days === 1 ? "day" : "days"} left`;
+  }
+  if (days < 365) {
+    const months = Math.max(2, Math.round(days / 30));
+    return `About ${months} months left`;
+  }
+  const years = Math.floor(days / 365);
+  return `Over ${years} ${years === 1 ? "year" : "years"} left`;
 }
 
 function computeReadinessStats<T extends {
@@ -827,7 +867,7 @@ function SmapeDetailsModal({
       <section role="dialog" aria-modal="true" aria-labelledby="smape-modal-title" className="relative z-10 w-full max-w-lg overflow-hidden rounded-2xl border border-border bg-card shadow-2xl">
         <header className="flex items-center justify-between border-b border-border px-5 py-4">
           <div>
-            <p className="text-[10px] font-semibold uppercase tracking-wide text-primary">Past forecast check</p>
+            <p className="text-xs font-semibold uppercase tracking-wide text-primary">Past forecast check</p>
             <h2 id="smape-modal-title" className="mt-0.5 text-base font-bold text-foreground">How close was {model}?</h2>
           </div>
           <button type="button" onClick={onClose} aria-label="Close sMAPE details" className="rounded-lg p-2 text-muted-foreground hover:bg-muted hover:text-foreground cursor-pointer"><X size={17} /></button>
@@ -836,22 +876,22 @@ function SmapeDetailsModal({
           <div className="rounded-xl border border-primary/20 bg-primary/[0.05] p-4">
             <div className="flex items-end justify-between gap-3">
               <div>
-                <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Average past difference</p>
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Average past difference</p>
                 {error ? (
                   <p className="mt-0.5 text-3xl font-bold tabular-nums text-foreground">{error.smape.toFixed(1)}<span className="text-xl">%</span></p>
                 ) : <p className="mt-1 text-sm font-semibold text-foreground">Not enough past sales yet</p>}
               </div>
-              {error && <span className="pb-1 text-right text-[10px] leading-relaxed text-muted-foreground">{error.points} past months<br />compared</span>}
+              {error && <span className="pb-1 text-right text-xs leading-relaxed text-muted-foreground">{error.points} past months<br />compared</span>}
             </div>
             {error && (
               <>
-                <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground">
+                <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
                   {error.smape.toFixed(1)}% is the average of {error.points} monthly comparisons. Each month gets its own difference score first; those scores are then averaged.
                 </p>
                 <div className="mt-3 h-2 overflow-hidden rounded-full bg-muted" role="img" aria-label={`Average past difference ${error.smape.toFixed(1)} percent on a scale from zero to 200 percent`}>
                   <div className="h-full rounded-full bg-primary st-bar-fill transition-[width]" style={{ width: `${Math.min(100, (error.smape / 200) * 100)}%` }} />
                 </div>
-                <div className="mt-1 flex justify-between text-[10px] text-muted-foreground"><span>0% · same sales</span><span>200% · furthest apart</span></div>
+                <div className="mt-1 flex justify-between text-xs text-muted-foreground"><span>0% · same sales</span><span>200% · furthest apart</span></div>
               </>
             )}
             <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
@@ -955,7 +995,7 @@ function TablePager({
 
   return (
     <div className="flex items-center justify-between px-5 py-3 border-t border-border/60 bg-muted/10">
-      <span className="text-[11px] text-muted-foreground">
+      <span className="text-xs text-muted-foreground">
         Showing <span className="font-semibold text-foreground">{start}–{end}</span> of{" "}
         <span className="font-semibold text-foreground">{total}</span> results
       </span>
@@ -964,20 +1004,20 @@ function TablePager({
           type="button"
           onClick={() => onPage(page - 1)}
           disabled={page === 1}
-          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold border border-border/80 bg-card/90 text-foreground hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed transition-[background-color,transform] active:scale-95 cursor-pointer shadow-2xs"
+          className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-semibold border border-border/80 bg-card/90 text-foreground hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed transition-[background-color,transform] active:scale-95 cursor-pointer shadow-2xs"
         >
-          <ChevronLeft size={12} />
+          <ChevronLeft size={13} />
           <span>Prev</span>
         </button>
         {pages.map((p, i) =>
           p === "…" ? (
-            <span key={`e${i}`} className="px-1 text-[11px] text-muted-foreground">…</span>
+            <span key={`e${i}`} className="px-1 text-xs text-muted-foreground">…</span>
           ) : (
             <button
               key={p}
               type="button"
               onClick={() => onPage(p as number)}
-              className={`w-7 h-7 rounded-full text-[11px] font-semibold border transition-[background-color,transform] active:scale-95 cursor-pointer ${
+              className={`w-8 h-8 rounded-full text-xs font-semibold border transition-[background-color,transform] active:scale-95 cursor-pointer ${
                 p === page
                   ? "bg-primary text-primary-foreground border-primary shadow-sm shadow-primary/25"
                   : "bg-card/90 border-border/80 hover:bg-muted text-foreground"
@@ -991,10 +1031,10 @@ function TablePager({
           type="button"
           onClick={() => onPage(page + 1)}
           disabled={page === totalPages}
-          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold border border-border/80 bg-card/90 text-foreground hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed transition-[background-color,transform] active:scale-95 cursor-pointer shadow-2xs"
+          className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-semibold border border-border/80 bg-card/90 text-foreground hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed transition-[background-color,transform] active:scale-95 cursor-pointer shadow-2xs"
         >
           <span>Next</span>
-          <ChevronRight size={12} />
+          <ChevronRight size={13} />
         </button>
       </div>
     </div>
@@ -1019,57 +1059,78 @@ function CalcInspectorModal({
   result: string;
   onClose: () => void;
 }) {
+  const [showFormulaSteps, setShowFormulaSteps] = useState(false);
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <button type="button" aria-label="Close math details" className="fixed inset-0 bg-black/30" onClick={onClose} />
-      <div role="dialog" aria-modal="true" aria-labelledby="calc-inspector-title" className="relative z-10 bg-card border border-border rounded-2xl shadow-2xl w-full max-w-lg max-h-[84vh] overflow-y-auto">
+      <button type="button" aria-label="Close details" className="fixed inset-0 bg-black/30" onClick={onClose} />
+      <div role="dialog" aria-modal="true" aria-labelledby="calc-inspector-title" className="relative z-10 bg-card border border-border rounded-2xl shadow-2xl w-full max-w-lg max-h-[85vh] overflow-y-auto">
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-border">
-          <h3 id="calc-inspector-title" className="text-sm font-semibold text-foreground">{title}</h3>
-          <button type="button" onClick={onClose} className="text-muted-foreground hover:text-foreground p-1 rounded hover:bg-muted cursor-pointer">
+          <h3 id="calc-inspector-title" className="text-base font-semibold text-foreground">{title}</h3>
+          <button type="button" onClick={onClose} aria-label="Close" className="text-muted-foreground hover:text-foreground p-1.5 rounded-lg hover:bg-muted cursor-pointer">
             <X size={16} />
           </button>
         </div>
-        {/* Formula */}
-        <div className="px-5 pt-4 pb-2">
-          <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">Formula</p>
-          {typeof formula === "string" ? (
-            <div className="bg-muted/40 border border-border rounded-lg px-4 py-3 font-mono text-sm font-semibold text-foreground text-center">
-              {formula}
+
+        <div className="space-y-4 p-5">
+          {/* Plain-English Result & Summary First */}
+          <div className="rounded-xl border border-primary/25 bg-primary/[0.06] px-4 py-3 text-sm font-bold text-foreground">
+            {result}
+          </div>
+
+          {explanation && (
+            <div className="rounded-xl border border-border/70 bg-muted/20 px-4 py-3">
+              <p className="text-xs font-semibold text-foreground mb-1">Summary</p>
+              <p className="text-xs leading-relaxed text-muted-foreground">{explanation}</p>
             </div>
-          ) : (
-            formula
           )}
-        </div>
-        {explanation && (
-          <div className="mx-5 mt-3 rounded-lg border border-primary/15 bg-primary/5 px-3 py-2.5">
-            <p className="text-[10px] font-semibold text-foreground mb-1">In plain language</p>
-            <p className="text-[11px] leading-relaxed text-muted-foreground">{explanation}</p>
+
+          {/* Values Used */}
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">Numbers used</p>
+            <div className="divide-y divide-border border border-border rounded-xl overflow-hidden">
+              {variables.map((v, i) => (
+                <div key={i} className={`flex items-center justify-between gap-3 px-3.5 py-2.5 text-xs ${i % 2 === 0 ? "bg-muted/20" : ""}`}>
+                  <span className="text-muted-foreground">{v.label}</span>
+                  <span className="font-semibold text-foreground tabular-nums text-right">{v.value}</span>
+                </div>
+              ))}
+            </div>
           </div>
-        )}
-        {/* Variables */}
-        <div className="px-5 py-3">
-          <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">Values used</p>
-          <div className="divide-y divide-border border border-border rounded-lg overflow-hidden">
-            {variables.map((v, i) => (
-              <div key={i} className={`flex items-center justify-between px-3.5 py-2 text-[11px] ${i % 2 === 0 ? "bg-muted/20" : ""}`}>
-                <span className="text-muted-foreground">{v.label}</span>
-                <span className="font-semibold text-foreground font-mono">{v.value}</span>
+
+          {/* Formula & Steps Collapsed for Senior Readability, Openable for Panelists */}
+          <div className="overflow-hidden rounded-xl border border-border/70 bg-muted/15">
+            <button
+              type="button"
+              onClick={() => setShowFormulaSteps(prev => !prev)}
+              className="flex w-full items-center justify-between px-4 py-3 text-left text-xs font-semibold text-foreground hover:bg-muted/30 transition-colors cursor-pointer"
+            >
+              <span>View formula &amp; calculation steps</span>
+              <span className="inline-flex items-center gap-1 text-primary font-medium">
+                <span>{showFormulaSteps ? "Hide" : "Show"}</span>
+                <ChevronRight size={13} className={`transition-transform ${showFormulaSteps ? "rotate-90" : ""}`} />
+              </span>
+            </button>
+            {showFormulaSteps && (
+              <div className="space-y-3 border-t border-border/60 bg-card/60 px-4 py-3.5">
+                {typeof formula === "string" ? (
+                  <div className="bg-muted/40 border border-border rounded-lg px-4 py-3 font-mono text-sm font-semibold text-foreground text-center">
+                    {formula}
+                  </div>
+                ) : (
+                  formula
+                )}
+                <div className="space-y-2">
+                  {trail.map((step, i) => (
+                    <div key={i} className="flex items-start gap-3 rounded-lg border border-border bg-muted/15 p-3">
+                      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-bold text-primary">{i + 1}</span>
+                      <p className="pt-0.5 text-xs leading-relaxed text-muted-foreground">{step}</p>
+                    </div>
+                  ))}
+                </div>
               </div>
-            ))}
-          </div>
-        </div>
-        {/* Computation steps */}
-        <div className="px-5 pb-3">
-          <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">Steps</p>
-          <div className="space-y-2">
-            {trail.map((step, i) => (
-              <div key={i} className="flex items-start gap-3 rounded-lg border border-border bg-muted/15 p-3">
-                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[11px] font-bold text-primary">{i + 1}</span>
-                <p className="pt-1 text-xs leading-relaxed text-muted-foreground">{step}</p>
-              </div>
-            ))}
-            <div className="rounded-lg border border-primary/25 bg-primary/[0.06] px-4 py-3 text-sm font-bold text-foreground">{result}</div>
+            )}
           </div>
         </div>
       </div>
@@ -1122,65 +1183,60 @@ function EoqBreakdownModal({
   const [customQtyInput, setCustomQtyInput] = useState(
     overrideQty != null ? String(overrideQty) : String(eoq)
   );
+  const [showFormula, setShowFormula] = useState(false);
   const numerator = 2 * annualDemand * orderCost;
   const ratio = holdingCost > 0 ? numerator / holdingCost : 0;
   const effectiveQty = overrideQty != null ? overrideQty : eoq;
   const unitsPerPack = Math.max(1, product.unitsPerPack ?? 1);
   const effectivePacks = unitsPerPack > 1 ? Math.ceil(effectiveQty / unitsPerPack) : null;
   const suggestedRop = Math.max(1, Math.round((annualDemand / 365) * leadTimeDays * (1 + safetyBufferPercent / 100)));
+  const monthlyPace = Math.max(1, Math.round(annualDemand / 12));
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <button type="button" aria-label="Close math details" onClick={onClose} className="fixed inset-0 bg-black/30" />
+      <button type="button" aria-label="Close order breakdown" onClick={onClose} className="fixed inset-0 bg-black/30" />
       <div role="dialog" aria-modal="true" aria-labelledby="restock-math-title" className="relative z-10 flex max-h-[85vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-2xl">
         <header className="flex items-center justify-between gap-3 border-b border-border px-5 py-4">
           <div className="min-w-0">
-            <h3 id="restock-math-title" className="truncate text-sm font-semibold text-foreground">Show Math · {product.name}</h3>
-            <p className="mt-1 text-xs text-muted-foreground">{product.category}</p>
+            <h3 id="restock-math-title" className="truncate text-base font-semibold text-foreground">Order breakdown · {product.name}</h3>
+            <p className="mt-0.5 text-xs text-muted-foreground">{product.category}{product.supplier ? ` · ${product.supplier}` : ""}</p>
           </div>
-          <button type="button" onClick={onClose} aria-label="Close" className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"><X size={16} /></button>
+          <button type="button" onClick={onClose} aria-label="Close" className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground cursor-pointer"><X size={16} /></button>
         </header>
 
         <div className="space-y-4 overflow-y-auto p-5 text-sm">
-          <div>
-            <p className="font-medium text-foreground">Economic Order Quantity (EOQ)</p>
-            <p className="mt-1 text-xs leading-relaxed text-muted-foreground">This is a suggested order size that balances order-placement and stock-holding costs. Review it before placing an order.</p>
-            <p className="mt-1 rounded-lg bg-muted/50 px-3 py-2 text-center font-mono text-xs text-foreground">EOQ = √(2 × D × S ÷ H)</p>
-            <div className="mt-2 grid grid-cols-1 gap-1.5 text-xs sm:grid-cols-2">
-              <p className="text-muted-foreground">D · Expected yearly demand <strong className="text-foreground">{annualDemand.toLocaleString()} units</strong></p>
-              <p className="text-muted-foreground sm:col-span-2">Demand source <strong className="text-foreground">{demandSourceLabel}</strong></p>
-              <p className="text-muted-foreground">d · Daily demand rate <strong className="text-foreground">≈ {(annualDemand / 365).toFixed(2)} units/day</strong></p>
-              <p className="text-muted-foreground">Weekly demand rate <strong className="text-foreground">≈ {Math.max(1, Math.round((annualDemand / 365) * 7))} units/week</strong></p>
-              <p className="text-muted-foreground">S · Cost to place an order <strong className="text-foreground">{fmt(orderCost)}</strong></p>
-              <p className="text-muted-foreground">H · Yearly holding cost/unit <strong className="text-foreground">{fmt(holdingCost)}</strong></p>
-              <p className="text-muted-foreground">Unit cost <strong className="text-foreground">{fmt(unitCost)}</strong></p>
-              <p className="text-muted-foreground sm:col-span-2">Cost source <strong className="text-foreground">{costSourceLabel}</strong></p>
+          {/* Plain-English Decision Summary First */}
+          <div className="rounded-2xl border border-primary/20 bg-primary/[0.06] p-4 space-y-2.5">
+            <div className="flex items-baseline justify-between gap-3">
+              <div>
+                <p className="text-xs font-medium text-muted-foreground">Suggested order size</p>
+                <p className="text-xl font-bold tabular-nums text-foreground">{eoq.toLocaleString()} units</p>
+              </div>
+              <div className="text-right">
+                <p className="text-xs font-medium text-muted-foreground">Estimated cost</p>
+                <p className="text-base font-semibold tabular-nums text-foreground">{fmt(eoq * unitCost)}</p>
+              </div>
             </div>
-            <ol className="mt-3 space-y-1 text-xs text-muted-foreground">
-              <li>1. 2 × {annualDemand.toLocaleString()} × {fmt(orderCost)} = <strong className="text-foreground">{numerator.toLocaleString()}</strong></li>
-              <li>2. {numerator.toLocaleString()} ÷ {fmt(holdingCost)} = <strong className="text-foreground">{Math.round(ratio).toLocaleString()}</strong></li>
-              <li>3. √{Math.round(ratio).toLocaleString()} = <strong className="text-foreground">{rawEoq.toLocaleString()} units</strong></li>
-            </ol>
-            <p className="mt-3 rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-sm font-semibold text-foreground">
-              Suggested order: {eoq.toLocaleString()} units
-              {eoq > rawEoq && <span className="block text-xs font-normal text-muted-foreground">Raised to meet the configured minimum of {getReorderUnits(product).toLocaleString()} units.</span>}
+            {eoq > rawEoq && (
+              <p className="text-xs text-muted-foreground">
+                Raised to meet your configured minimum of {getReorderUnits(product).toLocaleString()} units.
+              </p>
+            )}
+            <p className="text-xs leading-relaxed text-muted-foreground border-t border-primary/15 pt-2.5">
+              Based on <strong className="text-foreground">~{monthlyPace.toLocaleString()} units/month</strong> ({formatSalesPaceShort(annualDemand / 12)}), a{" "}
+              <strong className="text-foreground">{leadTimeDays}-day delivery wait</strong>, and a{" "}
+              <strong className="text-foreground">+{safetyBufferPercent}% safety cushion</strong>. Reorder reminder triggers when stock drops to{" "}
+              <strong className="text-foreground">{suggestedRop.toLocaleString()} units</strong> (currently{" "}
+              <strong className="text-foreground">{product.stock.toLocaleString()}</strong> on hand{shortage > 0 ? `, ${shortage.toLocaleString()} below minimum` : ""}).
             </p>
-          </div>
-
-          <div className="border-t border-border/60 pt-4">
-            <p className="font-medium text-foreground">Restock point (ROP)</p>
-            <p className="mt-1 text-xs text-muted-foreground">Restock when stock reaches the estimated demand during supplier lead time, plus the configured buffer.</p>
-            <p className="mt-2 rounded-lg bg-muted/50 px-3 py-2 text-center font-mono text-xs text-foreground">ROP = (D ÷ 365 × {leadTimeDays} days) × (1 + {safetyBufferPercent}% buffer)</p>
-            <p className="mt-2 text-xs text-muted-foreground">
-              Calculation: ({annualDemand.toLocaleString()} ÷ 365 × {leadTimeDays}) × (1 + {safetyBufferPercent}%) = <strong className="text-foreground">{suggestedRop.toLocaleString()} units</strong>
-            </p>
-            <p className="mt-1 text-xs text-muted-foreground">Current stock: {product.stock.toLocaleString()} units{shortage > 0 ? ` · ${shortage.toLocaleString()} below minimum` : ""}</p>
           </div>
 
           {onSetOverrideQty && (
-            <div className="border-t border-border/60 pt-4">
+            <div className="rounded-2xl border border-border/70 bg-muted/15 p-4">
+              <label htmlFor="planned-order-qty" className="block text-xs font-semibold text-foreground mb-2">
+                Adjust planned order quantity
+              </label>
               <div className="flex flex-wrap items-center gap-2">
-                <label htmlFor="planned-order-qty" className="text-xs font-medium text-foreground">Your order quantity</label>
                 <input
                   id="planned-order-qty"
                   type="number"
@@ -1188,7 +1244,7 @@ function EoqBreakdownModal({
                   step="1"
                   value={customQtyInput}
                   onChange={event => setCustomQtyInput(event.target.value)}
-                  className="w-24 rounded-lg border border-border bg-background px-2.5 py-1.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
+                  className="w-24 rounded-lg border border-border bg-background px-2.5 py-1.5 text-sm font-semibold tabular-nums text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
                 />
                 <button
                   type="button"
@@ -1197,7 +1253,7 @@ function EoqBreakdownModal({
                     setCustomQtyInput(String(parsed));
                     onSetOverrideQty(product.id, parsed === eoq ? null : parsed);
                   }}
-                  className="rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:opacity-90"
+                  className="rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:opacity-90 cursor-pointer"
                 >
                   Apply
                 </button>
@@ -1209,25 +1265,75 @@ function EoqBreakdownModal({
                       setCustomQtyInput(String(roundedUnits));
                       onSetOverrideQty(product.id, roundedUnits === eoq ? null : roundedUnits);
                     }}
-                    className="rounded-lg border border-border px-2.5 py-1.5 text-xs font-medium text-foreground hover:bg-muted"
+                    className="rounded-lg border border-border bg-background px-2.5 py-1.5 text-xs font-medium text-foreground hover:bg-muted cursor-pointer"
                   >
                     Round to {unitsPerPack}-unit pack
                   </button>
                 )}
                 {overrideQty != null && (
-                  <button type="button" onClick={() => { setCustomQtyInput(String(eoq)); onSetOverrideQty(product.id, null); }} className="px-2 py-1.5 text-xs text-muted-foreground hover:text-foreground">
+                  <button type="button" onClick={() => { setCustomQtyInput(String(eoq)); onSetOverrideQty(product.id, null); }} className="px-2 py-1.5 text-xs text-muted-foreground hover:text-foreground cursor-pointer">
                     Reset
                   </button>
                 )}
               </div>
-              {effectivePacks != null && <p className="mt-1.5 text-xs text-muted-foreground">{effectivePacks} packs · estimated cost {fmt(effectiveQty * unitCost)}. The recommendation does not place an order.</p>}
+              {effectivePacks != null && (
+                <p className="mt-2 text-xs text-muted-foreground">
+                  {effectivePacks} packs · estimated cost {fmt(effectiveQty * unitCost)}. Adjusting here does not place an order yet.
+                </p>
+              )}
             </div>
           )}
+
+          {/* Formula & Math Steps Collapsed by Default */}
+          <div className="overflow-hidden rounded-2xl border border-border/70 bg-muted/15">
+            <button
+              type="button"
+              onClick={() => setShowFormula(prev => !prev)}
+              className="flex w-full items-center justify-between px-4 py-3 text-left text-xs font-semibold text-foreground hover:bg-muted/30 transition-colors cursor-pointer"
+            >
+              <span>View formula &amp; math steps (EOQ &amp; ROP)</span>
+              <span className="inline-flex items-center gap-1 text-primary font-medium">
+                <span>{showFormula ? "Hide" : "Show"}</span>
+                <ChevronRight size={13} className={`transition-transform ${showFormula ? "rotate-90" : ""}`} />
+              </span>
+            </button>
+
+            {showFormula && (
+              <div className="space-y-4 border-t border-border/60 bg-card/60 p-4">
+                <div>
+                  <p className="text-xs font-semibold text-foreground">Economic Order Quantity (EOQ)</p>
+                  <p className="mt-1 rounded-lg bg-muted/50 px-3 py-2 text-center font-mono text-xs text-foreground">EOQ = √(2 × D × S ÷ H)</p>
+                  <div className="mt-2.5 grid grid-cols-1 gap-1.5 text-xs sm:grid-cols-2">
+                    <p className="text-muted-foreground">D · Yearly demand <strong className="text-foreground">{annualDemand.toLocaleString()} units</strong></p>
+                    <p className="text-muted-foreground">d · Daily pace <strong className="text-foreground">≈ {(annualDemand / 365).toFixed(2)} units/day</strong></p>
+                    <p className="text-muted-foreground">S · Order fee <strong className="text-foreground">{fmt(orderCost)}</strong></p>
+                    <p className="text-muted-foreground">H · Yearly storage/unit <strong className="text-foreground">{fmt(holdingCost)}</strong></p>
+                    <p className="text-muted-foreground">Unit cost <strong className="text-foreground">{fmt(unitCost)}</strong></p>
+                    <p className="text-muted-foreground sm:col-span-2">Demand source: <strong className="text-foreground">{demandSourceLabel}</strong></p>
+                    <p className="text-muted-foreground sm:col-span-2">Cost source: <strong className="text-foreground">{costSourceLabel}</strong></p>
+                  </div>
+                  <ol className="mt-2.5 space-y-1 text-xs text-muted-foreground">
+                    <li>1. 2 × {annualDemand.toLocaleString()} × {fmt(orderCost)} = <strong className="text-foreground">{numerator.toLocaleString()}</strong></li>
+                    <li>2. {numerator.toLocaleString()} ÷ {fmt(holdingCost)} = <strong className="text-foreground">{Math.round(ratio).toLocaleString()}</strong></li>
+                    <li>3. √{Math.round(ratio).toLocaleString()} = <strong className="text-foreground">{rawEoq.toLocaleString()} units</strong></li>
+                  </ol>
+                </div>
+
+                <div className="border-t border-border/60 pt-3">
+                  <p className="text-xs font-semibold text-foreground">Restock point (ROP)</p>
+                  <p className="mt-1.5 rounded-lg bg-muted/50 px-3 py-2 text-center font-mono text-xs text-foreground">ROP = (D ÷ 365 × {leadTimeDays} days) × (1 + {safetyBufferPercent}% buffer)</p>
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    Calculation: ({annualDemand.toLocaleString()} ÷ 365 × {leadTimeDays}) × (1 + {safetyBufferPercent}%) = <strong className="text-foreground">{suggestedRop.toLocaleString()} units</strong>
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
 
         {onReorder && (
           <footer className="flex justify-end gap-2 border-t border-border px-5 py-3">
-            <button type="button" onClick={() => { onClose(); onReorder(product); }} className="rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground hover:opacity-90">
+            <button type="button" onClick={() => { onClose(); onReorder(product); }} className="rounded-lg border border-border bg-background px-3.5 py-2 text-xs font-semibold text-foreground hover:bg-muted cursor-pointer">
               Edit medicine
             </button>
           </footer>
@@ -1238,6 +1344,7 @@ function EoqBreakdownModal({
 }
 
 function EoqSettingsModal({
+  isAutoMode,
   orderCost,
   holdingPercent,
   leadTimeDays,
@@ -1247,6 +1354,7 @@ function EoqSettingsModal({
   onReset,
   onClose,
 }: {
+  isAutoMode: boolean;
   orderCost: number;
   holdingPercent: number;
   leadTimeDays: number;
@@ -1265,293 +1373,383 @@ function EoqSettingsModal({
   onReset: () => void;
   onClose: () => void;
 }) {
+  const [autoEnabled, setAutoEnabled] = useState(isAutoMode);
   const [formOrderCost, setFormOrderCost] = useState(String(orderCost));
   const [formHoldingPercent, setFormHoldingPercent] = useState(String(holdingPercent));
   const [formLeadTimeDays, setFormLeadTimeDays] = useState(String(leadTimeDays));
   const [formSafetyBuffer, setFormSafetyBuffer] = useState(String(safetyBufferPercent));
+  const [useCustomBuffer, setUseCustomBuffer] = useState(() => ![15, 20, 30].includes(safetyBufferPercent));
+  const [showAdvanced, setShowAdvanced] = useState(false);
 
-  const applyPreset = (cost: number, hold: number, lead: number, buffer: number) => {
-    setFormOrderCost(String(cost));
-    setFormHoldingPercent(String(hold));
-    setFormLeadTimeDays(String(lead));
-    setFormSafetyBuffer(String(buffer));
+  const safetyLevelLabel = (pct: number) => {
+    if (pct <= 15) return "Light";
+    if (pct <= 22) return "Normal";
+    if (pct <= 27) return "Moderate";
+    return "High";
   };
 
-  const isSmartAuto =
-    Number(formOrderCost) === smartRecs.benchmarkOrderCost &&
-    Number(formHoldingPercent) === smartRecs.benchmarkHoldingRate &&
-    Number(formLeadTimeDays) === smartRecs.recommendedLeadDays &&
-    Number(formSafetyBuffer) === smartRecs.recommendedSafetyBuffer;
+  const handleToggleAuto = () => {
+    setAutoEnabled(prev => {
+      const next = !prev;
+      if (next) {
+        setFormOrderCost(String(smartRecs.benchmarkOrderCost));
+        setFormHoldingPercent(String(smartRecs.benchmarkHoldingRate));
+        setFormLeadTimeDays(String(smartRecs.recommendedLeadDays));
+        setFormSafetyBuffer(String(smartRecs.recommendedSafetyBuffer));
+        setUseCustomBuffer(![15, 20, 30].includes(smartRecs.recommendedSafetyBuffer));
+        setShowAdvanced(false);
+      }
+      return next;
+    });
+  };
+
+  const previewCost = Math.max(1, parseFloat(formOrderCost) || 120);
+  const previewHold = Math.min(100, Math.max(1, parseFloat(formHoldingPercent) || 20));
+  const previewLead = Math.min(90, Math.max(1, Math.round(parseFloat(formLeadTimeDays) || smartRecs.recommendedLeadDays)));
+  const previewBuffer = Math.min(200, Math.max(0, Math.round(parseFloat(formSafetyBuffer) || 0)));
+  const sampleRop = Math.max(1, Math.round(10 * previewLead * (1 + previewBuffer / 100)));
+  const sampleEoq = Math.max(1, Math.round(Math.sqrt((2 * 3650 * previewCost) / Math.max(0.01, 50 * (previewHold / 100)))));
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (autoEnabled) {
+      onReset();
+      onClose();
+      return;
+    }
     const cost = Math.max(1, parseFloat(formOrderCost) || 120);
     const hold = Math.min(100, Math.max(1, parseFloat(formHoldingPercent) || 20));
     const lead = Math.min(90, Math.max(1, Math.round(parseFloat(formLeadTimeDays) || smartRecs.recommendedLeadDays)));
-    const buffer = Math.min(200, Math.max(0, Math.round(parseFloat(formSafetyBuffer) || smartRecs.recommendedSafetyBuffer)));
+    const parsedBuf = parseFloat(formSafetyBuffer);
+    const buffer = Math.min(200, Math.max(0, Number.isFinite(parsedBuf) ? Math.round(parsedBuf) : smartRecs.recommendedSafetyBuffer));
     onSave(cost, hold, lead, buffer);
     onClose();
   };
 
+  const showDoneOnly = autoEnabled && isAutoMode;
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="fixed inset-0 bg-black/45" onClick={onClose} />
-      <div role="dialog" aria-modal="true" aria-labelledby="restock-settings-title" className="relative z-10 flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-2xl">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="restock-settings-title"
+        className="relative z-10 flex max-h-[90vh] w-full max-w-md flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-2xl"
+      >
         <div className="flex flex-shrink-0 items-start justify-between gap-4 border-b border-border px-5 py-4">
           <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2">
-              <h3 id="restock-settings-title" className="text-base font-semibold text-foreground">Restocking settings</h3>
-              <span className={`rounded-full border px-2 py-0.5 text-[10px] font-medium ${
-                isSmartAuto
-                  ? "border-primary/20 bg-primary/5 text-primary"
-                  : "border-border bg-muted/50 text-muted-foreground"
-              }`}>
-                {isSmartAuto ? "Suggested values" : "Custom values"}
-              </span>
-            </div>
-            <p className="mt-1 text-xs text-muted-foreground">Set the costs and delivery timing used to estimate when and how much to reorder.</p>
+            <h3 id="restock-settings-title" className="text-base font-semibold text-foreground">
+              Restocking settings
+            </h3>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              Automatic mode calculates reorder timing from your sales and deliveries.
+            </p>
           </div>
-          <button type="button" onClick={onClose} aria-label="Close restocking settings" className="shrink-0 rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground">
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close restocking settings"
+            className="shrink-0 rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground cursor-pointer"
+          >
             <X size={16} />
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="flex-1 space-y-5 overflow-y-auto p-5">
-          <section className="space-y-3 rounded-xl border border-border/70 bg-muted/20 p-4">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div className="min-w-0">
-                <h4 className="text-sm font-semibold text-foreground">Suggested starting values</h4>
-                <p className="mt-1 max-w-xl text-xs leading-relaxed text-muted-foreground">
-                  {smartRecs.hasEmpiricalData
-                    ? `Average delivery time is based on ${smartRecs.totalReceiptsCount} recorded supplier deliveries (${smartRecs.recommendedLeadDays} days). Order cost and holding rate are editable starting estimates.`
-                    : "No supplier delivery history is available yet. These values are editable starting points—adjust them to match your suppliers and costs."}
-                </p>
-              </div>
-              {!isSmartAuto && (
-                <button
-                  type="button"
-                  onClick={() => applyPreset(smartRecs.benchmarkOrderCost, smartRecs.benchmarkHoldingRate, smartRecs.recommendedLeadDays, smartRecs.recommendedSafetyBuffer)}
-                  className="inline-flex shrink-0 items-center rounded-lg border border-border bg-card px-3 py-2 text-xs font-medium text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
-                >
-                  Use suggested values
-                </button>
-              )}
+        <form onSubmit={handleSubmit} className="flex-1 space-y-4 overflow-y-auto p-5">
+          {/* Master Apple-Style Switch */}
+          <div className="flex items-center justify-between gap-4 rounded-2xl border border-border/70 bg-muted/15 px-4 py-3.5">
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-foreground">Calculate automatically</p>
+              <p className="mt-0.5 text-[11.5px] text-muted-foreground">
+                Recommended · Uses your live sales pace &amp; supplier deliveries
+              </p>
             </div>
-
-            <div className="grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
-              <div className="rounded-lg border border-border/60 bg-card p-3">
-                <p className="text-[11px] text-muted-foreground">Delivery time (L)</p>
-                <p className="mt-1 text-sm font-semibold tabular-nums text-foreground">{smartRecs.recommendedLeadDays} days</p>
-                <p className="mt-1 text-[10px] text-muted-foreground">{smartRecs.hasEmpiricalData ? "Supplier history" : "Starting value"}</p>
-              </div>
-              <div className="rounded-lg border border-border/60 bg-card p-3">
-                <p className="text-[11px] text-muted-foreground">Safety buffer (SS)</p>
-                <p className="mt-1 text-sm font-semibold tabular-nums text-foreground">+{smartRecs.recommendedSafetyBuffer}%</p>
-                <p className="mt-1 text-[10px] text-muted-foreground">Extra stock cushion</p>
-              </div>
-              <div className="rounded-lg border border-border/60 bg-card p-3">
-                <p className="text-[11px] text-muted-foreground">Order cost (S)</p>
-                <p className="mt-1 text-sm font-semibold tabular-nums text-foreground">₱{smartRecs.benchmarkOrderCost}</p>
-                <p className="mt-1 text-[10px] text-muted-foreground">Freight + processing</p>
-              </div>
-              <div className="rounded-lg border border-border/60 bg-card p-3">
-                <p className="text-[11px] text-muted-foreground">Holding rate (I)</p>
-                <p className="mt-1 text-sm font-semibold tabular-nums text-foreground">{smartRecs.benchmarkHoldingRate}% / year</p>
-                <p className="mt-1 text-[10px] text-muted-foreground">A/C + storage + risk</p>
-              </div>
-            </div>
-
-            {smartRecs.supplierBreakdown && smartRecs.supplierBreakdown.length > 0 && (
-              <div className="mt-2.5 pt-2 border-t border-border/50 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
-                <span className="font-semibold text-foreground">Recorded distributor lead times:</span>
-                {smartRecs.supplierBreakdown.map(s => (
-                  <span key={s.name} className="tabular-nums">
-                    <strong className="text-foreground">{s.name.replace(/ (Corporation|\(Unilab\)|Inc\.|Supplies|Distributors|Traders|Pharma)/g, "")}</strong>: {s.leadDays.toFixed(1)}d ({s.receipts} receipts)
-                  </span>
-                ))}
-              </div>
-            )}
-          </section>
-
-          <div>
-            <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
-              <h4 className="text-sm font-semibold text-foreground">Quick presets</h4>
-              <span className="text-[11px] text-muted-foreground">Examples to start from; review before saving.</span>
-            </div>
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-              {[
-                {
-                  name: "Nearby supplier",
-                  desc: "Shorter delivery · lower order cost",
-                  cost: 60,
-                  hold: 15,
-                  lead: 3,
-                  buffer: 15,
-                },
-                {
-                  name: "Standard order",
-                  desc: "General-purpose starting point",
-                  cost: 120,
-                  hold: 20,
-                  lead: smartRecs.recommendedLeadDays,
-                  buffer: smartRecs.recommendedSafetyBuffer,
-                },
-                {
-                  name: "Long-distance supplier",
-                  desc: "Longer delivery · larger buffer",
-                  cost: 250,
-                  hold: 25,
-                  lead: 14,
-                  buffer: 30,
-                },
-              ].map(preset => {
-                const isSelected =
-                  Number(formOrderCost) === preset.cost &&
-                  Number(formHoldingPercent) === preset.hold &&
-                  Number(formLeadTimeDays) === preset.lead &&
-                  Number(formSafetyBuffer) === preset.buffer;
-                return (
-                  <button
-                    key={preset.name}
-                    type="button"
-                    aria-pressed={isSelected}
-                    onClick={() => applyPreset(preset.cost, preset.hold, preset.lead, preset.buffer)}
-                    className={`rounded-xl border p-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 ${
-                      isSelected
-                        ? "border-primary/50 bg-primary/[0.06]"
-                        : "border-border bg-background hover:bg-muted/50"
-                    }`}
-                  >
-                    <span className="block text-xs font-semibold text-foreground">{preset.name}</span>
-                    <span className="mt-1 block text-[10px] text-muted-foreground">{preset.desc}</span>
-                    <span className="mt-2 block text-[10px] font-medium tabular-nums text-muted-foreground">
-                      ₱{preset.cost} / order · {preset.hold}% / yr · {preset.lead} days · +{preset.buffer}%
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 gap-4 border-t border-border/60 pt-4 sm:grid-cols-2">
-            <div>
-              <div className="mb-1 flex items-center justify-between">
-                <label htmlFor="restock-order-cost" className="text-xs font-semibold text-foreground">
-                  Order cost S
-                </label>
-                <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[9px] font-mono font-medium text-primary">
-                  Drives EOQ batch size
-                </span>
-              </div>
-              <input
-                id="restock-order-cost"
-                type="number"
-                step="any"
-                min="1"
-                value={formOrderCost}
-                onChange={e => setFormOrderCost(e.target.value)}
-                className="w-full rounded-lg border border-border bg-background px-3 py-2.5 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
-                required
-              />
-              <span className="mt-1 block text-[11px] text-muted-foreground">
-                Tangub benchmark (₱120): ₱90 regional courier + ₱30 clerical PO processing.
-              </span>
-            </div>
-
-            <div>
-              <div className="mb-1 flex items-center justify-between">
-                <label htmlFor="restock-holding-rate" className="text-xs font-semibold text-foreground">
-                  Annual holding rate I
-                </label>
-                <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[9px] font-mono font-medium text-primary">
-                  Drives EOQ holding penalty
-                </span>
-              </div>
-              <input
-                id="restock-holding-rate"
-                type="number"
-                step="any"
-                min="1"
-                max="100"
-                value={formHoldingPercent}
-                onChange={e => setFormHoldingPercent(e.target.value)}
-                className="w-full rounded-lg border border-border bg-background px-3 py-2.5 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
-                required
-              />
-              <span className="mt-1 block text-[11px] text-muted-foreground">
-                Pharmacy carrying cost (20%/yr): 8% A/C climate control + 6% capital + 6% expiry risk.
-              </span>
-            </div>
-
-            <div>
-              <div className="mb-1 flex items-center justify-between">
-                <label htmlFor="restock-lead-time" className="text-xs font-semibold text-foreground">
-                  Supplier delivery time L
-                </label>
-                <span className="rounded bg-amber-500/10 px-1.5 py-0.5 text-[9px] font-mono font-medium text-amber-600 dark:text-amber-400">
-                  Drives ROP reorder day
-                </span>
-              </div>
-              <input
-                id="restock-lead-time"
-                type="number"
-                step="1"
-                min="1"
-                max="90"
-                value={formLeadTimeDays}
-                onChange={e => setFormLeadTimeDays(e.target.value)}
-                className="w-full rounded-lg border border-border bg-background px-3 py-2.5 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
-                required
-              />
-              <span className="mt-1 block text-[11px] text-muted-foreground">
-                Empirical average from {smartRecs.totalReceiptsCount} deliveries: {smartRecs.recommendedLeadDays} days from PO to receipt.
-              </span>
-            </div>
-
-            <div>
-              <div className="mb-1 flex items-center justify-between">
-                <label htmlFor="restock-safety-buffer" className="mb-1 text-xs font-semibold text-foreground">
-                  Safety stock buffer SS
-                </label>
-                <span className="rounded bg-amber-500/10 px-1.5 py-0.5 text-[9px] font-mono font-medium text-amber-600 dark:text-amber-400">
-                  Drives ROP safety cushion
-                </span>
-              </div>
-              <input
-                id="restock-safety-buffer"
-                type="number"
-                step="1"
-                min="0"
-                max="200"
-                value={formSafetyBuffer}
-                onChange={e => setFormSafetyBuffer(e.target.value)}
-                className="w-full rounded-lg border border-border bg-background px-3 py-2.5 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
-                required
-              />
-              <span className="mt-1 block text-[11px] text-muted-foreground">
-                Extra stock cushion calibrated to current supplier delivery reliability ({smartRecs.fulfillmentPct}% on-time).
-              </span>
-            </div>
-          </div>
-
-          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4">
             <button
               type="button"
-              onClick={() => {
-                onReset();
-                onClose();
-              }}
-              className="inline-flex items-center gap-2 rounded-lg px-2 py-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+              role="switch"
+              aria-checked={autoEnabled}
+              aria-label="Calculate restocking automatically"
+              onClick={handleToggleAuto}
+              className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors cursor-pointer ${
+                autoEnabled ? "bg-primary" : "bg-muted-foreground/30"
+              }`}
             >
-              <RotateCcw size={14} />
-              Reset to suggested defaults
+              <span
+                className={`inline-block h-5 w-5 transform rounded-full bg-white shadow-sm transition-transform ${
+                  autoEnabled ? "translate-x-[22px]" : "translate-x-[2px]"
+                }`}
+              />
             </button>
-            <button
-              type="submit"
-              className="rounded-lg bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-offset-2"
-            >
-              Save changes
-            </button>
+          </div>
+
+          {autoEnabled ? (
+            /* Calm Read-Only Summary When Automatic is ON */
+            <section className="overflow-hidden rounded-2xl border border-border/70 bg-muted/15 divide-y divide-border/50">
+              <div className="flex items-center justify-between gap-4 px-4 py-3">
+                <div className="min-w-0">
+                  <p className="text-xs font-semibold text-foreground">Delivery wait time</p>
+                  <p className="mt-0.5 text-[11px] text-muted-foreground">
+                    {smartRecs.hasEmpiricalData
+                      ? `Average from ${smartRecs.totalReceiptsCount} recorded deliveries`
+                      : "Standard pharmacy delivery estimate"}
+                  </p>
+                </div>
+                <span className="shrink-0 whitespace-nowrap text-xs font-semibold tabular-nums text-foreground">
+                  {smartRecs.recommendedLeadDays} days
+                </span>
+              </div>
+
+              <div className="flex items-center justify-between gap-4 px-4 py-3">
+                <div className="min-w-0">
+                  <p className="text-xs font-semibold text-foreground">Safety cushion</p>
+                  <p className="mt-0.5 text-[11px] text-muted-foreground">
+                    {smartRecs.hasEmpiricalData
+                      ? `Sized for ${smartRecs.fulfillmentPct}% supplier fulfillment`
+                      : "Extra backup against late deliveries"}
+                  </p>
+                </div>
+                <span className="shrink-0 whitespace-nowrap text-xs font-semibold tabular-nums text-foreground">
+                  {safetyLevelLabel(smartRecs.recommendedSafetyBuffer)} (+{smartRecs.recommendedSafetyBuffer}%)
+                </span>
+              </div>
+
+              <div className="flex items-center justify-between gap-4 px-4 py-3">
+                <div className="min-w-0">
+                  <p className="text-xs font-semibold text-foreground">Order sizing</p>
+                  <p className="mt-0.5 text-[11px] text-muted-foreground">
+                    ₱{smartRecs.benchmarkOrderCost} shipping/order · {smartRecs.benchmarkHoldingRate}% yearly storage
+                  </p>
+                </div>
+                <span className="shrink-0 whitespace-nowrap text-xs font-semibold text-primary">
+                  Balanced
+                </span>
+              </div>
+            </section>
+          ) : (
+            /* Clean Manual Controls Only When Automatic is Turned OFF */
+            <>
+              <section className="overflow-hidden rounded-2xl border border-border/70 bg-muted/15 divide-y divide-border/50">
+                <div className="flex items-center justify-between gap-4 px-4 py-3.5">
+                  <div className="min-w-0">
+                    <label htmlFor="restock-lead-time" className="block text-xs font-semibold text-foreground">
+                      Delivery wait time
+                    </label>
+                    <p className="mt-0.5 text-[11px] text-muted-foreground">
+                      Days from ordering to store delivery
+                    </p>
+                  </div>
+                  <div className="flex shrink-0 items-center rounded-lg border border-border bg-background px-2.5 py-1.5 focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/25">
+                    <input
+                      id="restock-lead-time"
+                      type="number"
+                      step="1"
+                      min="1"
+                      max="90"
+                      value={formLeadTimeDays}
+                      onChange={e => setFormLeadTimeDays(e.target.value)}
+                      className="w-12 bg-transparent text-right text-sm font-semibold tabular-nums text-foreground focus:outline-none"
+                      required
+                    />
+                    <span className="ml-1.5 shrink-0 whitespace-nowrap text-xs text-muted-foreground">days</span>
+                  </div>
+                </div>
+
+                <div className="space-y-2.5 px-4 py-3.5">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-xs font-semibold text-foreground">Safety cushion</p>
+                      <p className="mt-0.5 text-[11px] text-muted-foreground">
+                        Extra backup stock in case of delays
+                      </p>
+                    </div>
+                    <span className="shrink-0 text-xs font-semibold tabular-nums text-primary">
+                      +{previewBuffer}%
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-4 gap-1 rounded-xl bg-muted/70 p-1">
+                    {[
+                      { label: "Light", sub: "15%", value: 15 },
+                      { label: "Normal", sub: "20%", value: 20 },
+                      { label: "High", sub: "30%", value: 30 },
+                    ].map(opt => {
+                      const active = !useCustomBuffer && Number(formSafetyBuffer) === opt.value;
+                      return (
+                        <button
+                          key={opt.value}
+                          type="button"
+                          onClick={() => {
+                            setUseCustomBuffer(false);
+                            setFormSafetyBuffer(String(opt.value));
+                          }}
+                          className={`rounded-lg py-1.5 text-center transition-all cursor-pointer ${
+                            active
+                              ? "bg-background text-foreground shadow-sm font-semibold"
+                              : "text-muted-foreground hover:text-foreground"
+                          }`}
+                        >
+                          <span className="block text-[11px]">{opt.label}</span>
+                          <span className="block text-[10px] tabular-nums opacity-75">{opt.sub}</span>
+                        </button>
+                      );
+                    })}
+                    <button
+                      type="button"
+                      onClick={() => setUseCustomBuffer(true)}
+                      className={`rounded-lg py-1.5 text-center transition-all cursor-pointer ${
+                        useCustomBuffer
+                          ? "bg-background text-foreground shadow-sm font-semibold"
+                          : "text-muted-foreground hover:text-foreground"
+                      }`}
+                    >
+                      <span className="block text-[11px]">Custom</span>
+                      <span className="block text-[10px] tabular-nums opacity-75">%</span>
+                    </button>
+                  </div>
+
+                  {useCustomBuffer && (
+                    <div className="flex items-center justify-between gap-3 rounded-xl border border-border/60 bg-background/70 px-3 py-2">
+                      <label htmlFor="restock-safety-buffer" className="text-xs text-muted-foreground">
+                        Custom cushion percentage
+                      </label>
+                      <div className="flex shrink-0 items-center rounded-lg border border-border bg-background px-2.5 py-1 focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/25">
+                        <input
+                          id="restock-safety-buffer"
+                          type="number"
+                          step="1"
+                          min="0"
+                          max="200"
+                          value={formSafetyBuffer}
+                          onChange={e => setFormSafetyBuffer(e.target.value)}
+                          className="w-12 bg-transparent text-right text-sm font-semibold tabular-nums text-foreground focus:outline-none"
+                          required
+                        />
+                        <span className="ml-1 shrink-0 whitespace-nowrap text-xs text-muted-foreground">%</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </section>
+
+              {/* Collapsed Disclosure for Accounting / Thesis Defense (EOQ S & I) */}
+              <div className="overflow-hidden rounded-2xl border border-border/70 bg-muted/15">
+                <button
+                  type="button"
+                  onClick={() => setShowAdvanced(v => !v)}
+                  className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left transition-colors hover:bg-muted/30 cursor-pointer"
+                >
+                  <div className="min-w-0">
+                    <p className="text-xs font-semibold text-foreground">Advanced cost settings</p>
+                    <p className="mt-0.5 text-[11px] tabular-nums text-muted-foreground">
+                      ₱{previewCost} order fee · {previewHold}% yearly storage
+                    </p>
+                  </div>
+                  <span className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap text-xs font-medium text-primary">
+                    <span>{showAdvanced ? "Hide" : "Adjust"}</span>
+                    <ChevronRight size={13} className={`transition-transform ${showAdvanced ? "rotate-90" : ""}`} />
+                  </span>
+                </button>
+
+                {showAdvanced && (
+                  <div className="space-y-3 border-t border-border/60 bg-card/60 px-4 py-3.5">
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      <div>
+                        <label htmlFor="restock-order-cost" className="mb-1 block text-xs font-medium text-foreground">
+                          Order fee (EOQ S)
+                        </label>
+                        <div className="flex items-center rounded-lg border border-border bg-background px-2.5 py-1.5 focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/25">
+                          <span className="mr-1 shrink-0 text-xs font-medium text-muted-foreground">₱</span>
+                          <input
+                            id="restock-order-cost"
+                            type="number"
+                            step="any"
+                            min="1"
+                            value={formOrderCost}
+                            onChange={e => setFormOrderCost(e.target.value)}
+                            className="w-full min-w-0 bg-transparent text-sm font-medium tabular-nums text-foreground focus:outline-none"
+                            required
+                          />
+                          <span className="ml-1.5 shrink-0 whitespace-nowrap text-[11px] text-muted-foreground">/ order</span>
+                        </div>
+                        <p className="mt-1 text-[10.5px] text-muted-foreground">
+                          Courier &amp; processing fee per PO.
+                        </p>
+                      </div>
+
+                      <div>
+                        <label htmlFor="restock-holding-rate" className="mb-1 block text-xs font-medium text-foreground">
+                          Storage cost (EOQ I)
+                        </label>
+                        <div className="flex items-center rounded-lg border border-border bg-background px-2.5 py-1.5 focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/25">
+                          <input
+                            id="restock-holding-rate"
+                            type="number"
+                            step="any"
+                            min="1"
+                            max="100"
+                            value={formHoldingPercent}
+                            onChange={e => setFormHoldingPercent(e.target.value)}
+                            className="w-full min-w-0 bg-transparent text-sm font-medium tabular-nums text-foreground focus:outline-none"
+                            required
+                          />
+                          <span className="ml-1.5 shrink-0 whitespace-nowrap text-[11px] text-muted-foreground">% / yr</span>
+                        </div>
+                        <p className="mt-1 text-[10.5px] text-muted-foreground">
+                          Cooling, shelving &amp; expiry risk.
+                        </p>
+                      </div>
+                    </div>
+
+                    {smartRecs.supplierBreakdown.length > 0 && (
+                      <div className="rounded-xl border border-border/60 bg-muted/25 px-3 py-2 text-[11px] text-muted-foreground">
+                        <span className="font-medium text-foreground">Supplier delivery history: </span>
+                        <span className="tabular-nums">
+                          {smartRecs.supplierBreakdown
+                            .map(s => `${s.name.replace(/ (Corporation|\(Unilab\)|Inc\.|Supplies|Distributors|Traders|Pharma)/g, "")}: ${s.leadDays.toFixed(1)}d`)
+                            .join(" · ")}
+                        </span>
+                      </div>
+                    )}
+
+                    <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border/60 bg-muted/30 px-3 py-2 text-[11px]">
+                      <span className="text-muted-foreground">Sample (10/day, ₱50 cost):</span>
+                      <span className="font-medium tabular-nums text-foreground">
+                        Reorder at <strong>{sampleRop}</strong> · Order ~<strong>{sampleEoq}</strong>
+                      </span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+
+          <div className="flex items-center justify-end gap-2 border-t border-border pt-3.5">
+            {showDoneOnly ? (
+              <button
+                type="button"
+                onClick={onClose}
+                className="rounded-lg bg-primary px-5 py-2 text-xs font-semibold text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 cursor-pointer"
+              >
+                Done
+              </button>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="rounded-lg border border-border px-3.5 py-2 text-xs font-medium text-foreground transition-colors hover:bg-muted cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 cursor-pointer"
+                >
+                  {autoEnabled ? "Switch to Auto" : "Save settings"}
+                </button>
+              </>
+            )}
           </div>
         </form>
       </div>
@@ -1603,10 +1801,18 @@ const AnalyticsPage = memo(function AnalyticsPage({
     return "Overview";
   });
 
+  const contentScrollRef = useRef<HTMLDivElement>(null);
+
   useEffect(() => {
     try {
       localStorage.setItem("smarttrack_analytics_section", activeSection);
     } catch { /* ignore */ }
+  }, [activeSection]);
+
+  useLayoutEffect(() => {
+    if (contentScrollRef.current) {
+      contentScrollRef.current.scrollTop = 0;
+    }
   }, [activeSection]);
   const [smaInspector, setSmaInspector] = useState<{ type: "sma3" | "sma6" | "eoq"; unit: "month" | "week" } | null>(null);
   const [smapeInspector, setSmapeInspector] = useState<"sma3" | "sma6" | null>(null);
@@ -2344,30 +2550,49 @@ const AnalyticsPage = memo(function AnalyticsPage({
     };
   }, [supplierPerformance]);
 
-  const [orderCostSetting, setOrderCostSetting] = useState<number>(() => {
+  const [restockAutoMode, setRestockAutoMode] = useState<boolean>(() => {
+    try {
+      const explicit = localStorage.getItem("smarttrack_eoq_custom_mode");
+      if (explicit === "1") return false;
+      if (explicit === "0") return true;
+      return (
+        localStorage.getItem("smarttrack_eoq_order_cost") == null &&
+        localStorage.getItem("smarttrack_eoq_holding_rate") == null &&
+        localStorage.getItem("smarttrack_eoq_lead_time") == null &&
+        localStorage.getItem("smarttrack_eoq_safety_buffer") == null
+      );
+    } catch { return true; }
+  });
+  const [customOrderCost, setCustomOrderCost] = useState<number>(() => {
     try {
       const saved = localStorage.getItem("smarttrack_eoq_order_cost");
       return saved ? Math.max(1, parseFloat(saved) || 120) : 120;
     } catch { return 120; }
   });
-  const [holdingRateSetting, setHoldingRateSetting] = useState<number>(() => {
+  const [customHoldingRate, setCustomHoldingRate] = useState<number>(() => {
     try {
       const saved = localStorage.getItem("smarttrack_eoq_holding_rate");
       return saved ? Math.max(0.01, parseFloat(saved) || 0.20) : 0.20;
     } catch { return 0.20; }
   });
-  const [leadTimeDaysSetting, setLeadTimeDaysSetting] = useState<number>(() => {
+  const [customLeadTimeDays, setCustomLeadTimeDays] = useState<number>(() => {
     try {
       const saved = localStorage.getItem("smarttrack_eoq_lead_time");
       return saved ? Math.min(90, Math.max(1, Math.round(parseFloat(saved) || 5))) : 5;
     } catch { return 5; }
   });
-  const [safetyBufferSetting, setSafetyBufferSetting] = useState<number>(() => {
+  const [customSafetyBuffer, setCustomSafetyBuffer] = useState<number>(() => {
     try {
       const saved = localStorage.getItem("smarttrack_eoq_safety_buffer");
       return saved != null ? Math.min(200, Math.max(0, Math.round(parseFloat(saved)))) : 20;
     } catch { return 20; }
   });
+
+  const orderCostSetting = restockAutoMode ? smartOperationalRecommendations.benchmarkOrderCost : customOrderCost;
+  const holdingRateSetting = restockAutoMode ? smartOperationalRecommendations.benchmarkHoldingRate / 100 : customHoldingRate;
+  const leadTimeDaysSetting = restockAutoMode ? smartOperationalRecommendations.recommendedLeadDays : customLeadTimeDays;
+  const safetyBufferSetting = restockAutoMode ? smartOperationalRecommendations.recommendedSafetyBuffer : customSafetyBuffer;
+
   const [eoqOverrides, setEoqOverrides] = useState<Record<string, number>>(() => {
     try {
       const saved = localStorage.getItem("smarttrack_eoq_overrides");
@@ -2375,6 +2600,8 @@ const AnalyticsPage = memo(function AnalyticsPage({
     } catch { return {}; }
   });
   const [showEoqSettingsModal, setShowEoqSettingsModal] = useState(false);
+  const [inlineEditProductId, setInlineEditProductId] = useState<string | null>(null);
+  const [inlineEditQty, setInlineEditQty] = useState("");
 
   const handleSetOverrideQty = (productId: string, qty: number | null) => {
     setEoqOverrides(prev => {
@@ -2389,35 +2616,66 @@ const AnalyticsPage = memo(function AnalyticsPage({
     showToast?.(qty == null ? "Restored EOQ suggested order quantity" : `Custom order quantity (${Math.round(qty)} units) applied`, "info");
   };
 
-  const handleSaveEoqSettings = (cost: number, holdPercent: number, leadDays: number, safetyBuf: number) => {
-    const rate = holdPercent / 100;
-    setOrderCostSetting(cost);
-    setHoldingRateSetting(rate);
-    setLeadTimeDaysSetting(leadDays);
-    setSafetyBufferSetting(safetyBuf);
-    try {
-      localStorage.setItem("smarttrack_eoq_order_cost", String(cost));
-      localStorage.setItem("smarttrack_eoq_holding_rate", String(rate));
-      localStorage.setItem("smarttrack_eoq_lead_time", String(leadDays));
-      localStorage.setItem("smarttrack_eoq_safety_buffer", String(safetyBuf));
-    } catch { /* ignore */ }
-    showToast?.(`Updated EOQ & ROP parameters (₱${cost} · ${holdPercent}% · ${leadDays}d · +${safetyBuf}%)`, "success");
+  const commitInlineOverride = (productId: string, recommendedQty: number) => {
+    const parsed = Math.max(1, Math.round(Number(inlineEditQty) || recommendedQty));
+    handleSetOverrideQty(productId, parsed === recommendedQty ? null : parsed);
+    setInlineEditProductId(null);
   };
 
-  const handleResetEoqSettings = () => {
+  const handleResetEoqSettings = (silent = false) => {
     const lead = smartOperationalRecommendations.recommendedLeadDays;
     const buffer = smartOperationalRecommendations.recommendedSafetyBuffer;
-    setOrderCostSetting(120);
-    setHoldingRateSetting(0.20);
-    setLeadTimeDaysSetting(lead);
-    setSafetyBufferSetting(buffer);
+    setRestockAutoMode(true);
+    setCustomOrderCost(120);
+    setCustomHoldingRate(0.20);
+    setCustomLeadTimeDays(lead);
+    setCustomSafetyBuffer(buffer);
     try {
+      localStorage.setItem("smarttrack_eoq_custom_mode", "0");
       localStorage.removeItem("smarttrack_eoq_order_cost");
       localStorage.removeItem("smarttrack_eoq_holding_rate");
       localStorage.removeItem("smarttrack_eoq_lead_time");
       localStorage.removeItem("smarttrack_eoq_safety_buffer");
     } catch { /* ignore */ }
-    showToast?.(`Reset parameters to Smart Defaults (₱120 · 20% · ${lead}d · +${buffer}%)`, "info");
+    if (!silent) {
+      showToast?.(`Auto mode restored (₱120 · 20% · ${lead}d · +${buffer}%)`, "info");
+    }
+  };
+
+  const handleSaveEoqSettings = (cost: number, holdPercent: number, leadDays: number, safetyBuf: number) => {
+    const matchesAuto =
+      cost === smartOperationalRecommendations.benchmarkOrderCost &&
+      holdPercent === smartOperationalRecommendations.benchmarkHoldingRate &&
+      leadDays === smartOperationalRecommendations.recommendedLeadDays &&
+      safetyBuf === smartOperationalRecommendations.recommendedSafetyBuffer;
+    if (matchesAuto) {
+      handleResetEoqSettings();
+      return;
+    }
+    const rate = holdPercent / 100;
+    setRestockAutoMode(false);
+    setCustomOrderCost(cost);
+    setCustomHoldingRate(rate);
+    setCustomLeadTimeDays(leadDays);
+    setCustomSafetyBuffer(safetyBuf);
+    try {
+      localStorage.setItem("smarttrack_eoq_custom_mode", "1");
+      localStorage.setItem("smarttrack_eoq_order_cost", String(cost));
+      localStorage.setItem("smarttrack_eoq_holding_rate", String(rate));
+      localStorage.setItem("smarttrack_eoq_lead_time", String(leadDays));
+      localStorage.setItem("smarttrack_eoq_safety_buffer", String(safetyBuf));
+    } catch { /* ignore */ }
+    showToast?.(`Custom rules saved — SmartTrack recalculated (₱${cost} · ${holdPercent}% · ${leadDays}d · +${safetyBuf}%)`, "success");
+  };
+
+  const handleResetAllToAuto = () => {
+    handleResetEoqSettings(true);
+    setEoqOverrides({});
+    try {
+      localStorage.removeItem("smarttrack_eoq_overrides");
+    } catch { /* ignore */ }
+    setInlineEditProductId(null);
+    showToast?.("Restored automatic SmartTrack defaults", "info");
   };
 
   const annualDemand = useMemo(() => {
@@ -2443,6 +2701,7 @@ const AnalyticsPage = memo(function AnalyticsPage({
   const [restockSearch, setRestockSearch] = useState("");
   const [restockStatusFilter, setRestockStatusFilter] = useState<"all" | "out_of_stock" | "critical" | "low">("all");
   const [restockSourceFilter, setRestockSourceFilter] = useState<"all" | "sma" | "fallback" | "est_cost">("all");
+  const [restockSupplierFilter, setRestockSupplierFilter] = useState<string>("all");
   const [restockPage, setRestockPage] = useState(1);
   const RESTOCK_PAGE_SIZE = 10;
 
@@ -2563,6 +2822,7 @@ const AnalyticsPage = memo(function AnalyticsPage({
         const recommendedUnits = Math.max(eoq, Math.ceil(shortage / packSize) * packSize);
         const overrideQty = eoqOverrides[p.id] ?? null;
         const effectiveOrderQty = overrideQty ?? recommendedUnits;
+        const incomingQty = incomingByProductMap.get(String(p.id)) ?? 0;
         const monthlyBurn = annualProductDemand / 12;
         const fifoSellThroughMonths = monthlyBurn > 0 ? effectiveOrderQty / monthlyBurn : null;
 
@@ -2578,8 +2838,10 @@ const AnalyticsPage = memo(function AnalyticsPage({
           product: p,
           rawEoq: productEOQ,
           eoq,
+          recommendedUnits,
           overrideQty,
           effectiveOrderQty,
+          incomingQty,
           fifoSellThroughMonths,
           suggestedRop,
           effectiveRop,
@@ -2606,6 +2868,7 @@ const AnalyticsPage = memo(function AnalyticsPage({
     inventory,
     monthlyDemand.length,
     monthlyProductForecastMap,
+    incomingByProductMap,
     orderCostSetting,
     holdingRateSetting,
     leadTimeDaysSetting,
@@ -2660,11 +2923,27 @@ const AnalyticsPage = memo(function AnalyticsPage({
     [scopedReorderRecs]
   );
 
+  const restockSuppliers = useMemo(
+    () =>
+      Array.from(
+        new Set(reorderRecs.map(r => r.product.supplier?.trim() || "Unspecified supplier"))
+      ).sort((a, b) => a.localeCompare(b)),
+    [reorderRecs]
+  );
+
+  useEffect(() => {
+    if (restockSupplierFilter !== "all" && !restockSuppliers.includes(restockSupplierFilter)) {
+      setRestockSupplierFilter("all");
+    }
+  }, [restockSupplierFilter, restockSuppliers]);
+
   const filteredReorderRecs = useMemo(() => {
     const q = restockSearch.trim().toLowerCase();
     return reorderRecs.filter(rec => {
       const matchesStatus = restockStatusFilter === "all" || rec.product.status === restockStatusFilter;
       if (!matchesStatus) return false;
+      const supplierName = rec.product.supplier?.trim() || "Unspecified supplier";
+      if (restockSupplierFilter !== "all" && supplierName !== restockSupplierFilter) return false;
       if (restockSourceFilter === "sma" && rec.isDemandFallback) return false;
       if (restockSourceFilter === "fallback" && !rec.isDemandFallback) return false;
       if (restockSourceFilter === "est_cost" && !rec.isCostEstimated) return false;
@@ -2672,10 +2951,11 @@ const AnalyticsPage = memo(function AnalyticsPage({
       return (
         rec.product.name.toLowerCase().includes(q) ||
         rec.product.id.toLowerCase().includes(q) ||
-        rec.product.category.toLowerCase().includes(q)
+        rec.product.category.toLowerCase().includes(q) ||
+        supplierName.toLowerCase().includes(q)
       );
     });
-  }, [reorderRecs, restockSearch, restockStatusFilter, restockSourceFilter]);
+  }, [reorderRecs, restockSearch, restockStatusFilter, restockSupplierFilter, restockSourceFilter]);
 
   const paginatedReorderRecs = useMemo(() => {
     const start = (restockPage - 1) * RESTOCK_PAGE_SIZE;
@@ -2850,9 +3130,9 @@ const AnalyticsPage = memo(function AnalyticsPage({
 
   const sectionMeta: Record<string, { title: string; desc: string }> = {
     "Overview":   { title: "At a glance", desc: "Sales outlook and medicines that need attention." },
-    "Forecast":   { title: "Store forecast", desc: `Aggregate ${forecastPeriodUnit === "week" ? "weekly" : "monthly"} demand models, accuracy checks, and trajectory for ${nextForecastMonth}.` },
+    "Forecast":   { title: "Store forecast", desc: `Expected ${forecastPeriodUnit === "week" ? "weekly" : "monthly"} sales and past accuracy for ${nextForecastMonth}.` },
     "Restocking": { title: "What to order", desc: "Suggested order quantities based on sales pace and delivery time." },
-    "Products":   { title: "By medicine", desc: "Individual medicine demand forecasts, sales pace, days left, and stock readiness." },
+    "Products":   { title: "By medicine", desc: "Sales pace, days of stock left, and next-month outlook for each medicine." },
   };
   const sectionTabs = ["Overview", "Forecast", "Restocking", "Products"] as const;
   const topCategory = useMemo(
@@ -2953,9 +3233,22 @@ const AnalyticsPage = memo(function AnalyticsPage({
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
             <h1 className="text-2xl font-semibold tracking-tight text-foreground">Analytics</h1>
-            <p className="text-sm text-muted-foreground mt-1">Sales performance, demand forecasts, and replenishment</p>
+            <p className="text-sm text-muted-foreground mt-1">
+              Sales performance, demand forecasts, and replenishment · Updated automatically
+            </p>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
+            {(!restockAutoMode || Object.keys(eoqOverrides).length > 0) && (
+              <button
+                type="button"
+                onClick={handleResetAllToAuto}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-primary/25 bg-primary/8 px-3 py-1.5 text-xs font-medium text-primary transition-colors hover:bg-primary/14 cursor-pointer"
+                title="Clear custom rules and item overrides to use automatic SmartTrack values"
+              >
+                <RotateCcw size={12} />
+                <span>Reset to Auto</span>
+              </button>
+            )}
             <button
               type="button"
               onClick={() => setConfirmExportCsv(true)}
@@ -2999,6 +3292,7 @@ const AnalyticsPage = memo(function AnalyticsPage({
 
       {/* ── Scrollable content ── */}
       <div
+        ref={contentScrollRef}
         className={activeSection === "Products"
           ? "flex-1 min-h-0 flex flex-col st-shell-px py-5 gap-4 overflow-hidden"
           : "flex-1 min-h-0 overflow-y-auto st-shell-px py-6 space-y-6"}
@@ -3057,10 +3351,10 @@ const AnalyticsPage = memo(function AnalyticsPage({
                   <button
                     type="button"
                     onClick={() => setSmaInspector({ type: overviewForecastModel === "SMA-6" ? "sma6" : "sma3", unit: "month" })}
-                    className="inline-flex items-center gap-1 rounded-full bg-muted/60 px-2.5 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground cursor-pointer"
+                    className="inline-flex items-center gap-1 rounded-full bg-muted/60 px-2.5 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground cursor-pointer"
                   >
-                    <Calculator size={11} />
-                    <span>Show math</span>
+                    <Calculator size={12} />
+                    <span>Breakdown</span>
                   </button>
                 </div>
                 <div className="mt-2.5 flex items-baseline gap-1.5">
@@ -3071,7 +3365,7 @@ const AnalyticsPage = memo(function AnalyticsPage({
                 </div>
                 <div className="mt-2.5 flex items-center gap-1.5 flex-wrap">
                   {overviewDemandDeltaPct !== null && (
-                    <span className={`inline-flex items-center gap-0.5 rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                    <span className={`inline-flex items-center gap-0.5 rounded-full px-2 py-0.5 text-xs font-medium ${
                       overviewDemandDeltaPct >= 0
                         ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
                         : "bg-amber-500/10 text-amber-700 dark:text-amber-300"
@@ -3080,8 +3374,8 @@ const AnalyticsPage = memo(function AnalyticsPage({
                       {overviewDemandDeltaPct >= 0 ? `+${overviewDemandDeltaPct}%` : `${overviewDemandDeltaPct}%`} vs {overviewLatestMonth?.month}
                     </span>
                   )}
-                  <span className="rounded-full bg-muted/70 px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
-                    {overviewForecastModel}
+                  <span className="rounded-full bg-muted/70 px-2 py-0.5 text-xs font-medium text-muted-foreground">
+                    {overviewForecastModel === "SMA-6" ? "6-mo avg" : "3-mo avg"}
                   </span>
                 </div>
               </div>
@@ -3152,10 +3446,10 @@ const AnalyticsPage = memo(function AnalyticsPage({
                   <button
                     type="button"
                     onClick={() => setSmaInspector({ type: "eoq", unit: "month" })}
-                    className="inline-flex items-center gap-1 rounded-full bg-muted/60 px-2.5 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground cursor-pointer"
+                    className="inline-flex items-center gap-1 rounded-full bg-muted/60 px-2.5 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground cursor-pointer"
                   >
-                    <Calculator size={11} />
-                    <span>Show math</span>
+                    <Calculator size={12} />
+                    <span>Breakdown</span>
                   </button>
                 </div>
                 <div className="mt-2.5 flex items-baseline gap-2">
@@ -3168,7 +3462,7 @@ const AnalyticsPage = memo(function AnalyticsPage({
                 </p>
               </div>
               <div className="mt-4 pt-3 border-t border-border/50 flex items-center justify-between text-xs text-muted-foreground">
-                <span>Cost-balanced EOQ quantities</span>
+                <span>Balanced order budget</span>
               </div>
             </div>
 
@@ -3187,8 +3481,8 @@ const AnalyticsPage = memo(function AnalyticsPage({
                       ]}
                     />
                   </div>
-                  <span className="rounded-full bg-muted/60 px-2.5 py-0.5 text-[11px] font-medium text-muted-foreground">
-                    Goal: {executiveSnapshot.targetCoverDays}d
+                  <span className="rounded-full bg-muted/60 px-2.5 py-0.5 text-xs font-medium text-muted-foreground">
+                    Goal: {executiveSnapshot.targetCoverDays} days
                   </span>
                 </div>
                 <div className="mt-2.5 flex items-baseline gap-1.5">
@@ -3224,15 +3518,15 @@ const AnalyticsPage = memo(function AnalyticsPage({
                   <div>
                     <div className="flex items-center gap-2 flex-wrap">
                       <h3 className="text-sm font-semibold text-foreground">Sales history &amp; outlook</h3>
-                      <span className="rounded-full bg-muted/70 px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
-                        {overviewForecastModel}
+                      <span className="rounded-full bg-muted/70 px-2 py-0.5 text-xs font-medium text-muted-foreground">
+                        {overviewForecastModel === "SMA-6" ? "6-mo avg" : "3-mo avg"}
                       </span>
                     </div>
                     <p className="text-xs text-muted-foreground mt-0.5">Actual monthly sales and estimated demand for {overviewNextMonth}.</p>
                   </div>
                   <div className="flex items-center gap-3 text-xs font-medium flex-wrap">
                     <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-blue-600 inline-block" />Recorded Sales</span>
-                    <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-teal-600 inline-block" />{overviewForecastModel}</span>
+                    <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-teal-600 inline-block" />{overviewForecastModel === "SMA-6" ? "6-mo forecast" : "3-mo forecast"}</span>
                     <SegmentedTabs<"area" | "bars">
                       size="sm"
                       ariaLabel="Overview forecast chart style"
@@ -3400,7 +3694,7 @@ const AnalyticsPage = memo(function AnalyticsPage({
                     <th className="px-4 py-3">On hand / Order at</th>
                     <th className="px-4 py-3">Status</th>
                     <th className="px-4 py-3">Suggested order</th>
-                    <th className="px-4 py-3 text-right">Est. cost</th>
+                    <th className="px-4 py-3 text-right">Estimated cost</th>
                     <th className="px-5 py-3 text-right">Actions</th>
                   </tr>
                 </thead>
@@ -3412,37 +3706,43 @@ const AnalyticsPage = memo(function AnalyticsPage({
                     return (
                       <tr key={rec.product.id} className="hover:bg-muted/20 transition-colors">
                         <td className="px-5 py-3">
-                          <p className="font-semibold text-foreground text-xs">{rec.product.name}</p>
-                          <p className="text-[11px] text-muted-foreground mt-0.5">{rec.product.category}{rec.product.supplier ? ` · ${rec.product.supplier}` : ""}</p>
+                          <p className="font-semibold text-foreground text-sm">{rec.product.name}</p>
+                          <p className="text-xs text-muted-foreground mt-0.5">{rec.product.category}{rec.product.supplier ? ` · ${rec.product.supplier}` : ""}</p>
                         </td>
                         <td className="px-4 py-3 tabular-nums">
                           <div className="text-xs font-medium text-foreground">
                             {rec.product.stock.toLocaleString()} <span className="text-muted-foreground font-normal">/ {rec.suggestedRop.toLocaleString()} units</span>
                           </div>
-                          <span className="text-[10px] text-muted-foreground">Order-at threshold</span>
+                          {rec.incomingQty > 0 ? (
+                            <span className="block text-xs font-medium text-emerald-600 dark:text-emerald-400">
+                              +{rec.incomingQty.toLocaleString()} already on order
+                            </span>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">Order trigger</span>
+                          )}
                         </td>
                         <td className="px-4 py-3 whitespace-nowrap">
                           {isOutOfStock ? (
-                            <span className="inline-flex items-center gap-1 whitespace-nowrap px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-rose-500/12 text-rose-700 dark:text-rose-300">
+                            <span className="inline-flex items-center gap-1 whitespace-nowrap px-2.5 py-0.5 rounded-full text-xs font-medium bg-rose-500/12 text-rose-700 dark:text-rose-300">
                               ● Out of stock
                             </span>
                           ) : isCritical ? (
-                            <span className="inline-flex items-center gap-1 whitespace-nowrap px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-amber-500/12 text-amber-800 dark:text-amber-300">
+                            <span className="inline-flex items-center gap-1 whitespace-nowrap px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-500/12 text-amber-800 dark:text-amber-300">
                               ● Critical
                             </span>
                           ) : (
-                            <span className="inline-flex items-center gap-1 whitespace-nowrap px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-yellow-500/12 text-yellow-800 dark:text-yellow-300">
+                            <span className="inline-flex items-center gap-1 whitespace-nowrap px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-500/12 text-yellow-800 dark:text-yellow-300">
                               ● Low stock
                             </span>
                           )}
                         </td>
                         <td className="px-4 py-3 font-semibold tabular-nums text-foreground whitespace-nowrap">
                           {rec.effectiveOrderQty.toLocaleString()} units
-                          <span className="block text-[10px] text-muted-foreground font-normal">Pack-rounded</span>
+                          <span className="block text-xs text-muted-foreground font-normal">Pack-rounded</span>
                         </td>
                         <td className="px-4 py-3 text-right font-semibold tabular-nums text-foreground whitespace-nowrap">
                           {fmt(rec.effectiveOrderQty * rec.unitCost)}
-                          <span className="block text-[10px] text-muted-foreground font-normal">@ ₱{rec.unitCost.toFixed(2)}/u</span>
+                          <span className="block text-xs text-muted-foreground font-normal">@ ₱{rec.unitCost.toFixed(2)}/unit</span>
                         </td>
                         <td className="px-5 py-3 text-right whitespace-nowrap">
                           <div className="inline-flex items-center justify-end gap-1.5">
@@ -3450,10 +3750,10 @@ const AnalyticsPage = memo(function AnalyticsPage({
                               type="button"
                               onClick={() => setSelectedEoqProductId(rec.product.id)}
                               className="st-chip-btn"
-                              title="Show math computation"
+                              title="See order calculation breakdown"
                             >
-                              <Calculator size={11} />
-                              <span>Show Math</span>
+                              <Calculator size={12} />
+                              <span>Breakdown</span>
                             </button>
                             {canEdit && (
                               <button
@@ -3461,7 +3761,7 @@ const AnalyticsPage = memo(function AnalyticsPage({
                                 onClick={() => openPoDraftModal(rec.product, rec.eoq, rec.shortage, rec.effectiveOrderQty)}
                                 className="rounded-full bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:opacity-90 transition-[opacity,transform] active:scale-95 cursor-pointer shadow-xs st-btn"
                               >
-                                Order
+                                Order stock
                               </button>
                             )}
                           </div>
@@ -3499,7 +3799,7 @@ const AnalyticsPage = memo(function AnalyticsPage({
                   </div>
                   <p className="text-xs text-muted-foreground mt-0.5">Medicines with the highest sales volume.</p>
                 </div>
-                <span className="rounded-full bg-muted/70 px-2.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+                <span className="rounded-full bg-muted/70 px-2.5 py-0.5 text-xs font-medium text-muted-foreground">
                   Fast moving
                 </span>
               </div>
@@ -3507,17 +3807,17 @@ const AnalyticsPage = memo(function AnalyticsPage({
                 {topFastMovers.map((item, idx) => (
                   <div key={item.product.id} className="py-2.5 flex items-center justify-between gap-3 text-xs">
                     <div className="flex items-center gap-2.5 min-w-0">
-                      <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[10px] font-bold text-primary">
+                      <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-bold text-primary">
                         {idx + 1}
                       </span>
                       <div className="min-w-0">
-                        <p className="font-semibold text-foreground truncate">{item.product.name}</p>
-                        <p className="text-[10px] text-muted-foreground">{item.product.category}</p>
+                        <p className="font-semibold text-foreground truncate text-sm">{item.product.name}</p>
+                        <p className="text-xs text-muted-foreground">{item.product.category}</p>
                       </div>
                     </div>
                     <div className="text-right shrink-0">
                       <span className="font-bold tabular-nums text-foreground">{item.totalSold.toLocaleString()} sold</span>
-                      <span className="block text-[10px] text-muted-foreground">~{Math.round(item.monthlyEquivalentForecast)} units / month</span>
+                      <span className="block text-xs text-muted-foreground">~{Math.round(item.monthlyEquivalentForecast)} units / month</span>
                     </div>
                   </div>
                 ))}
@@ -3544,7 +3844,7 @@ const AnalyticsPage = memo(function AnalyticsPage({
                   </div>
                   <p className="text-xs text-muted-foreground mt-0.5">On-shelf medicines with little recent movement.</p>
                 </div>
-                <span className="rounded-full bg-muted/70 px-2.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+                <span className="rounded-full bg-muted/70 px-2.5 py-0.5 text-xs font-medium text-muted-foreground">
                   On hold
                 </span>
               </div>
@@ -3555,12 +3855,12 @@ const AnalyticsPage = memo(function AnalyticsPage({
                   return (
                     <div key={item.id} className="py-2.5 flex items-center justify-between gap-3 text-xs">
                       <div className="min-w-0">
-                        <p className="font-semibold text-foreground truncate">{item.name}</p>
-                        <p className="text-[10px] text-muted-foreground">{item.category} · {item.stock.toLocaleString()} units on shelf</p>
+                        <p className="font-semibold text-foreground truncate text-sm">{item.name}</p>
+                        <p className="text-xs text-muted-foreground">{item.category} · {item.stock.toLocaleString()} units on shelf</p>
                       </div>
                       <div className="text-right shrink-0">
                         <span className="font-medium text-foreground">{fmt(capitalValue)}</span>
-                        <span className="block text-[10px] text-amber-600 dark:text-amber-400 font-medium">Idle capital</span>
+                        <span className="block text-xs text-amber-600 dark:text-amber-400 font-medium">Idle capital</span>
                       </div>
                     </div>
                   );
@@ -3580,10 +3880,10 @@ const AnalyticsPage = memo(function AnalyticsPage({
           <div className="space-y-3">
             <div className="flex flex-wrap items-baseline justify-between gap-2">
               <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                1 · Model comparison ({scopeLabel})
+                1 · Sales outlook ({scopeLabel})
               </h3>
               <span className="text-xs text-muted-foreground">
-                Auto-picks the model with lower historical back-test error (sMAPE)
+                Automatically picks whichever past sales average is more accurate
               </span>
             </div>
             <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
@@ -3594,16 +3894,16 @@ const AnalyticsPage = memo(function AnalyticsPage({
                     <div className="flex items-center gap-2">
                       <span className="h-2 w-2 rounded-full bg-teal-500" />
                       <p className="text-xs font-medium text-muted-foreground">Forecast · {nextForecastMonth}</p>
-                      <span className="rounded-full bg-teal-500/12 px-2 py-0.5 text-[10px] font-semibold text-teal-600 dark:text-teal-400">
-                        Best pick: {activeForecastModel}
+                      <span className="rounded-full bg-teal-500/12 px-2 py-0.5 text-[11px] font-semibold text-teal-600 dark:text-teal-400">
+                        Active: {activeForecastModel === "SMA-6" ? "6-mo avg" : "3-mo avg"}
                       </span>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1.5">
                       {selectedForecast?.comparison && (
                         <button
                           type="button"
                           onClick={() => setSmapeInspector(activeForecastModel === "SMA-6" ? "sma6" : "sma3")}
-                          className="rounded-lg border border-border/80 px-2 py-0.5 text-[11px] font-medium text-muted-foreground hover:bg-muted/60 hover:text-foreground cursor-pointer"
+                          className="rounded-lg border border-border/80 px-2.5 py-1 text-xs font-medium text-muted-foreground hover:bg-muted/60 hover:text-foreground cursor-pointer"
                         >
                           Accuracy
                         </button>
@@ -3611,9 +3911,9 @@ const AnalyticsPage = memo(function AnalyticsPage({
                       <button
                         type="button"
                         onClick={() => setSmaInspector({ type: activeForecastModel === "SMA-6" ? "sma6" : "sma3", unit: forecastPeriodUnit })}
-                        className="rounded-lg border border-border/80 px-2 py-0.5 text-[11px] font-medium text-primary hover:bg-primary/5 cursor-pointer"
+                        className="rounded-lg border border-border/80 px-2.5 py-1 text-xs font-medium text-primary hover:bg-primary/5 cursor-pointer"
                       >
-                        Math
+                        Breakdown
                       </button>
                     </div>
                   </div>
@@ -3626,9 +3926,9 @@ const AnalyticsPage = memo(function AnalyticsPage({
                   {smaLoading
                     ? "Loading sales history…"
                     : selectedForecast?.comparison
-                      ? `${scopeLabel} combined · ${activeForecastModel} stayed closer (${selectedForecast.smape.toFixed(1)}% error)`
+                      ? `${scopeLabel} combined · ${activeForecastModel === "SMA-6" ? "6-month avg" : "3-month avg"} stayed closer (${selectedForecast.smape.toFixed(1)}% past gap)`
                       : smaMonths.length
-                        ? `${scopeLabel} combined · using ${activeForecastModel} while history builds`
+                        ? `${scopeLabel} combined · using ${activeForecastModel === "SMA-6" ? "6-month avg" : "3-month avg"} while history builds`
                         : "No recorded sales yet"}
                 </p>
               </section>
@@ -3637,7 +3937,7 @@ const AnalyticsPage = memo(function AnalyticsPage({
               {([
                 {
                   model: "SMA-3" as const,
-                  label: `Last 3 ${forecastPeriodUnit === "week" ? "weeks" : "months"} average`,
+                  label: `Recent 3-${forecastPeriodUnit === "week" ? "week" : "month"} pace (SMA-3)`,
                   units: forecastSMA3,
                   periods: last3.length,
                   window: 3,
@@ -3646,7 +3946,7 @@ const AnalyticsPage = memo(function AnalyticsPage({
                 },
                 {
                   model: "SMA-6" as const,
-                  label: `Last 6 ${forecastPeriodUnit === "week" ? "weeks" : "months"} average`,
+                  label: `Steady 6-${forecastPeriodUnit === "week" ? "week" : "month"} baseline (SMA-6)`,
                   units: forecastSMA6,
                   periods: last6.length,
                   window: 6,
@@ -3662,21 +3962,21 @@ const AnalyticsPage = memo(function AnalyticsPage({
                   <section key={option.model} className={`${ANALYTICS_CARD_CLASS} p-4 sm:p-5 flex flex-col justify-between`}>
                     <div>
                       <div className="flex items-center justify-between gap-2">
-                        <div className="flex items-center gap-2">
-                          <span className={`h-2 w-2 rounded-full ${option.dot}`} />
-                          <p className="text-xs font-medium text-muted-foreground">{option.model} · {option.label}</p>
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className={`h-2 w-2 shrink-0 rounded-full ${option.dot}`} />
+                          <p className="truncate text-xs font-medium text-muted-foreground">{option.label}</p>
                           {isWinner && (
-                            <span className="rounded-full bg-emerald-500/12 px-2 py-0.5 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400">
-                              Store pick
+                            <span className="shrink-0 rounded-full bg-emerald-500/12 px-2 py-0.5 text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">
+                              Picked
                             </span>
                           )}
                         </div>
                         <button
                           type="button"
                           onClick={() => setSmaInspector({ type: option.model === "SMA-3" ? "sma3" : "sma6", unit: forecastPeriodUnit })}
-                          className="rounded-lg border border-border/80 px-2 py-0.5 text-[11px] font-medium text-primary hover:bg-primary/5 cursor-pointer"
+                          className="shrink-0 rounded-lg border border-border/80 px-2.5 py-1 text-xs font-medium text-primary hover:bg-primary/5 cursor-pointer"
                         >
-                          Math
+                          Breakdown
                         </button>
                       </div>
                       <p className="mt-2.5 text-3xl font-semibold tracking-tight tabular-nums text-foreground">
@@ -3686,7 +3986,7 @@ const AnalyticsPage = memo(function AnalyticsPage({
                     </div>
                     <p className="mt-3 text-xs text-muted-foreground">
                       {smaMonths.length
-                        ? `Uses ${option.periods} of ${option.window} ${forecastPeriodUnit === "week" ? "weeks" : "months"}${gapVal != null ? ` · ${gapVal.toFixed(1)}% past error` : ` · ${option.sub}`}`
+                        ? `Uses ${option.periods} of ${option.window} ${forecastPeriodUnit === "week" ? "weeks" : "months"}${gapVal != null ? ` · ${gapVal.toFixed(1)}% past gap` : ` · ${option.sub}`}`
                         : "No recorded sales"}
                     </p>
                   </section>
@@ -3699,10 +3999,10 @@ const AnalyticsPage = memo(function AnalyticsPage({
           <div className="space-y-3">
             <div className="flex flex-wrap items-baseline justify-between gap-2">
               <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                2 · Demand trajectory
+                2 · Sales trend chart
               </h3>
               <span className="text-xs text-muted-foreground">
-                Switch time granularity, date range, or overlay SMA-3 and SMA-6 curves
+                Switch between monthly or weekly views, or compare both averages
               </span>
             </div>
             <section className={`${ANALYTICS_CARD_CLASS} min-w-0 p-4 sm:p-5`}>
@@ -3840,10 +4140,10 @@ const AnalyticsPage = memo(function AnalyticsPage({
           <div className="space-y-3">
             <div className="flex flex-wrap items-baseline justify-between gap-2">
               <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                3 · Validation &amp; readiness
+                3 · Past accuracy &amp; medicine data coverage
               </h3>
               <span className="text-xs text-muted-foreground">
-                Rolling back-test check and how medicine history feeds into forecasts
+                See how close past predictions were to actual sales
               </span>
             </div>
 
@@ -3852,18 +4152,18 @@ const AnalyticsPage = memo(function AnalyticsPage({
               <section className={`${ANALYTICS_CARD_CLASS} overflow-hidden flex flex-col`}>
                 <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border/60 px-5 py-3.5">
                   <div>
-                    <h4 className="text-sm font-semibold text-foreground">Past forecast vs. actual</h4>
+                    <h4 className="text-sm font-semibold text-foreground">Past forecast vs. actual sales</h4>
                     <p className="text-xs text-muted-foreground mt-0.5">
                       {selectedForecast?.comparison
-                        ? `Compares SMA-3 (${selectedForecast.comparison.sma3.toFixed(1)}% avg error) vs. SMA-6 (${selectedForecast.comparison.sma6.toFixed(1)}% avg error).`
-                        : "Each period is predicted strictly from earlier periods — never from its own sales."}
+                        ? `Average past gap: 3-month (${selectedForecast.comparison.sma3.toFixed(1)}%) vs. 6-month (${selectedForecast.comparison.sma6.toFixed(1)}%).`
+                        : "Each month is predicted strictly from earlier months only."}
                     </p>
                   </div>
                   <div className="flex items-center gap-1.5">
-                    <span className="rounded-full bg-teal-500/12 px-2.5 py-0.5 text-[11px] font-semibold text-teal-700 dark:text-teal-300">
-                      Overall best: {activeForecastModel}
+                    <span className="rounded-full bg-teal-500/12 px-2.5 py-0.5 text-xs font-semibold text-teal-700 dark:text-teal-300">
+                      Best overall: {activeForecastModel === "SMA-6" ? "6-mo avg" : "3-mo avg"}
                     </span>
-                    <span className="rounded-full bg-muted/70 px-2.5 py-0.5 text-[11px] font-medium text-muted-foreground tabular-nums">
+                    <span className="rounded-full bg-muted/70 px-2.5 py-0.5 text-xs font-medium text-muted-foreground tabular-nums">
                       {pastCheckRows.length} {forecastPeriodUnit === "week" ? "weeks" : "months"}
                     </span>
                   </div>
@@ -3871,19 +4171,19 @@ const AnalyticsPage = memo(function AnalyticsPage({
                 {pastCheckRows.length > 0 ? (
                   <div className="max-h-[300px] overflow-y-auto" data-table-scroll="fixed">
                     <table className="w-full text-xs">
-                      <thead className="sticky top-0 z-10 bg-card shadow-sm text-left text-[11px] text-muted-foreground border-b border-border/60">
+                      <thead className="sticky top-0 z-10 bg-card shadow-sm text-left text-xs text-muted-foreground border-b border-border/60">
                         <tr className="bg-muted/30">
                           <th className="px-5 py-2.5 font-medium">{forecastPeriodUnit === "week" ? "Week" : "Month"}</th>
-                          <th className="px-4 py-2.5 text-right font-medium">Actual</th>
-                          <th className="px-4 py-2.5 text-right font-medium">SMA-3</th>
-                          <th className="px-4 py-2.5 text-right font-medium">SMA-6</th>
+                          <th className="px-4 py-2.5 text-right font-medium">Actual sold</th>
+                          <th className="px-4 py-2.5 text-right font-medium">3-mo avg</th>
+                          <th className="px-4 py-2.5 text-right font-medium">6-mo avg</th>
                           <th className="px-5 py-2.5 text-right font-medium">
                             <span className="inline-flex items-center justify-end gap-1">
-                              <span>Closer model</span>
+                              <span>Closest estimate</span>
                               <InfoTip
-                                title="Per-Period Closest Model"
+                                title="Closest Estimate"
                                 lines={[
-                                  "Shows whichever model (SMA-3 or SMA-6) landed closer to actual sales on that period.",
+                                  "Shows which average landed closer to actual sales on that period.",
                                   { label: "Overall pick", value: `Store forecast chooses ${activeForecastModel} based on lowest average error across all comparable periods.` },
                                 ]}
                               />
@@ -3911,10 +4211,10 @@ const AnalyticsPage = memo(function AnalyticsPage({
                                 <span
                                   title={
                                     row.hasBothModels
-                                      ? `SMA-3 error: ±${row.gap3Pct}% · SMA-6 error: ±${row.gap6Pct}%`
-                                      : "Only SMA-3 had enough prior history here (SMA-6 needs 6 prior periods)"
+                                      ? `3-mo avg error: ±${row.gap3Pct}% · 6-mo avg error: ±${row.gap6Pct}%`
+                                      : "Only 3-mo avg had enough prior history here"
                                   }
-                                  className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[10px] font-medium ${
+                                  className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-medium ${
                                     row.closeness === "spot_on"
                                       ? "bg-emerald-500/12 text-emerald-600 dark:text-emerald-400"
                                       : row.closeness === "close"
@@ -3924,11 +4224,11 @@ const AnalyticsPage = memo(function AnalyticsPage({
                                 >
                                   <span className={`h-1.5 w-1.5 rounded-full ${row.closerModel === "SMA-6" ? "bg-violet-500" : "bg-orange-500"}`} />
                                   <span>
-                                    {row.closerModel} · {row.closeness === "spot_on" ? "Spot-on" : row.closeness === "close" ? "Close" : "Off"} (±{row.gapPct}%)
+                                    {row.closerModel === "SMA-6" ? "6-mo" : "3-mo"} · {row.closeness === "spot_on" ? "Very close" : row.closeness === "close" ? "Close" : "Wide gap"} (±{row.gapPct}%)
                                   </span>
                                 </span>
                               ) : (
-                                <span className="text-[11px] text-muted-foreground">Needs 3 prior</span>
+                                <span className="text-xs text-muted-foreground">Building baseline</span>
                               )}
                             </td>
                           </tr>
@@ -3947,7 +4247,7 @@ const AnalyticsPage = memo(function AnalyticsPage({
                   <div>
                     <h4 className="text-sm font-semibold text-foreground">Medicine history coverage</h4>
                     <p className="mt-0.5 text-xs text-muted-foreground">
-                      How the {forecastReadinessStats.total} medicines in <strong className="text-foreground">{scopeLabel}</strong> are modeled.
+                      How the {forecastReadinessStats.total} medicines in <strong className="text-foreground">{scopeLabel}</strong> are tracked.
                     </p>
                   </div>
 
@@ -3957,19 +4257,19 @@ const AnalyticsPage = memo(function AnalyticsPage({
                         label: `Full history (6+ ${forecastPeriodUnit === "week" ? "weeks" : "months"})`,
                         count: forecastReadinessStats.trusted,
                         dot: "bg-emerald-500",
-                        note: "Tests SMA-3 & SMA-6 head-to-head",
+                        note: "Compares 3-month vs. 6-month averages",
                       },
                       {
                         label: `Short history (1–5 ${forecastPeriodUnit === "week" ? "weeks" : "months"})`,
                         count: forecastReadinessStats.early,
                         dot: "bg-amber-500",
-                        note: "Uses SMA-3 while baseline builds",
+                        note: "Uses 3-month average while history builds",
                       },
                       {
                         label: "No or rare sales yet",
                         count: forecastReadinessStats.needsData,
                         dot: "bg-slate-400",
-                        note: "Restocking uses Minimum Stock limit",
+                        note: "Restocking uses minimum stock limit",
                       },
                     ].map(bucket => (
                       <div key={bucket.label} className="rounded-xl border border-border/60 bg-muted/20 px-3.5 py-2.5 flex items-center justify-between gap-3">
@@ -3978,7 +4278,7 @@ const AnalyticsPage = memo(function AnalyticsPage({
                             <span className={`h-2 w-2 shrink-0 rounded-full ${bucket.dot}`} />
                             <span className="truncate">{bucket.label}</span>
                           </div>
-                          <p className="mt-0.5 pl-4 text-[11px] text-muted-foreground">{bucket.note}</p>
+                          <p className="mt-0.5 pl-4 text-xs text-muted-foreground">{bucket.note}</p>
                         </div>
                         <span className="shrink-0 text-sm font-semibold tabular-nums text-foreground">
                           {bucket.count}
@@ -3987,8 +4287,8 @@ const AnalyticsPage = memo(function AnalyticsPage({
                     ))}
                   </div>
 
-                  <p className="text-[11px] leading-relaxed text-muted-foreground">
-                    Storewide numbers sum total demand across this scope, while each individual medicine chooses <strong className="text-foreground">SMA-3</strong> or <strong className="text-foreground">SMA-6</strong> independently.
+                  <p className="text-xs leading-relaxed text-muted-foreground">
+                    Storewide totals add up sales across all items here, while each individual medicine automatically picks its more accurate 3-month or 6-month average.
                   </p>
                 </div>
 
@@ -4044,9 +4344,18 @@ const AnalyticsPage = memo(function AnalyticsPage({
                 </div>
                 <div className="hidden sm:block h-8 w-px bg-border/70" />
                 <div>
-                  <p className="text-[11px] font-medium text-muted-foreground">Order settings</p>
+                  <div className="flex items-center gap-1.5">
+                    <p className="text-[11px] font-medium text-muted-foreground">Calculation mode</p>
+                    <span className={`rounded-full px-1.5 py-0.2 text-[9.5px] font-medium ${
+                      restockAutoMode
+                        ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+                        : "bg-primary/10 text-primary"
+                    }`}>
+                      {restockAutoMode ? "Auto" : "Custom"}
+                    </span>
+                  </div>
                   <p className="mt-0.5 text-xs font-medium text-foreground">
-                    {leadTimeDaysSetting}-day delivery · +{safetyBufferSetting}% buffer · ₱{orderCostSetting} fee
+                    {leadTimeDaysSetting}-day delivery · +{safetyBufferSetting}% safety cushion
                   </p>
                 </div>
               </div>
@@ -4055,9 +4364,10 @@ const AnalyticsPage = memo(function AnalyticsPage({
                 <button
                   type="button"
                   onClick={() => setSmaInspector({ type: "eoq", unit: "month" })}
+                  title="Explains how EOQ computes suggested order quantities"
                   className="rounded-xl border border-border/80 px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-muted/60 hover:text-foreground cursor-pointer"
                 >
-                  How EOQ works
+                  How it calculates
                 </button>
                 <button
                   type="button"
@@ -4089,7 +4399,7 @@ const AnalyticsPage = memo(function AnalyticsPage({
                   <input
                     value={restockSearch}
                     onChange={event => { setRestockSearch(event.target.value); setRestockPage(1); }}
-                    placeholder="Search medicines"
+                    placeholder="Search medicine or supplier"
                     aria-label="Search restock medicines"
                     className="w-full rounded-xl border border-border bg-background py-1.5 pl-9 pr-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
                   />
@@ -4123,12 +4433,24 @@ const AnalyticsPage = memo(function AnalyticsPage({
                   }))}
                 />
 
-                <div className="flex items-center gap-2">
-                  <label htmlFor="restock-source-filter" className="text-xs font-medium text-muted-foreground whitespace-nowrap">
-                    Estimate basis
-                  </label>
+                <div className="flex flex-wrap items-center gap-2">
+                  <select
+                    aria-label="Filter by supplier"
+                    value={restockSupplierFilter}
+                    onChange={event => {
+                      setRestockSupplierFilter(event.target.value);
+                      setRestockPage(1);
+                    }}
+                    className="app-select rounded-xl border border-border bg-background px-3 py-1.5 text-xs font-medium text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
+                  >
+                    <option value="all">All suppliers</option>
+                    {restockSuppliers.map(s => (
+                      <option key={s} value={s}>{s}</option>
+                    ))}
+                  </select>
                   <select
                     id="restock-source-filter"
+                    aria-label="Filter by estimate method"
                     value={restockSourceFilter}
                     onChange={event => {
                       setRestockSourceFilter(event.target.value as typeof restockSourceFilter);
@@ -4136,10 +4458,10 @@ const AnalyticsPage = memo(function AnalyticsPage({
                     }}
                     className="app-select rounded-xl border border-border bg-background px-3 py-1.5 text-xs font-medium text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
                   >
-                    <option value="all">Any source ({restockSourceStats.total})</option>
-                    <option value="sma">From sales history ({restockSourceStats.smaCount})</option>
-                    <option value="fallback">Min stock baseline ({restockSourceStats.fallbackCount})</option>
-                    <option value="est_cost">Estimated unit price ({restockSourceStats.estCostCount})</option>
+                    <option value="all">All items ({restockSourceStats.total})</option>
+                    <option value="sma">Calculated from sales ({restockSourceStats.smaCount})</option>
+                    <option value="fallback">Uses minimum limit ({restockSourceStats.fallbackCount})</option>
+                    <option value="est_cost">Estimated cost price ({restockSourceStats.estCostCount})</option>
                   </select>
                 </div>
               </div>
@@ -4175,7 +4497,7 @@ const AnalyticsPage = memo(function AnalyticsPage({
                         />
                       </div>
                     </th>
-                    <th className="px-4 py-3 text-right font-medium">Est. cost</th>
+                    <th className="px-4 py-3 text-right font-medium">Estimated cost</th>
                     <th className="px-4 py-3 text-right font-medium">Actions</th>
                   </tr>
                 </thead>
@@ -4195,37 +4517,39 @@ const AnalyticsPage = memo(function AnalyticsPage({
                         ? "bg-violet-500"
                         : "bg-orange-500";
                     return (
-                      <tr key={rec.product.id} className="hover:bg-muted/20">
+                      <tr key={rec.product.id} className="group hover:bg-muted/20">
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-2">
                             <p className="font-medium text-foreground">{rec.product.name}</p>
                             <StockBadge status={rec.product.status} />
                           </div>
-                          <p className="mt-0.5 text-xs text-muted-foreground">{rec.product.category}</p>
+                          <p className="mt-0.5 text-xs text-muted-foreground">
+                            {rec.product.category}{rec.product.supplier ? ` · ${rec.product.supplier}` : ""}
+                          </p>
                         </td>
                         <td className="px-4 py-3">
                           <p className="text-xs font-medium tabular-nums text-foreground">
                             {Math.max(1, Math.round(rec.annualDemand / 12)).toLocaleString()} {Math.max(1, Math.round(rec.annualDemand / 12)) === 1 ? "unit" : "units"} / month{" "}
-                            <span className="font-normal text-muted-foreground">({(rec.annualDemand / 365).toFixed(1)}/day)</span>
+                            <span className="font-normal text-muted-foreground">({formatSalesPaceShort(rec.annualDemand / 12)})</span>
                           </p>
                           <p className="mt-1">
                             <span
                               title={rec.demandSourceLabel}
-                              className="inline-flex items-center gap-1.5 rounded-full bg-muted/60 px-2 py-0.5 text-[10px] font-medium text-foreground/80"
+                              className="inline-flex items-center gap-1.5 rounded-full bg-muted/60 px-2.5 py-0.5 text-xs font-medium text-foreground/80"
                             >
                               <span className={`h-1.5 w-1.5 rounded-full ${sourceDot}`} />
                               <span>
                                 {rec.isDemandFallback
-                                  ? "No sales · uses Min Stock"
+                                  ? "No sales · uses minimum limit"
                                   : rec.demandSourceShort.includes("SMA-6")
-                                    ? "SMA-6 (6-month average)"
-                                    : "SMA-3 (3-month average)"}
+                                    ? "Based on last 6 months"
+                                    : "Based on last 3 months"}
                               </span>
                             </span>
                           </p>
                         </td>
                         <td className="px-4 py-3 tabular-nums">
-                          <div className="flex items-baseline justify-between gap-3 text-xs w-40">
+                          <div className="flex items-baseline justify-between gap-3 text-xs w-44">
                             <span>
                               <strong className="text-foreground">{rec.product.stock.toLocaleString()}</strong>
                               <span className="text-muted-foreground"> on hand</span>
@@ -4235,7 +4559,7 @@ const AnalyticsPage = memo(function AnalyticsPage({
                             </span>
                           </div>
                           <div
-                            className="relative mt-1.5 h-1.5 w-40 overflow-hidden rounded-full bg-muted"
+                            className="relative mt-1.5 h-1.5 w-44 overflow-hidden rounded-full bg-muted"
                             title={`${rec.product.stock} on hand vs Order at ${rec.effectiveRop}`}
                           >
                             <div
@@ -4247,40 +4571,119 @@ const AnalyticsPage = memo(function AnalyticsPage({
                               style={{ left: `${ropMarkerPct}%` }}
                             />
                           </div>
-                          <p className="mt-1 text-[10px] text-muted-foreground">
-                            {rec.isDemandFallback
-                              ? "Uses Minimum Stock (no sales yet)"
-                              : rec.effectiveRop > rec.suggestedRop
-                                ? `Minimum Stock (${rec.effectiveRop}) > formula (${rec.suggestedRop})`
-                                : `Covers ${rec.leadTimeDays}-day delivery + ${rec.safetyBufferPercent}% buffer`}
-                          </p>
+                          {rec.incomingQty > 0 ? (
+                            <p className="mt-1.5 text-xs font-medium text-emerald-600 dark:text-emerald-400">
+                              +{rec.incomingQty.toLocaleString()} already on order
+                            </p>
+                          ) : (
+                            <p className="mt-1.5 text-xs text-muted-foreground">
+                              {rec.isDemandFallback
+                                ? "Uses minimum limit (no sales yet)"
+                                : rec.effectiveRop > rec.suggestedRop
+                                  ? `Uses your minimum limit (${rec.effectiveRop})`
+                                  : `Covers ${rec.leadTimeDays}-day delivery + ${rec.safetyBufferPercent}% cushion`}
+                            </p>
+                          )}
                         </td>
                         <td className="px-4 py-3">
-                          <div className="flex items-center gap-1.5">
-                            <span className="font-semibold tabular-nums text-foreground">{rec.effectiveOrderQty.toLocaleString()} units</span>
-                            {rec.overrideQty != null && (
-                              <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary">Custom</span>
-                            )}
-                          </div>
+                          {canEdit && inlineEditProductId === rec.product.id ? (
+                            <div className="flex items-center gap-1">
+                              <input
+                                type="number"
+                                min="1"
+                                step="1"
+                                autoFocus
+                                value={inlineEditQty}
+                                onChange={e => setInlineEditQty(e.target.value)}
+                                onKeyDown={e => {
+                                  if (e.key === "Enter") {
+                                    e.preventDefault();
+                                    commitInlineOverride(rec.product.id, rec.recommendedUnits);
+                                  } else if (e.key === "Escape") {
+                                    setInlineEditProductId(null);
+                                  }
+                                }}
+                                aria-label={`Edit order quantity for ${rec.product.name}`}
+                                className="w-20 rounded-lg border border-primary/50 bg-background px-2 py-1 text-xs font-semibold tabular-nums text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => commitInlineOverride(rec.product.id, rec.recommendedUnits)}
+                                className="rounded-md bg-primary p-1 text-primary-foreground hover:opacity-90 cursor-pointer"
+                                title="Save quantity"
+                              >
+                                <Check size={12} />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setInlineEditProductId(null)}
+                                className="rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-foreground cursor-pointer"
+                                title="Cancel"
+                              >
+                                <X size={12} />
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-semibold tabular-nums text-foreground">{rec.effectiveOrderQty.toLocaleString()} units</span>
+                              {rec.overrideQty != null && (
+                                <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[11px] font-medium text-primary">Custom</span>
+                              )}
+                              {canEdit && (
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setInlineEditProductId(rec.product.id);
+                                      setInlineEditQty(String(rec.effectiveOrderQty));
+                                    }}
+                                    className="rounded p-1 text-muted-foreground opacity-65 transition-opacity group-hover:opacity-100 focus:opacity-100 hover:bg-primary/10 hover:text-primary cursor-pointer"
+                                    title="Edit order quantity"
+                                    aria-label={`Edit order quantity for ${rec.product.name}`}
+                                  >
+                                    <Pencil size={12} />
+                                  </button>
+                                  {rec.overrideQty != null && (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleSetOverrideQty(rec.product.id, null)}
+                                      className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground cursor-pointer"
+                                      title="Reset to automatic quantity"
+                                      aria-label={`Reset order quantity for ${rec.product.name}`}
+                                    >
+                                      <RotateCcw size={12} />
+                                    </button>
+                                  )}
+                                </>
+                              )}
+                            </div>
+                          )}
                           {rec.fifoSellThroughMonths != null && (
-                            <p className="mt-0.5 text-[11px] text-muted-foreground">
-                              Lasts about {rec.fifoSellThroughMonths < 1 ? `${Math.max(1, Math.round(rec.fifoSellThroughMonths * 30))} days` : `${rec.fifoSellThroughMonths.toFixed(1)} months`}
-                            </p>
+                            <div className="mt-0.5 space-y-0.5">
+                              <p className="text-xs text-muted-foreground">
+                                {formatSupplyDuration(rec.fifoSellThroughMonths)} supply
+                              </p>
+                              {rec.fifoSellThroughMonths > 6 && (
+                                <p className="text-xs font-medium text-amber-600 dark:text-amber-400">
+                                  Over 6 months supply — check expiry
+                                </p>
+                              )}
+                            </div>
                           )}
                         </td>
                         <td className="px-4 py-3 text-right tabular-nums">
                           <div className="font-semibold text-foreground">{fmt(rec.effectiveOrderQty * rec.unitCost)}</div>
-                          <div className="mt-0.5 text-[10px]" title={rec.costSourceLabel}>
+                          <div className="mt-0.5 text-xs" title={rec.costSourceLabel}>
                             <span className={rec.isCostEstimated ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground"}>
-                              {rec.isCostEstimated ? "Estimated (70% selling price)" : "From batch cost"}
+                              {rec.isCostEstimated ? "Estimated from selling price" : "Based on purchase cost"}
                             </span>
                           </div>
                         </td>
                         <td className="px-4 py-3 whitespace-nowrap">
                           <div className="flex justify-end gap-2">
                             <button type="button" onClick={() => setSelectedEoqProductId(rec.product.id)} className="st-chip-btn">
-                              <Calculator size={11} />
-                              <span>Show Math</span>
+                              <Calculator size={12} />
+                              <span>Breakdown</span>
                             </button>
                             {canEdit && (
                               <button
@@ -4288,7 +4691,7 @@ const AnalyticsPage = memo(function AnalyticsPage({
                                 onClick={() => openPoDraftModal(rec.product, rec.eoq, rec.shortage, rec.effectiveOrderQty)}
                                 className="rounded-full bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:opacity-90 transition-[opacity,transform] active:scale-95 cursor-pointer shadow-xs st-btn"
                               >
-                                Create PO
+                                Order stock
                               </button>
                             )}
                           </div>
@@ -4314,7 +4717,7 @@ const AnalyticsPage = memo(function AnalyticsPage({
               <div>
                 <h2 className="text-sm font-semibold text-foreground">Demand &amp; stock by medicine</h2>
                 <p className="mt-0.5 text-xs text-muted-foreground">
-                  Showing {filteredProductsTab.length} of {monthlyProductList.length} medicines · Each medicine picks SMA-3 or SMA-6 on its own monthly history.
+                  Showing {filteredProductsTab.length} of {monthlyProductList.length} medicines · Each medicine uses its own best 3-month or 6-month sales average.
                 </p>
               </div>
               <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
@@ -4391,13 +4794,13 @@ const AnalyticsPage = memo(function AnalyticsPage({
                   </th>
                   <th className="px-4 py-3 font-medium">
                     <div className="inline-flex items-center gap-1.5">
-                      Model &amp; fit
+                      Basis &amp; accuracy
                       <InfoTip
                         title="Model Selection per Item"
                         lines={[
                           "Evaluated independently for each medicine from monthly sales history.",
-                          { label: "6+ months data", value: "Selects SMA-3 or SMA-6 based on lower past error" },
-                          { label: "Under 6 months", value: "Uses SMA-3 until 6 months of history exist" },
+                          { label: "6+ months data", value: "Selects 3-month or 6-month average based on lower past error" },
+                          { label: "Under 6 months", value: "Uses 3-month average until 6 months of history exist" },
                         ]}
                       />
                     </div>
@@ -4430,7 +4833,7 @@ const AnalyticsPage = memo(function AnalyticsPage({
                         </div>
                         <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                           <span>{row.product.category}</span>
-                          <span className="inline-flex items-center gap-1.5 rounded-full bg-muted/60 px-2 py-0.5 text-[10px] font-medium text-foreground/80">
+                          <span className="inline-flex items-center gap-1.5 rounded-full bg-muted/60 px-2 py-0.5 text-[11px] font-medium text-foreground/80">
                             <span className={`h-1.5 w-1.5 rounded-full ${trustUi.dot}`} />
                             <span>{trustUi.text}</span>
                           </span>
@@ -4440,7 +4843,7 @@ const AnalyticsPage = memo(function AnalyticsPage({
                         {row.recent3Periods.length ? (
                           <div>
                             <span>{row.recent3Periods.map(period => `${period.label}: ${period.qty}`).join(" · ")}</span>
-                            <span className="mt-0.5 block text-[11px] text-muted-foreground/80">
+                            <span className="mt-0.5 block text-xs text-muted-foreground/80">
                               {row.totalSold.toLocaleString()} units sold total
                             </span>
                           </div>
@@ -4451,20 +4854,20 @@ const AnalyticsPage = memo(function AnalyticsPage({
                       <td className="px-4 py-3">
                         {row.trendDirection === "rising" && (
                           <div>
-                            <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/12 px-2 py-0.5 text-[11px] font-medium text-amber-600 dark:text-amber-400">
+                            <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/12 px-2.5 py-0.5 text-xs font-medium text-amber-600 dark:text-amber-400">
                               <ArrowUpRight size={12} />
                               <span>+{Math.abs(row.trendPercent)}% higher</span>
                             </span>
-                            <span className="mt-0.5 block text-[10px] text-muted-foreground">3-month vs 6-month avg</span>
+                            <span className="mt-0.5 block text-xs text-muted-foreground">vs. 6-month avg</span>
                           </div>
                         )}
                         {row.trendDirection === "slowing" && (
                           <div>
-                            <span className="inline-flex items-center gap-1 rounded-full bg-sky-500/12 px-2 py-0.5 text-[11px] font-medium text-sky-600 dark:text-sky-400">
+                            <span className="inline-flex items-center gap-1 rounded-full bg-sky-500/12 px-2.5 py-0.5 text-xs font-medium text-sky-600 dark:text-sky-400">
                               <ArrowDownRight size={12} />
                               <span>-{Math.abs(row.trendPercent)}% lower</span>
                             </span>
-                            <span className="mt-0.5 block text-[10px] text-muted-foreground">3-month vs 6-month avg</span>
+                            <span className="mt-0.5 block text-xs text-muted-foreground">vs. 6-month avg</span>
                           </div>
                         )}
                         {row.trendDirection === "steady" && (
@@ -4473,7 +4876,7 @@ const AnalyticsPage = memo(function AnalyticsPage({
                               <Minus size={11} />
                               <span>Steady</span>
                             </span>
-                            <span className="mt-0.5 block text-[10px] text-muted-foreground">Near 6-month avg</span>
+                            <span className="mt-0.5 block text-xs text-muted-foreground">Near 6-month avg</span>
                           </div>
                         )}
                         {row.trendDirection === "none" && (
@@ -4483,14 +4886,14 @@ const AnalyticsPage = memo(function AnalyticsPage({
                       <td className="px-4 py-3">
                         {row.totalSold > 0 ? (
                           <div>
-                            <span className="inline-flex items-center gap-1.5 rounded-full bg-muted/60 px-2.5 py-0.5 text-[11px] font-medium text-foreground">
+                            <span className="inline-flex items-center gap-1.5 rounded-full bg-muted/60 px-2.5 py-0.5 text-xs font-medium text-foreground">
                               <span className={`h-1.5 w-1.5 rounded-full ${isSma6 ? "bg-violet-500" : "bg-orange-500"}`} />
-                              {row.recommendedModel} ({isSma6 ? "6-month avg" : "3-month avg"})
+                              {isSma6 ? "6-month average" : "3-month average"}
                             </span>
-                            <span className="mt-0.5 block text-[10px] text-muted-foreground">
+                            <span className="mt-0.5 block text-xs text-muted-foreground">
                               {hasDualComparison && winErr != null && loseErr != null
                                 ? `Closer fit (${winErr.toFixed(0)}% vs ${loseErr.toFixed(0)}% gap)`
-                                : "Under 6 months of history"}
+                                : "Under 6 months of sales"}
                             </span>
                           </div>
                         ) : (
@@ -4501,8 +4904,8 @@ const AnalyticsPage = memo(function AnalyticsPage({
                         {row.totalSold > 0 ? (
                           <div className="whitespace-nowrap">
                             <span>{Math.round(forecast).toLocaleString()} units / month</span>
-                            <span className="block text-[11px] font-normal text-muted-foreground">
-                              About {(forecast / DAYS_PER_MONTH).toFixed(1)}/day · {Math.max(1, Math.round((forecast / DAYS_PER_MONTH) * 7))}/week
+                            <span className="block text-xs font-normal text-muted-foreground first-letter:uppercase">
+                              {formatSalesPaceShort(forecast)}
                             </span>
                           </div>
                         ) : (
@@ -4513,30 +4916,30 @@ const AnalyticsPage = memo(function AnalyticsPage({
                         <div className="font-semibold text-foreground">
                           {row.product.stock.toLocaleString()} on hand
                           {row.incomingQty > 0 && (
-                            <span className="ml-1 text-[11px] font-medium text-emerald-600 dark:text-emerald-400">
+                            <span className="ml-1 text-xs font-medium text-emerald-600 dark:text-emerald-400">
                               (+{row.incomingQty.toLocaleString()} on order)
                             </span>
                           )}
                         </div>
                         <div className="mt-1.5 flex justify-end">
                           {row.projectedShortfall > 0 ? (
-                            <span className="inline-flex items-center whitespace-nowrap rounded-full border border-rose-500/25 bg-rose-500/10 px-2.5 py-0.5 text-[11px] font-semibold text-rose-700 dark:border-rose-400/30 dark:bg-rose-500/15 dark:text-rose-300">
+                            <span className="inline-flex items-center whitespace-nowrap rounded-full border border-rose-500/25 bg-rose-500/10 px-2.5 py-0.5 text-xs font-semibold text-rose-700 dark:border-rose-400/30 dark:bg-rose-500/15 dark:text-rose-300">
                               Short by {row.projectedShortfall.toLocaleString()} units
                             </span>
                           ) : row.product.stock === 0 ? (
-                            <span className="inline-flex items-center whitespace-nowrap rounded-full border border-rose-500/25 bg-rose-500/10 px-2.5 py-0.5 text-[11px] font-semibold text-rose-700 dark:border-rose-400/30 dark:bg-rose-500/15 dark:text-rose-300">
+                            <span className="inline-flex items-center whitespace-nowrap rounded-full border border-rose-500/25 bg-rose-500/10 px-2.5 py-0.5 text-xs font-semibold text-rose-700 dark:border-rose-400/30 dark:bg-rose-500/15 dark:text-rose-300">
                               Out of stock
                             </span>
                           ) : row.daysOfSupply != null ? (
-                            <span className={`inline-flex items-center whitespace-nowrap rounded-full border px-2.5 py-0.5 text-[11px] font-semibold ${
+                            <span className={`inline-flex items-center whitespace-nowrap rounded-full border px-2.5 py-0.5 text-xs font-semibold ${
                               row.daysOfSupply <= 14
                                 ? "border-amber-500/25 bg-amber-500/10 text-amber-700 dark:border-amber-400/30 dark:bg-amber-500/15 dark:text-amber-300"
                                 : "border-emerald-500/25 bg-emerald-500/10 text-emerald-700 dark:border-emerald-400/30 dark:bg-emerald-500/15 dark:text-emerald-300"
                             }`}>
-                              About {row.daysOfSupply} days left
+                              {formatDaysRemaining(row.daysOfSupply)}
                             </span>
                           ) : (
-                            <span className="inline-flex items-center whitespace-nowrap rounded-full border border-border/70 bg-muted/50 px-2.5 py-0.5 text-[11px] font-medium text-muted-foreground">
+                            <span className="inline-flex items-center whitespace-nowrap rounded-full border border-border/70 bg-muted/50 px-2.5 py-0.5 text-xs font-medium text-muted-foreground">
                               Stock covered
                             </span>
                           )}
@@ -4548,8 +4951,8 @@ const AnalyticsPage = memo(function AnalyticsPage({
                           onClick={() => setSelectedSmaProduct({ id: row.product.id, unit: "month" })}
                           className="st-chip-btn"
                         >
-                          <Calculator size={11} />
-                          <span>Show Math</span>
+                          <Calculator size={12} />
+                          <span>Breakdown</span>
                         </button>
                       </td>
                     </tr>
@@ -4582,25 +4985,25 @@ const AnalyticsPage = memo(function AnalyticsPage({
           <div className="relative z-10 w-full max-w-md rounded-2xl border border-border bg-card shadow-2xl overflow-hidden">
             <div className="flex items-center justify-between border-b border-border px-5 py-4">
               <div>
-                <p className="text-[10px] font-bold uppercase tracking-wider text-primary">Human-in-the-Loop Restocking</p>
-                <h3 className="text-sm font-bold text-foreground mt-0.5">Create Purchase Order — {poDraftModal.product.name}</h3>
+                <p className="text-xs font-medium text-primary">Purchase Order Draft</p>
+                <h3 className="text-base font-bold text-foreground mt-0.5">Order Stock — {poDraftModal.product.name}</h3>
               </div>
               <button
                 type="button"
                 onClick={() => !poSubmitting && setPoDraftModal(null)}
-                className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground cursor-pointer"
+                className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground cursor-pointer"
               >
                 <X size={16} />
               </button>
             </div>
             <form onSubmit={handleConfirmCreatePo} className="p-5 space-y-4 text-xs">
-              <div className="rounded-xl border border-border bg-muted/20 p-3 space-y-1">
+              <div className="rounded-xl border border-border bg-muted/20 p-3 space-y-1.5">
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">Current Stock / Min Threshold:</span>
+                  <span className="text-muted-foreground">On hand / Order trigger:</span>
                   <strong className="text-foreground">{poDraftModal.product.stock} / {getReorderUnits(poDraftModal.product)} units</strong>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">Recommended EOQ Batch:</span>
+                  <span className="text-muted-foreground">Suggested order size:</span>
                   <strong className="text-primary">{poDraftModal.recommendedEoq.toLocaleString()} units</strong>
                 </div>
               </div>
@@ -4612,14 +5015,14 @@ const AnalyticsPage = memo(function AnalyticsPage({
                   required
                   value={poDraftModal.supplier}
                   onChange={e => setPoDraftModal({ ...poDraftModal, supplier: e.target.value })}
-                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
+                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
                 />
               </div>
 
               <div>
                 <div className="flex items-center justify-between mb-1">
-                  <label className="font-semibold text-foreground">Final Order Quantity (Base Units)</label>
-                  <span className="text-[10px] text-muted-foreground">Accept EOQ or override</span>
+                  <label className="font-semibold text-foreground">Quantity to order (units)</label>
+                  <span className="text-xs text-muted-foreground">Suggested: {poDraftModal.recommendedEoq.toLocaleString()} · edit if needed</span>
                 </div>
                 <input
                   type="number"
@@ -4634,9 +5037,9 @@ const AnalyticsPage = memo(function AnalyticsPage({
                   <button
                     type="button"
                     onClick={() => setPoDraftModal({ ...poDraftModal, qty: String(poDraftModal.recommendedEoq) })}
-                    className="px-2.5 py-1 rounded-md border border-border bg-muted/50 hover:bg-muted text-[11px] font-semibold text-foreground cursor-pointer"
+                    className="px-2.5 py-1.5 rounded-lg border border-border bg-muted/50 hover:bg-muted text-xs font-semibold text-foreground cursor-pointer"
                   >
-                    Use EOQ ({poDraftModal.recommendedEoq})
+                    Use suggested ({poDraftModal.recommendedEoq.toLocaleString()})
                   </button>
                   {poDraftModal.shortage > 0 && (
                     <button
@@ -4721,7 +5124,7 @@ const AnalyticsPage = memo(function AnalyticsPage({
         const annualD = roundedMonthly * 12;
         return (
           <CalcInspectorModal
-            title={`Show Math · ${pf.product.name} (${pf.recommendedModel})`}
+            title={`Sales breakdown · ${pf.product.name} (${pf.recommendedModel})`}
             formula={<SmaFormulaVisual type={isSma6 ? "sma6" : "sma3"} />}
             explanation={`SmartTrack tested both SMA-3 (fast 3-${periodWord} average) and SMA-6 (steady 6-${periodWord} baseline) on ${pf.product.name}’s past sales. It automatically selected ${pf.recommendedModel} (${isSma6 ? "steady baseline" : "fast-reacting"}) as the best fit.`}
             variables={[
@@ -4775,8 +5178,8 @@ const AnalyticsPage = memo(function AnalyticsPage({
           <CalcInspectorModal
             title={
               isSma6
-                ? `Show Math · Steadier 6-${unitSingular} average (SMA-6)`
-                : `Show Math · Recent 3-${unitSingular} average (SMA-3)`
+                ? `Sales breakdown · Steadier 6-${unitSingular} average (SMA-6)`
+                : `Sales breakdown · Recent 3-${unitSingular} average (SMA-3)`
             }
             formula={<SmaFormulaVisual type={recentPeriods.length === windowSize ? (isSma6 ? "sma6" : "sma3") : "general"} />}
             explanation={
@@ -4809,7 +5212,7 @@ const AnalyticsPage = memo(function AnalyticsPage({
 
       {smaInspector?.type === "eoq" && (
         <CalcInspectorModal
-          title="EOQ Restocking — Store-Level Calculation"
+          title="How Order Sizes Work (Storewide EOQ)"
           formula={<EoqFormulaVisual />}
           explanation={`EOQ is a suggested order size that balances order-placement fees (S) and stock-holding costs (H). SmartTrack feeds the ${overviewForecastModel} monthly demand forecast annualized to D directly into this formula. Cost settings: order placement ₱${globalOrderCost.toFixed(2)} and holding rate ${Math.round(holdingRateSetting * 100)}%.`}
           variables={[
@@ -4840,13 +5243,14 @@ const AnalyticsPage = memo(function AnalyticsPage({
       )}
       {showEoqSettingsModal && (
         <EoqSettingsModal
+          isAutoMode={restockAutoMode}
           orderCost={orderCostSetting}
           holdingPercent={Math.round(holdingRateSetting * 100)}
           leadTimeDays={leadTimeDaysSetting}
           safetyBufferPercent={safetyBufferSetting}
           smartRecs={smartOperationalRecommendations}
           onSave={handleSaveEoqSettings}
-          onReset={handleResetEoqSettings}
+          onReset={() => handleResetEoqSettings()}
           onClose={() => setShowEoqSettingsModal(false)}
         />
       )}

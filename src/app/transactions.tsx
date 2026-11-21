@@ -141,9 +141,9 @@ const TransactionsPage = memo(function TransactionsPage({
   };
 
   return (
-    <div className="flex flex-col w-full overflow-hidden" style={{ height: "calc(100dvh - 56px)" }}>
+    <div className="st-page-shell flex flex-col w-full overflow-hidden" style={{ height: "calc(100dvh - 56px)" }}>
       {/* ── Fixed header: title + stats ── */}
-      <div className="flex-shrink-0 st-shell-px pt-4 sm:pt-6 pb-4 bg-background border-b border-border/50 z-20">
+      <div className="st-page-header flex-shrink-0 st-shell-px pt-4 sm:pt-6 pb-4 bg-background border-b border-border/50 z-20">
         <div className="flex items-start sm:items-center justify-between gap-3">
           <div>
             <div className="flex items-center gap-2">
@@ -193,7 +193,7 @@ const TransactionsPage = memo(function TransactionsPage({
       </div>
 
       {/* ── Scrollable table ── */}
-      <div className="flex-1 min-h-0 overflow-hidden flex flex-col st-shell-mx my-4 bg-card border border-border rounded-xl shadow-sm">
+      <div className="st-page-fixed-card flex-1 min-h-0 overflow-hidden flex flex-col st-shell-mx my-4 bg-card border border-border rounded-xl shadow-sm">
         {/* Filters bar — fixed inside the card */}
         <div className="flex-shrink-0 flex flex-col gap-3 px-5 py-3.5 border-b border-border sm:flex-row sm:items-center sm:justify-between">
           <SegmentedTabs<"all" | "sale" | "return" | "adjustment">

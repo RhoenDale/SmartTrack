@@ -436,11 +436,11 @@ export const ActivityLogPanel = memo(function ActivityLogPanel({ isAdmin = true 
 
   return (
     <div
-      className="flex flex-col w-full overflow-hidden"
+      className="st-page-shell flex flex-col w-full overflow-hidden"
       style={{ height: "calc(100dvh - 56px)" }}
     >
       {/* ── Fixed top content: header + search/filter ── */}
-      <div className="flex-shrink-0 st-shell-px pt-4 sm:pt-6 pb-4 bg-background border-b border-border/60 z-20 space-y-4">
+      <div className="st-page-header flex-shrink-0 st-shell-px pt-4 sm:pt-6 pb-4 bg-background border-b border-border/60 z-20 space-y-4">
         <header className="flex items-start justify-between gap-4">
           <div className="flex items-center gap-3">
             <span className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-2xl border border-primary/15 bg-primary/10 text-primary">
@@ -504,7 +504,7 @@ export const ActivityLogPanel = memo(function ActivityLogPanel({ isAdmin = true 
       </div>
 
       {/* ── Scrollable log list only ── */}
-      <div className="flex-1 min-h-0 flex flex-col st-shell-px py-4 overflow-hidden">
+      <div className="st-page-fixed-body flex-1 min-h-0 flex flex-col st-shell-px py-4 overflow-hidden">
         {loading && log.length === 0 ? (
           <div className="flex flex-col items-center justify-center gap-3 rounded-2xl border border-border/70 bg-card py-16 text-center">
             <RefreshCw size={20} className="animate-spin text-muted-foreground" />
@@ -711,11 +711,11 @@ export const RecycleBinPanel = memo(function RecycleBinPanel({
 
   return (
     <div
-      className="flex flex-col w-full overflow-hidden"
+      className="st-page-shell flex flex-col w-full overflow-hidden"
       style={{ height: "calc(100dvh - 56px)" }}
     >
       {/* ── Fixed top content: header + notice + tabs + search ── */}
-      <div className="flex-shrink-0 st-shell-px pt-4 sm:pt-6 pb-3 bg-background border-b border-border/60 z-20 space-y-3.5">
+      <div className="st-page-header flex-shrink-0 st-shell-px pt-4 sm:pt-6 pb-3 bg-background border-b border-border/60 z-20 space-y-3.5">
         <header className="flex flex-wrap items-start justify-between gap-4">
           <div className="flex items-center gap-3">
             <span className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-2xl border border-border/70 bg-muted/60 text-muted-foreground">
@@ -798,8 +798,8 @@ export const RecycleBinPanel = memo(function RecycleBinPanel({
       </div>
 
       {/* ── Scrollable deleted items only ── */}
-      <div className="flex-1 min-h-0 flex flex-col st-shell-px pt-4 pb-3 overflow-hidden">
-        <div className="flex-1 min-h-0 overflow-y-auto pr-0.5 pb-1" data-table-scroll="fixed">
+      <div className="st-page-passthrough flex-1 min-h-0 flex flex-col st-shell-px pt-4 pb-3 overflow-hidden">
+        <div className="st-page-scroll-body flex-1 min-h-0 overflow-y-auto pr-0.5 pb-1" data-table-scroll="fixed">
           {loading ? (
             <div className="flex flex-col items-center justify-center gap-3 rounded-2xl border border-border/70 bg-card py-16 text-center">
               <RefreshCw size={20} className="animate-spin text-muted-foreground" />
@@ -1110,11 +1110,11 @@ function UsersPage({
 
   return (
     <div
-      className="flex flex-col w-full overflow-hidden"
+      className="st-page-shell flex flex-col w-full overflow-hidden"
       style={{ height: "calc(100dvh - 56px)" }}
     >
       {/* ── Fixed top content: header + tabs + alerts + toolbar ── */}
-      <div className="flex-shrink-0 st-shell-px pt-4 sm:pt-6 pb-3.5 bg-background border-b border-border/60 z-20 space-y-3.5">
+      <div className="st-page-header flex-shrink-0 st-shell-px pt-4 sm:pt-6 pb-3.5 bg-background border-b border-border/60 z-20 space-y-3.5">
         {/* ── Header ── */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="flex items-center gap-3.5">
@@ -1302,9 +1302,9 @@ function UsersPage({
 
       {/* ══════════════════════ USERS TAB (Scrollable list/grid only) ════════ */}
       {activeTab === "users" && (
-        <div className="flex-1 min-h-0 flex flex-col st-shell-px pt-4 pb-3 overflow-hidden">
+        <div className="st-page-passthrough flex-1 min-h-0 flex flex-col st-shell-px pt-4 pb-3 overflow-hidden">
           {filteredStaff.length === 0 ? (
-            <div className="flex-1 min-h-0 overflow-y-auto flex items-center justify-center" data-table-scroll="fixed">
+            <div className="st-page-scroll-body flex-1 min-h-0 overflow-y-auto flex items-center justify-center" data-table-scroll="fixed">
               <div className="w-full rounded-2xl border border-border/70 bg-card/60 py-14 px-6 flex flex-col items-center justify-center gap-3 text-center">
                 <div className="h-11 w-11 rounded-2xl bg-muted/70 border border-border/60 flex items-center justify-center text-muted-foreground">
                   <UserX size={20} />
@@ -1331,7 +1331,7 @@ function UsersPage({
               </div>
             </div>
           ) : staffViewMode === "grid" ? (
-            <div className="flex-1 min-h-0 overflow-y-auto pr-0.5 pb-1" data-table-scroll="fixed">
+            <div className="st-page-scroll-body flex-1 min-h-0 overflow-y-auto pr-0.5 pb-1" data-table-scroll="fixed">
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3.5 st-grid">
                 {filteredStaff.map(s => (
                   <UserCard
@@ -1352,7 +1352,7 @@ function UsersPage({
               </div>
             </div>
           ) : (
-            <div className="flex-1 min-h-0 flex flex-col rounded-2xl border border-border/70 bg-card shadow-sm overflow-hidden">
+            <div className="st-page-fixed-card flex-1 min-h-0 flex flex-col rounded-2xl border border-border/70 bg-card shadow-sm overflow-hidden">
               <div className="flex-shrink-0 hidden lg:flex items-center justify-between gap-3 px-4 sm:px-5 py-2.5 border-b border-border/60 bg-muted/35 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
                 <span>Account &amp; Last Active</span>
                 <div className="flex items-center gap-3 shrink-0">
@@ -1386,8 +1386,8 @@ function UsersPage({
 
       {/* ══════════════════════ ROLES TAB (Scrollable role cards) ════════════ */}
       {activeTab === "roles" && (
-        <div className="flex-1 min-h-0 flex flex-col st-shell-px pt-4 pb-3 overflow-hidden">
-          <div className="flex-1 min-h-0 overflow-y-auto pr-0.5 pb-2" data-table-scroll="fixed">
+        <div className="st-page-passthrough flex-1 min-h-0 flex flex-col st-shell-px pt-4 pb-3 overflow-hidden">
+          <div className="st-page-scroll-body flex-1 min-h-0 overflow-y-auto pr-0.5 pb-2" data-table-scroll="fixed">
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3.5 st-grid">
             {roleList.map((role, idx) => {
               const totalModules = PERMISSION_MODULES.length || 1;

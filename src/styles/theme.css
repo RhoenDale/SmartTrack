@@ -1026,10 +1026,526 @@
   --color-red-950: oklch(25.8% 0.070 26);
 }
 
+:root.dark[data-muted-colors="true"],
 :root[data-muted-colors="true"] .dark {
   --chart-1: #60a5fa;
   --chart-2: #94a3b8;
   --chart-3: #64748b;
   --chart-4: #f59e0b;
   --chart-5: #fb7185;
+}
+
+/* ─── Dual Interface Style Architecture ───────────────────────────────────────
+ * [data-ui-style="classic"] -> Simple Standard (Clean Matte & Easy UX)
+ * [data-ui-style="glass"]   -> Modern View / TrackHub (Frosted Translucent UI)
+ * 100% standard Chromium CSS (Windows + macOS Electron & Web compatible).
+ * NOTE: Every dark selector matches BOTH :root.dark[data-ui-style] (html itself,
+ * needed for document.body portals like CommandAssistant / Modal / ConfirmDialog)
+ * AND :root[data-ui-style] .dark (inner theme wrapper).
+ * ──────────────────────────────────────────────────────────────────────────── */
+
+/* ── Mode A: Simple Standard (iOS 18 Clean Matte, High-Clarity Surfaces) ───── */
+:root[data-ui-style="classic"] {
+  --background: #f2f4f7;
+  --card: #ffffff;
+  --popover: #ffffff;
+  --muted: #e8edf3;
+  --border: rgba(15, 23, 42, 0.11);
+  --input: #ffffff;
+  --input-background: #ffffff;
+}
+
+:root.dark[data-ui-style="classic"],
+:root[data-ui-style="classic"] .dark {
+  --background: #090e18;
+  --card: #111827;
+  --popover: #111827;
+  --muted: #1a2436;
+  --border: rgba(255, 255, 255, 0.10);
+  --input: #0e1624;
+  --input-background: #0e1624;
+}
+
+:root[data-ui-style="classic"] .st-workspace-shell {
+  background: var(--background);
+}
+
+:root[data-ui-style="classic"] .st-topbar {
+  background: var(--card);
+  border-bottom: 1px solid var(--border);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+:root.dark[data-ui-style="classic"] .st-topbar,
+:root[data-ui-style="classic"] .dark .st-topbar {
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+}
+
+:root[data-ui-style="classic"] main .bg-card,
+:root[data-ui-style="classic"] .st-card {
+  background-image: none;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.045);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+:root.dark[data-ui-style="classic"] main .bg-card,
+:root.dark[data-ui-style="classic"] .st-card,
+:root[data-ui-style="classic"] .dark main .bg-card,
+:root[data-ui-style="classic"] .dark .st-card {
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+}
+
+/* Keep Simple Standard calm and steady (no distracting card jump on hover) */
+:root[data-ui-style="classic"] .st-card:hover {
+  transform: none;
+}
+
+/* ── Mode B: Modern View / TrackHub (Frosted Translucent Surfaces) ─────────── */
+:root[data-ui-style="glass"] {
+  --background: #eaf1f8;
+  --card: rgba(255, 255, 255, 0.72);
+  --popover: rgba(255, 255, 255, 0.84);
+  --muted: rgba(226, 234, 244, 0.72);
+  --border: rgba(255, 255, 255, 0.68);
+  --input: rgba(255, 255, 255, 0.78);
+  --input-background: rgba(255, 255, 255, 0.78);
+}
+
+:root.dark[data-ui-style="glass"],
+:root[data-ui-style="glass"] .dark {
+  --background: #060b16;
+  --card: rgba(15, 24, 42, 0.64);
+  --popover: rgba(14, 23, 40, 0.82);
+  --muted: rgba(30, 45, 74, 0.62);
+  --border: rgba(255, 255, 255, 0.13);
+  --input: rgba(15, 24, 42, 0.76);
+  --input-background: rgba(15, 24, 42, 0.76);
+}
+
+/* Soft atmospheric pearl / sapphire canvas so glass cards refract cleanly */
+:root[data-ui-style="glass"] .st-workspace-shell {
+  background-color: #eaf1f8;
+  background-image:
+    radial-gradient(at 10% 4%, rgba(147, 197, 253, 0.32) 0px, transparent 48%),
+    radial-gradient(at 90% 8%, rgba(165, 243, 252, 0.28) 0px, transparent 46%),
+    radial-gradient(at 52% 96%, rgba(199, 210, 254, 0.24) 0px, transparent 52%),
+    linear-gradient(180deg, #eef4fb 0%, #e6eef7 100%);
+}
+
+:root.dark[data-ui-style="glass"] .st-workspace-shell,
+:root[data-ui-style="glass"] .dark .st-workspace-shell {
+  background-color: #060b16;
+  background-image:
+    radial-gradient(at 12% 4%, rgba(56, 189, 248, 0.16) 0px, transparent 46%),
+    radial-gradient(at 88% 8%, rgba(99, 102, 241, 0.16) 0px, transparent 46%),
+    radial-gradient(at 50% 96%, rgba(20, 184, 166, 0.10) 0px, transparent 52%),
+    linear-gradient(180deg, #070e1c 0%, #050912 100%);
+}
+
+/* Frosted Modern Topbar — backdrop-filter lives on ::before (sibling of popovers),
+ * NOT on <header> itself, so <header> never becomes a Chromium Backdrop Root and
+ * child popovers (Settings, Notifications, Search) can deeply blur <main> behind them. */
+:root[data-ui-style="glass"] .st-topbar {
+  background: transparent !important;
+  border-bottom-color: transparent !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+:root[data-ui-style="glass"] .st-topbar::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: rgba(255, 255, 255, 0.68);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.76);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.88),
+    0 1px 0 rgba(15, 23, 42, 0.05),
+    0 8px 24px -14px rgba(15, 23, 42, 0.14);
+  backdrop-filter: blur(18px) saturate(170%);
+  -webkit-backdrop-filter: blur(18px) saturate(170%);
+}
+
+:root.dark[data-ui-style="glass"] .st-topbar::before,
+:root[data-ui-style="glass"] .dark .st-topbar::before {
+  background: rgba(11, 18, 32, 0.68);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.11);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.13),
+    0 10px 28px -14px rgba(0, 0, 0, 0.60);
+}
+
+/* Tactile Frosted Glass Cards & Containers across all modules */
+:root[data-ui-style="glass"] main .bg-card,
+:root[data-ui-style="glass"] .st-card {
+  background-color: var(--card);
+  background-image: linear-gradient(
+    165deg,
+    rgba(255, 255, 255, 0.48) 0%,
+    rgba(255, 255, 255, 0.10) 42%,
+    rgba(255, 255, 255, 0.02) 100%
+  );
+  border-color: rgba(255, 255, 255, 0.72);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.90),
+    0 0 0 1px rgba(15, 23, 42, 0.055),
+    0 10px 28px -14px rgba(15, 23, 42, 0.14);
+  backdrop-filter: blur(12px) saturate(155%);
+  -webkit-backdrop-filter: blur(12px) saturate(155%);
+}
+
+:root.dark[data-ui-style="glass"] main .bg-card,
+:root.dark[data-ui-style="glass"] .st-card,
+:root[data-ui-style="glass"] .dark main .bg-card,
+:root[data-ui-style="glass"] .dark .st-card {
+  background-image: linear-gradient(
+    165deg,
+    rgba(255, 255, 255, 0.09) 0%,
+    rgba(255, 255, 255, 0.02) 45%,
+    rgba(255, 255, 255, 0) 100%
+  );
+  border-color: rgba(255, 255, 255, 0.13);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.16),
+    0 0 0 1px rgba(0, 0, 0, 0.25),
+    0 14px 34px -14px rgba(0, 0, 0, 0.56);
+}
+
+/* Keep sticky table headers & inner scrolling cells solid and 60fps smooth */
+:root[data-ui-style="glass"] [data-table-scroll="fixed"] thead.sticky,
+:root[data-ui-style="glass"] [data-table-scroll="fixed"] thead.sticky th,
+:root[data-ui-style="glass"] thead.sticky.bg-card,
+:root[data-ui-style="glass"] thead.sticky.bg-card th {
+  background-color: #f4f8fc !important;
+  background-image: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  box-shadow: inset 0 -1px 0 rgba(15, 23, 42, 0.08) !important;
+}
+
+:root.dark[data-ui-style="glass"] [data-table-scroll="fixed"] thead.sticky,
+:root.dark[data-ui-style="glass"] [data-table-scroll="fixed"] thead.sticky th,
+:root.dark[data-ui-style="glass"] thead.sticky.bg-card,
+:root.dark[data-ui-style="glass"] thead.sticky.bg-card th,
+:root[data-ui-style="glass"] .dark [data-table-scroll="fixed"] thead.sticky,
+:root[data-ui-style="glass"] .dark [data-table-scroll="fixed"] thead.sticky th,
+:root[data-ui-style="glass"] .dark thead.sticky.bg-card,
+:root[data-ui-style="glass"] .dark thead.sticky.bg-card th {
+  background-color: #0f1a2d !important;
+  box-shadow: inset 0 -1px 0 rgba(255, 255, 255, 0.09) !important;
+}
+
+:root[data-ui-style="glass"] [data-table-scroll="fixed"] .bg-card {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+/* 3D Sculpted Frosted Glass Popovers, Floating Info Tips & Modals */
+:root[data-ui-style="glass"] [data-st-modal-panel="true"],
+:root[data-ui-style="glass"] .st-glass-popover,
+:root[data-ui-style="glass"] [role="dialog"].bg-card,
+:root[data-ui-style="glass"] .st-dropdown-in.bg-card,
+:root[data-ui-style="glass"] .st-modal-in.bg-card,
+:root[data-ui-style="glass"] .bg-popover {
+  background-color: rgba(246, 250, 255, 0.82) !important;
+  background-image: linear-gradient(
+    155deg,
+    rgba(255, 255, 255, 0.80) 0%,
+    rgba(255, 255, 255, 0.34) 28%,
+    rgba(232, 241, 252, 0.16) 68%,
+    rgba(255, 255, 255, 0.46) 100%
+  );
+  border: 1.5px solid rgba(255, 255, 255, 0.90) !important;
+  box-shadow:
+    inset 0 2px 1.5px rgba(255, 255, 255, 0.98),
+    inset 1.5px 0 1.5px rgba(255, 255, 255, 0.78),
+    inset -1.5px 0 1.5px rgba(255, 255, 255, 0.48),
+    inset 0 -3px 6px rgba(15, 23, 42, 0.085),
+    0 0 0 1px rgba(15, 23, 42, 0.09),
+    0 12px 24px -8px rgba(15, 23, 42, 0.18),
+    0 32px 72px -14px rgba(15, 23, 42, 0.30) !important;
+  backdrop-filter: blur(44px) saturate(210%) brightness(1.06) !important;
+  -webkit-backdrop-filter: blur(44px) saturate(210%) brightness(1.06) !important;
+}
+
+:root.dark[data-ui-style="glass"] [data-st-modal-panel="true"],
+:root.dark[data-ui-style="glass"] .st-glass-popover,
+:root.dark[data-ui-style="glass"] [role="dialog"].bg-card,
+:root.dark[data-ui-style="glass"] .st-dropdown-in.bg-card,
+:root.dark[data-ui-style="glass"] .st-modal-in.bg-card,
+:root.dark[data-ui-style="glass"] .bg-popover,
+:root[data-ui-style="glass"] .dark [data-st-modal-panel="true"],
+:root[data-ui-style="glass"] .dark .st-glass-popover,
+:root[data-ui-style="glass"] .dark [role="dialog"].bg-card,
+:root[data-ui-style="glass"] .dark .st-dropdown-in.bg-card,
+:root[data-ui-style="glass"] .dark .st-modal-in.bg-card,
+:root[data-ui-style="glass"] .dark .bg-popover {
+  background-color: rgba(11, 19, 35, 0.80) !important;
+  background-image: linear-gradient(
+    155deg,
+    rgba(255, 255, 255, 0.17) 0%,
+    rgba(148, 197, 255, 0.06) 30%,
+    rgba(6, 11, 22, 0.18) 72%,
+    rgba(255, 255, 255, 0.06) 100%
+  );
+  border: 1.5px solid rgba(255, 255, 255, 0.20) !important;
+  box-shadow:
+    inset 0 2px 1.5px rgba(255, 255, 255, 0.24),
+    inset 1.5px 0 1.5px rgba(255, 255, 255, 0.14),
+    inset -1.5px 0 1.5px rgba(255, 255, 255, 0.08),
+    inset 0 -3px 6px rgba(0, 0, 0, 0.50),
+    0 0 0 1px rgba(0, 0, 0, 0.45),
+    0 14px 28px -8px rgba(0, 0, 0, 0.55),
+    0 36px 80px -14px rgba(0, 0, 0, 0.82) !important;
+  backdrop-filter: blur(44px) saturate(195%) brightness(0.92) !important;
+  -webkit-backdrop-filter: blur(44px) saturate(195%) brightness(0.92) !important;
+}
+
+/* Sculpted inner 3D glass layers inside Settings & Frosted Popovers */
+:root[data-ui-style="glass"] .st-glass-popover-header {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.54) 0%, rgba(255, 255, 255, 0.14) 100%);
+  border-bottom-color: rgba(15, 23, 42, 0.08) !important;
+}
+
+:root.dark[data-ui-style="glass"] .st-glass-popover-header,
+:root[data-ui-style="glass"] .dark .st-glass-popover-header {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.09) 0%, rgba(255, 255, 255, 0.01) 100%);
+  border-bottom-color: rgba(255, 255, 255, 0.10) !important;
+}
+
+:root[data-ui-style="glass"] .st-glass-popover section,
+:root[data-ui-style="glass"] .st-glass-popover .st-glass-inset {
+  background: rgba(255, 255, 255, 0.62);
+  border-color: rgba(255, 255, 255, 0.86);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.95),
+    0 2px 10px -4px rgba(15, 23, 42, 0.11);
+}
+
+:root.dark[data-ui-style="glass"] .st-glass-popover section,
+:root.dark[data-ui-style="glass"] .st-glass-popover .st-glass-inset,
+:root[data-ui-style="glass"] .dark .st-glass-popover section,
+:root[data-ui-style="glass"] .dark .st-glass-popover .st-glass-inset {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.12);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.11),
+    0 3px 12px -4px rgba(0, 0, 0, 0.44);
+}
+
+:root[data-ui-style="glass"] [data-st-modal-header="true"] {
+  background-color: transparent !important;
+}
+
+/* Performance fallback: Disable blur cleanly when user turns on Reduce Motion */
+:root[data-ui-style="glass"][data-reduce-motion="true"] .st-topbar::before,
+:root[data-ui-style="glass"][data-reduce-motion="true"] main .bg-card,
+:root[data-ui-style="glass"][data-reduce-motion="true"] .st-card,
+:root[data-ui-style="glass"][data-reduce-motion="true"] [data-st-modal-panel="true"],
+:root[data-ui-style="glass"][data-reduce-motion="true"] .st-glass-popover,
+:root[data-ui-style="glass"][data-reduce-motion="true"] [role="dialog"].bg-card,
+:root[data-ui-style="glass"][data-reduce-motion="true"] .st-dropdown-in.bg-card,
+:root[data-ui-style="glass"][data-reduce-motion="true"] .st-modal-in.bg-card,
+:root[data-ui-style="glass"][data-reduce-motion="true"] .bg-popover {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  background-color: rgba(255, 255, 255, 0.96) !important;
+}
+
+:root.dark[data-ui-style="glass"][data-reduce-motion="true"] .st-topbar::before,
+:root.dark[data-ui-style="glass"][data-reduce-motion="true"] main .bg-card,
+:root.dark[data-ui-style="glass"][data-reduce-motion="true"] .st-card,
+:root.dark[data-ui-style="glass"][data-reduce-motion="true"] [data-st-modal-panel="true"],
+:root.dark[data-ui-style="glass"][data-reduce-motion="true"] .st-glass-popover,
+:root.dark[data-ui-style="glass"][data-reduce-motion="true"] [role="dialog"].bg-card,
+:root.dark[data-ui-style="glass"][data-reduce-motion="true"] .st-dropdown-in.bg-card,
+:root.dark[data-ui-style="glass"][data-reduce-motion="true"] .st-modal-in.bg-card,
+:root.dark[data-ui-style="glass"][data-reduce-motion="true"] .bg-popover,
+:root[data-ui-style="glass"][data-reduce-motion="true"] .dark .st-topbar::before,
+:root[data-ui-style="glass"][data-reduce-motion="true"] .dark main .bg-card,
+:root[data-ui-style="glass"][data-reduce-motion="true"] .dark .st-card,
+:root[data-ui-style="glass"][data-reduce-motion="true"] .dark [data-st-modal-panel="true"],
+:root[data-ui-style="glass"][data-reduce-motion="true"] .dark .st-glass-popover,
+:root[data-ui-style="glass"][data-reduce-motion="true"] .dark [role="dialog"].bg-card,
+:root[data-ui-style="glass"][data-reduce-motion="true"] .dark .st-dropdown-in.bg-card,
+:root[data-ui-style="glass"][data-reduce-motion="true"] .dark .st-modal-in.bg-card,
+:root[data-ui-style="glass"][data-reduce-motion="true"] .dark .bg-popover {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  background-color: rgba(15, 24, 42, 0.96) !important;
+}
+
+/* ── Modern View Only: Apple Scroll-Edge Progressive Blue Blur Page Headers ──
+ * Removes the flat solid wall & hard border seam under the topbar across all
+ * modules. Scrolled content physically glides behind .st-page-header and
+ * progressively blurs into a feathered cool-blue / midnight-sapphire gradient.
+ * Simple Standard ([data-ui-style="classic"]) remains 100% solid & untouched.
+ * ──────────────────────────────────────────────────────────────────────────── */
+:root[data-ui-style="glass"] .st-page-shell {
+  position: relative;
+}
+
+:root[data-ui-style="glass"] .st-page-shell > .st-page-header {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 25;
+  background: transparent !important;
+  border-bottom-color: transparent !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  pointer-events: none;
+}
+
+:root[data-ui-style="glass"] .st-page-shell > .st-page-header > * {
+  pointer-events: auto;
+}
+
+/* Layer 1: Progressive gradient blur veil (fades smoothly from crisp blur to 0px) */
+:root[data-ui-style="glass"] .st-page-shell > .st-page-header::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: -34px;
+  z-index: -2;
+  pointer-events: none;
+  backdrop-filter: blur(26px) saturate(195%);
+  -webkit-backdrop-filter: blur(26px) saturate(195%);
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    rgba(0, 0, 0, 1) 0%,
+    rgba(0, 0, 0, 1) 56%,
+    rgba(0, 0, 0, 0.85) 72%,
+    rgba(0, 0, 0, 0.40) 86%,
+    rgba(0, 0, 0, 0) 100%
+  );
+  mask-image: linear-gradient(
+    to bottom,
+    rgba(0, 0, 0, 1) 0%,
+    rgba(0, 0, 0, 1) 56%,
+    rgba(0, 0, 0, 0.85) 72%,
+    rgba(0, 0, 0, 0.40) 86%,
+    rgba(0, 0, 0, 0) 100%
+  );
+  opacity: 0;
+  transition: opacity 220ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* Layer 2: Apple-style soft blue gradient atmospheric fade (seamless, no hard line) */
+:root[data-ui-style="glass"] .st-page-shell > .st-page-header::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: -40px;
+  z-index: -1;
+  pointer-events: none;
+  background: linear-gradient(
+    to bottom,
+    rgba(214, 234, 255, 0.88) 0%,
+    rgba(224, 240, 255, 0.74) 48%,
+    rgba(231, 244, 255, 0.36) 76%,
+    rgba(231, 244, 255, 0) 100%
+  );
+  opacity: 0.48;
+  transition: opacity 220ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+:root.dark[data-ui-style="glass"] .st-page-shell > .st-page-header::after,
+:root[data-ui-style="glass"] .dark .st-page-shell > .st-page-header::after {
+  background: linear-gradient(
+    to bottom,
+    rgba(8, 20, 44, 0.90) 0%,
+    rgba(10, 25, 54, 0.76) 48%,
+    rgba(12, 30, 62, 0.38) 76%,
+    rgba(12, 30, 62, 0) 100%
+  );
+  opacity: 0.52;
+}
+
+/* Active scroll state: full progressive overlay blur + rich feathered blue mist */
+:root[data-ui-style="glass"] .st-page-shell > .st-page-header[data-scrolled="true"]::before,
+:root[data-ui-style="glass"] .st-page-shell > .st-page-header[data-scrolled="true"]::after {
+  opacity: 1;
+}
+
+/* Offset content cleanly below overlaid header at scrollTop = 0 while allowing
+ * scrolled content to glide directly underneath the header */
+:root[data-ui-style="glass"] .st-page-shell .st-page-scroll-body {
+  padding-top: calc(var(--st-page-header-h, 0px) + 1.25rem) !important;
+}
+
+:root[data-ui-style="glass"] .st-page-shell .st-page-fixed-body {
+  padding-top: calc(var(--st-page-header-h, 0px) + 1rem) !important;
+}
+
+:root[data-ui-style="glass"] .st-page-shell .st-page-fixed-card {
+  margin-top: calc(var(--st-page-header-h, 0px) + 1rem) !important;
+}
+
+:root[data-ui-style="glass"] .st-page-shell .st-page-passthrough {
+  padding-top: 0 !important;
+}
+
+/* Reduce Motion fallback for overlaid page headers (soft blue gradient without GPU blur) */
+:root[data-ui-style="glass"][data-reduce-motion="true"] .st-page-shell > .st-page-header::before {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  opacity: 0 !important;
+  transition: none !important;
+}
+
+:root[data-ui-style="glass"][data-reduce-motion="true"] .st-page-shell > .st-page-header::after {
+  transition: none !important;
+}
+
+:root[data-ui-style="glass"][data-reduce-motion="true"] .st-page-shell > .st-page-header[data-scrolled="true"]::after {
+  background: linear-gradient(
+    to bottom,
+    rgba(222, 238, 255, 0.96) 0%,
+    rgba(228, 242, 255, 0.92) 64%,
+    rgba(232, 244, 255, 0.42) 86%,
+    rgba(232, 244, 255, 0) 100%
+  );
+}
+
+:root.dark[data-ui-style="glass"][data-reduce-motion="true"] .st-page-shell > .st-page-header[data-scrolled="true"]::after,
+:root[data-ui-style="glass"][data-reduce-motion="true"] .dark .st-page-shell > .st-page-header[data-scrolled="true"]::after {
+  background: linear-gradient(
+    to bottom,
+    rgba(8, 20, 44, 0.96) 0%,
+    rgba(10, 24, 52, 0.92) 64%,
+    rgba(12, 30, 62, 0.42) 86%,
+    rgba(12, 30, 62, 0) 100%
+  );
+}
+
+/* Print safety: restore normal static header flow when printing Reports / Financial */
+@media print {
+  :root[data-ui-style="glass"] .st-page-shell > .st-page-header {
+    position: static !important;
+    pointer-events: auto !important;
+  }
+  :root[data-ui-style="glass"] .st-page-shell > .st-page-header::before,
+  :root[data-ui-style="glass"] .st-page-shell > .st-page-header::after {
+    display: none !important;
+  }
+  :root[data-ui-style="glass"] .st-page-shell .st-page-scroll-body,
+  :root[data-ui-style="glass"] .st-page-shell .st-page-fixed-body {
+    padding-top: 1rem !important;
+  }
+  :root[data-ui-style="glass"] .st-page-shell .st-page-fixed-card {
+    margin-top: 1rem !important;
+  }
 }

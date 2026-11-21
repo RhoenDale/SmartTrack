@@ -543,7 +543,7 @@ function ReturnsPage({
 
   return (
     <div
-      className="flex flex-col w-full overflow-hidden"
+      className="st-page-shell flex flex-col w-full overflow-hidden"
       style={{ height: "calc(100dvh - 56px)" }}
     >
       {showBrokenModal && (
@@ -555,7 +555,7 @@ function ReturnsPage({
       )}
 
       {/* ── Fixed top content: header + segmented tabs + banners + filter bar ── */}
-      <div className="flex-shrink-0 st-shell-px pt-4 sm:pt-6 pb-3.5 bg-background border-b border-border/60 z-20 space-y-3.5">
+      <div className="st-page-header flex-shrink-0 st-shell-px pt-4 sm:pt-6 pb-3.5 bg-background border-b border-border/60 z-20 space-y-3.5">
         {/* Header row */}
         <header className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="flex items-center gap-3.5">
@@ -818,7 +818,7 @@ function ReturnsPage({
       </div>
 
       {/* ── Scrollable List Container ── */}
-      <div className="flex-1 min-h-0 flex flex-col st-shell-px pt-4 pb-3 overflow-hidden">
+      <div className="st-page-fixed-body flex-1 min-h-0 flex flex-col st-shell-px pt-4 pb-3 overflow-hidden">
         {loading && activeSourceList.length === 0 ? (
           <div className="flex-1 min-h-0 rounded-2xl border border-border/70 bg-card shadow-sm overflow-hidden p-4 space-y-3">
             {[1, 2, 3, 4, 5].map(i => (

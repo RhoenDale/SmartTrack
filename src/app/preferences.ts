@@ -1,6 +1,7 @@
 export type FontScale = "small" | "default" | "large" | "xl";
 export type TableDensity = "default" | "compact";
 export type ReduceMotionPreference = "system" | "reduced";
+export type UiStyleMode = "glass" | "classic";
 
 export interface FontScaleOption {
   id: FontScale;
@@ -93,6 +94,15 @@ export function saveMutedColors(muted: boolean): void {
   safeWriteStorage(STORAGE_KEYS.mutedColors, String(muted));
 }
 
+export function readUiStyleFromNavMode(): UiStyleMode {
+  return safeReadStorage("st_nav_mode") === "sidebar" ? "classic" : "glass";
+}
+
+export function applyUiStyle(style: UiStyleMode): void {
+  if (typeof document === "undefined") return;
+  document.documentElement.dataset.uiStyle = style;
+}
+
 /**
  * Applies display preferences directly on `document.documentElement` so both
  * Web and Electron Desktop pick them up at boot and on live Settings toggles.
@@ -102,12 +112,17 @@ export function applyDisplayPreferences(prefs: {
   tableDensity: TableDensity;
   reduceMotion: ReduceMotionPreference;
   mutedColors: boolean;
+  uiStyle?: UiStyleMode;
 }): void {
   if (typeof document === "undefined") return;
   const root = document.documentElement;
   const scaleMeta = FONT_SCALE_OPTIONS.find(opt => opt.id === prefs.fontScale) ?? FONT_SCALE_OPTIONS[1];
   root.style.setProperty("--font-size", scaleMeta.sizePx);
   root.dataset.fontScale = scaleMeta.id;
+
+  if (prefs.uiStyle) {
+    root.dataset.uiStyle = prefs.uiStyle;
+  }
 
   if (prefs.tableDensity === "compact") {
     root.dataset.density = "compact";
@@ -134,5 +149,6 @@ export function applySavedDisplayPreferences(): void {
     tableDensity: readTableDensity(),
     reduceMotion: readReduceMotionPreference(),
     mutedColors: readMutedColors(),
+    uiStyle: readUiStyleFromNavMode(),
   });
 }

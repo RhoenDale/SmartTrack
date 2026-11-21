@@ -429,9 +429,9 @@ function PurchaseOrdersPage({
 
   // ── ─────────────────────────────────────────────────────────────────────────
   return (
-    <div className="flex flex-col w-full overflow-hidden" style={{ height: "calc(100dvh - 56px)" }}>
+    <div className="st-page-shell flex flex-col w-full overflow-hidden" style={{ height: "calc(100dvh - 56px)" }}>
       {/* Fixed Header + View Switcher */}
-      <div className="flex-shrink-0 st-shell-px pt-4 sm:pt-5 pb-0 bg-background border-b border-border/60 z-20">
+      <div className="st-page-header flex-shrink-0 st-shell-px pt-4 sm:pt-5 pb-0 bg-background border-b border-border/60 z-20">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3 min-w-0">
             <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl border border-primary/15 bg-primary/10 text-primary">
@@ -511,7 +511,7 @@ function PurchaseOrdersPage({
       {/* ═══════════════════════════════════════════════════════════════════════ */}
       {/* Fixed Chrome — ONLY the inner list/table scrolls                        */}
       {/* ═══════════════════════════════════════════════════════════════════════ */}
-      <div className="flex-1 min-h-0 flex flex-col st-shell-px py-4 gap-3.5 overflow-hidden">
+      <div className="st-page-fixed-body flex-1 min-h-0 flex flex-col st-shell-px py-4 gap-3.5 overflow-hidden">
         {/* Banners */}
         {error && (
           <div role="alert" className="flex-shrink-0 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-500/30 dark:bg-red-950/40 dark:text-red-200">

@@ -295,9 +295,9 @@ const InventoryPage = memo(function InventoryPage({
   };
 
   return (
-    <div className="flex flex-col w-full overflow-hidden" style={{ height: "calc(100dvh - 56px)" }}>
+    <div className="st-page-shell flex flex-col w-full overflow-hidden" style={{ height: "calc(100dvh - 56px)" }}>
       {/* ── Sticky header: title + actions + search/filter ── */}
-      <div className="flex-shrink-0 st-shell-px pt-4 sm:pt-6 pb-4 bg-background border-b border-border/50 z-20">
+      <div className="st-page-header flex-shrink-0 st-shell-px pt-4 sm:pt-6 pb-4 bg-background border-b border-border/50 z-20">
         <div className="flex flex-wrap items-start sm:items-center justify-between gap-3">
           <div>
             <div className="flex items-center gap-2">
@@ -371,7 +371,7 @@ const InventoryPage = memo(function InventoryPage({
       </div>
 
       {/* ── Scrollable table ── */}
-      <div className="flex-1 min-h-0 overflow-hidden flex flex-col st-shell-mx my-4 bg-card border border-border rounded-xl shadow-sm">
+      <div className="st-page-fixed-card flex-1 min-h-0 overflow-hidden flex flex-col st-shell-mx my-4 bg-card border border-border rounded-xl shadow-sm">
         <div className="overflow-x-auto overflow-y-auto flex-1 min-h-0" data-table-scroll="fixed">
           <table className="w-full">
             <thead className="sticky top-0 z-10 bg-card shadow-sm">

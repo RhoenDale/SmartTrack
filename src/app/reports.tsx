@@ -112,7 +112,7 @@ const ReportsPage = memo(function ReportsPage({
   ];
 
   return (
-    <div className="flex flex-col w-full printable-report overflow-hidden print:!h-auto print:!overflow-visible" style={{ height: "calc(100dvh - 56px)" }}>
+    <div className="st-page-shell flex flex-col w-full printable-report overflow-hidden print:!h-auto print:!overflow-visible" style={{ height: "calc(100dvh - 56px)" }}>
       <style>{`@media print {
         body * { visibility: hidden !important; }
         .printable-report, .printable-report * { visibility: visible !important; }
@@ -121,7 +121,7 @@ const ReportsPage = memo(function ReportsPage({
       }`}</style>
 
       {/* ── Fixed header ── */}
-      <div className="flex-shrink-0 st-shell-px pt-4 sm:pt-6 pb-3 bg-background border-b border-border/50 z-20 space-y-3">
+      <div className="st-page-header flex-shrink-0 st-shell-px pt-4 sm:pt-6 pb-3 bg-background border-b border-border/50 z-20 space-y-3">
         {/* Title + Print */}
         <div className="flex items-start sm:items-center justify-between gap-3">
           <div>
@@ -172,7 +172,7 @@ const ReportsPage = memo(function ReportsPage({
       </div>
 
       {/* ── Fixed tab body (table scrolls internally) ── */}
-      <div className="flex-1 min-h-0 flex flex-col st-shell-px py-4 overflow-hidden print:!overflow-visible">
+      <div className="st-page-fixed-body flex-1 min-h-0 flex flex-col st-shell-px py-4 overflow-hidden print:!overflow-visible">
 
         {/* ── Sales Report ── */}
         {activeTab === "sales" && (

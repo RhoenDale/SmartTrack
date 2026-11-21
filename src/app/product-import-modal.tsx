@@ -231,6 +231,7 @@ export function ProductImportModal({
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 animate-in fade-in duration-150"
     >
       <div
+        data-st-modal-panel="true"
         onClick={e => e.stopPropagation()}
         className="relative w-full max-w-3xl rounded-2xl border border-border bg-card p-6 shadow-2xl flex flex-col max-h-[90vh]"
       >

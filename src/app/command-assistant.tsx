@@ -1,18 +1,24 @@
-import React, { memo, useState, useEffect, useRef, useId } from "react";
+import React, { memo, useState, useEffect, useMemo, useRef, useId } from "react";
 import { createPortal } from "react-dom";
 import {
   X,
+  Search,
+  ArrowLeft,
+  ChevronRight,
   TrendingUp,
   DollarSign,
-  ShoppingCart,
-  AlertTriangle,
   Calculator,
+  Package,
   CornerDownLeft,
+  CornerDownRight,
   LoaderCircle,
+  RotateCcw,
+  Sparkles,
+  ShieldAlert,
 } from "lucide-react";
 import { getReorderUnits, groupCartTransactions, hasUserRole, type Product, type Transaction, type AuthUser, type Page } from "./data";
 import { analyticsApi } from "./api";
-import { fmt, InfoTip } from "./shared";
+import { fmt } from "./shared";
 
 interface CommandAssistantProps {
   user: AuthUser;
@@ -31,6 +37,13 @@ interface CommandAssistantProps {
   sidebarExpanded?: boolean;
 }
 
+type SuggestionChip = {
+  label: string;
+  cmd?: string;
+  prefill?: string;
+  action?: () => void;
+};
+
 type Message = {
   id: string;
   sender: "user" | "bot";
@@ -39,6 +52,7 @@ type Message = {
   actionLabel?: string;
   onAction?: () => void;
   details?: { label: string; value: string }[];
+  suggestions?: SuggestionChip[];
 };
 
 const INAPPROPRIATE_WORDS = [
@@ -60,6 +74,57 @@ const MONTHS_MAP: Record<string, number> = {
   november: 10, nov: 10,
   december: 11, dec: 11,
 };
+
+const MONTH_LIST = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December",
+];
+
+const GENERIC_STOCK_WORDS = new Set([
+  "medicine", "medicines", "stock", "alert", "alerts", "items",
+  "item", "product", "products", "tablet", "tablets", "capsule",
+  "capsules", "syrup", "botika", "tambal",
+]);
+
+const OUT_OF_SCOPE_PATTERN = /\b(dosage|dose|symptom|symptoms|fever|headache|cough|sick|pregnant|side effect|side effects|treat|cure|diagnos\w*|doctor|prescription|poem|essay|weather|joke|recipe|who is|why is)\b/i;
+
+type LookupRow = {
+  label: string;
+  hint: string;
+  liveBadge?: string;
+  cmd: string;
+  icon: React.ComponentType<{ size?: number; className?: string }>;
+};
+
+type SpotlightMatch = {
+  id: string;
+  label: string;
+  meta: string;
+  tag: string;
+  cmd: string;
+  kind: "command" | "product" | "lookup";
+};
+
+type BannerSlide = {
+  kind: "limit" | "cmd" | "prompt" | "tip";
+  text: string;
+  cmd?: string;
+  prefill?: string;
+};
+
+function renderFormattedText(text: string) {
+  const parts = text.split(/(\*\*[^*]+\*\*)/g);
+  return parts.map((part, idx) => {
+    if (part.startsWith("**") && part.endsWith("**") && part.length > 4) {
+      return (
+        <strong key={idx} className="font-semibold">
+          {part.slice(2, -2)}
+        </strong>
+      );
+    }
+    return <React.Fragment key={idx}>{part}</React.Fragment>;
+  });
+}
 
 function parseTransactionDate(value: string): Date | null {
   const match = /^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:\s+(\d{1,2}):(\d{2}))?$/.exec(value.trim());
@@ -165,17 +230,364 @@ const CommandAssistant = memo(function CommandAssistant({
   const isTrackHubMode = mode === "trackhub";
   const [query, setQuery] = useState("");
 
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: "welcome",
-      sender: "bot",
-      text: `Hi ${user.name.split(" ")[0]}. I can help you check stock, look up sales, estimate demand, or open a pharmacy task.`,
-      type: "info",
-    },
-  ]);
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [showGuide, setShowGuide] = useState(true);
+  const [selectedResultId, setSelectedResultId] = useState<string | null>(null);
+  const [highlightedIndex, setHighlightedIndex] = useState(-1);
   const [loading, setLoading] = useState(false);
-  const chatBottomRef = useRef<HTMLDivElement>(null);
+  const [promptIndex, setPromptIndex] = useState(0);
+  const [promptFading, setPromptFading] = useState(false);
+  const [isPromptPaused, setIsPromptPaused] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  const firstName = user.name.split(" ")[0] || "there";
+  const canSell = hasUserRole(user, "cashier");
+  const canManageInventory = hasUserRole(user, "inventory_manager");
+
+  const { sampleProduct, sampleProductName, secondProductName } = useMemo(() => {
+    const stocked = inventory.filter(p => p.stock > 0);
+    const pool = stocked.length > 0 ? stocked : inventory;
+    const formatShort = (product?: Product, fallback = "Amoxicillin") => {
+      if (!product) return fallback;
+      const short = product.name.split(/\s+/).slice(0, 2).join(" ");
+      return short || product.name;
+    };
+    const first = pool[0];
+    const second = pool.find(p => p.id !== first?.id) ?? pool[0];
+    return {
+      sampleProduct: first,
+      sampleProductName: formatShort(first, "Amoxicillin"),
+      secondProductName: formatShort(second, "Cetirizine"),
+    };
+  }, [inventory]);
+
+  const navCommands = useMemo(() => {
+    const items: { label: string; tag: string; cmd: string; keys: string[]; page?: Page; show: boolean }[] = [
+      { label: "New Sale", tag: "POS", cmd: "new sale", keys: ["sell", "pos", "cashier", "sale", "baligya"], show: canSell },
+      { label: "Add Product", tag: "Action", cmd: "add product", keys: ["add product", "create item", "dugang"], show: canManageInventory },
+      { label: "Open Analytics", tag: "Module", cmd: "open analytics", keys: ["analytics", "charts", "sma", "eoq"], page: "analytics", show: allowedPages.includes("analytics") },
+      { label: "Open Inventory", tag: "Module", cmd: "open inventory", keys: ["inventory", "medicines", "items"], page: "inventory", show: allowedPages.includes("inventory") },
+      { label: "Low Stock Alerts", tag: "Alerts", cmd: "show low stock items", keys: ["low stock", "critical", "shortage", "alerts"], show: true },
+      { label: "Reports", tag: "Module", cmd: "open reports", keys: ["reports", "export", "summary"], page: "reports", show: allowedPages.includes("reports") },
+      { label: "Transactions", tag: "Module", cmd: "open transactions", keys: ["transactions", "orders", "receipts"], page: "transactions", show: allowedPages.includes("transactions") },
+      { label: "Purchase Orders", tag: "Module", cmd: "open purchase orders", keys: ["purchases", "orders", "supplier"], page: "purchases", show: allowedPages.includes("purchases") },
+      { label: "Returns & Loss", tag: "Module", cmd: "open returns", keys: ["returns", "damaged", "refund"], page: "returns", show: allowedPages.includes("returns") },
+      { label: "Financial Audit", tag: "Module", cmd: "open financial audit", keys: ["financial", "profit", "margin", "audit"], page: "financial", show: allowedPages.includes("financial") },
+      { label: "Activity Log", tag: "Module", cmd: "open activity log", keys: ["activity", "audit trail", "logs"], page: "activity-log", show: allowedPages.includes("activity-log") },
+      { label: "Recycle Bin", tag: "Module", cmd: "open recycle bin", keys: ["recycle", "trash", "deleted"], page: "recycle-bin", show: allowedPages.includes("recycle-bin") },
+      { label: "Users & Roles", tag: "Module", cmd: "open users", keys: ["users", "staff", "roles"], page: "users", show: allowedPages.includes("users") },
+      { label: "Dashboard", tag: "Module", cmd: "open dashboard", keys: ["dashboard", "home"], page: "dashboard", show: allowedPages.includes("dashboard") },
+    ];
+    return items.filter(i => i.show);
+  }, [allowedPages, canSell, canManageInventory]);
+
+  const resultCards = useMemo(() => {
+    const pairs: { id: string; queryText: string; result: Message }[] = [];
+    let pendingQuery = "";
+    for (const msg of messages) {
+      if (msg.sender === "user") {
+        pendingQuery = msg.text;
+      } else {
+        pairs.push({ id: msg.id, queryText: pendingQuery, result: msg });
+      }
+    }
+    return pairs;
+  }, [messages]);
+
+  const bannerSlides: BannerSlide[] = useMemo(
+    () => [
+      {
+        kind: "limit",
+        text: "Commands & live records only — no medical advice or open AI chat",
+      },
+      {
+        kind: "cmd",
+        text: `Commands: "new sale", "open analytics", "open inventory", "open reports"`,
+        cmd: allowedPages.includes("analytics") ? "open analytics" : "open inventory",
+      },
+      {
+        kind: "prompt",
+        text: `Lookup: How much will I earn if I sold 50 ${sampleProductName}?`,
+        cmd: `how much will i earn if i sold 50 ${sampleProductName}`,
+      },
+      {
+        kind: "prompt",
+        text: `Lookup: Stock left for ${secondProductName} · Sales October`,
+        cmd: `stock ${secondProductName}`,
+      },
+      {
+        kind: "tip",
+        text: `Signed in as ${firstName} · English, Bisaya & Tagalog supported`,
+        prefill: "sales ",
+      },
+    ],
+    [sampleProductName, secondProductName, allowedPages, firstName]
+  );
+
+  useEffect(() => {
+    setHighlightedIndex(-1);
+  }, [query]);
+
+  useEffect(() => {
+    if (!isOpen || !showGuide || query.trim().length > 0 || isPromptPaused) return;
+    let swapTimer: number | undefined;
+    const interval = window.setInterval(() => {
+      setPromptFading(true);
+      swapTimer = window.setTimeout(() => {
+        setPromptIndex(prev => (prev + 1) % bannerSlides.length);
+        setPromptFading(false);
+      }, 150);
+    }, 3600);
+    return () => {
+      window.clearInterval(interval);
+      if (swapTimer) window.clearTimeout(swapTimer);
+    };
+  }, [isOpen, showGuide, query, isPromptPaused, bannerSlides.length]);
+
+  const predictiveState = useMemo(() => {
+    const raw = query.trim();
+    if (!raw) {
+      return { outOfScope: false, showNoMatchHint: false, suggestions: [] as SuggestionChip[] };
+    }
+    const qLower = raw.toLowerCase();
+
+    if (
+      OUT_OF_SCOPE_PATTERN.test(qLower) &&
+      !/\b(stock|price|how many|nabilin|presyo|sold|sell|sales|forecast)\b/i.test(qLower)
+    ) {
+      return {
+        outOfScope: true,
+        showNoMatchHint: false,
+        suggestions: [
+          { label: `stock ${sampleProductName}`, cmd: `stock ${sampleProductName}` },
+          { label: "low stock alerts", cmd: "show low stock items" },
+          { label: "See commands", action: () => setShowGuide(true) },
+        ],
+      };
+    }
+
+    const suggestions: SuggestionChip[] = [];
+    const seen = new Set<string>();
+    const pushChip = (chip: SuggestionChip) => {
+      const key = chip.cmd ?? chip.prefill ?? chip.label;
+      if (seen.has(key) || suggestions.length >= 4) return;
+      seen.add(key);
+      suggestions.push(chip);
+    };
+
+    const stockedPool = inventory.filter(p => p.stock > 0);
+    const productPool = stockedPool.length > 0 ? stockedPool : inventory;
+    const matchProducts = (term: string, limit = 3) => {
+      const clean = term.trim().toLowerCase();
+      if (!clean) return productPool.slice(0, limit);
+      return inventory.filter(p => p.name.toLowerCase().includes(clean)).slice(0, limit);
+    };
+
+    const sellPrefix = qLower.match(/(?:if i sold|if i sell|sold|sell|earn on|kung mahalin)\s*(\d*)\s*([a-z0-9\s]*)$/i);
+    if (sellPrefix) {
+      const qty = sellPrefix[1] || "50";
+      const medTail = sellPrefix[2] ?? "";
+      for (const p of matchProducts(medTail)) {
+        pushChip({ label: `if i sold ${qty} ${p.name}`, cmd: `if i sold ${qty} ${p.name}` });
+      }
+    }
+
+    const stockPrefix = qLower.match(/(?:^|\b)(?:stock|price|how much(?: is| for)?|pila(?: pay)? stock(?: sa)?|presyo(?: sa)?)\s+([a-z0-9\s]*)$/i);
+    if (stockPrefix && !sellPrefix) {
+      for (const p of matchProducts(stockPrefix[1] ?? "")) {
+        pushChip({ label: `stock ${p.name}`, cmd: `stock ${p.name}` });
+      }
+    }
+
+    const salesPrefix = qLower.match(/(?:sales?|halin|benta|data)\s*(?:from|for|of|in|sa|a month of)?\s*([a-z]*)$/i);
+    if (salesPrefix) {
+      const tail = (salesPrefix[1] ?? "").toLowerCase();
+      if (!tail) {
+        const now = new Date();
+        const curMonth = MONTH_LIST[now.getMonth()];
+        const prevMonth = MONTH_LIST[(now.getMonth() + 11) % 12];
+        pushChip({ label: "sales today", cmd: "sales today" });
+        pushChip({ label: "sales yesterday", cmd: "sales yesterday" });
+        pushChip({ label: `sales ${curMonth}`, cmd: `sales ${curMonth}` });
+        pushChip({ label: `sales ${prevMonth}`, cmd: `sales ${prevMonth}` });
+      } else {
+        for (const m of MONTH_LIST) {
+          if (m.toLowerCase().startsWith(tail)) {
+            pushChip({ label: `sales ${m}`, cmd: `sales ${m}` });
+          }
+        }
+        if ("today".startsWith(tail)) pushChip({ label: "sales today", cmd: "sales today" });
+        if ("yesterday".startsWith(tail)) pushChip({ label: "sales yesterday", cmd: "sales yesterday" });
+      }
+    } else if (qLower.length >= 3) {
+      for (const m of MONTH_LIST) {
+        if (m.toLowerCase().startsWith(qLower)) {
+          pushChip({ label: `sales ${m}`, cmd: `sales ${m}` });
+        }
+      }
+    }
+
+    const pageCandidates: { page: Page; label: string; keywords: string[] }[] = [
+      { page: "analytics", label: "open analytics", keywords: ["open analytics", "analytics", "charts", "forecast"] },
+      { page: "inventory", label: "open inventory", keywords: ["open inventory", "inventory", "medicines"] },
+      { page: "transactions", label: "open transactions", keywords: ["open transactions", "transactions", "history"] },
+      { page: "stock-alerts", label: "open stock alerts", keywords: ["open alerts", "stock alerts", "shortage"] },
+      { page: "reports", label: "open reports", keywords: ["open reports", "reports"] },
+      { page: "financial", label: "open financial audit", keywords: ["open financial", "financial audit"] },
+      { page: "returns", label: "open returns", keywords: ["open returns", "returns", "damaged"] },
+    ];
+
+    if (/^(open|go to|ablihi|buksan)/i.test(qLower)) {
+      const tail = qLower.replace(/^(open|go to|ablihi|buksan)\s*/, "");
+      for (const p of pageCandidates) {
+        if (allowedPages.includes(p.page) && (!tail || p.label.includes(tail) || p.keywords.some(k => k.includes(tail)))) {
+          pushChip({ label: p.label, cmd: p.label });
+        }
+      }
+      if (canSell && (!tail || "new sale".includes(tail))) pushChip({ label: "new sale", cmd: "new sale" });
+      if (canManageInventory && (!tail || "add product".includes(tail))) pushChip({ label: "add product", cmd: "add product" });
+    }
+
+    if (suggestions.length < 4 && !sellPrefix && !stockPrefix) {
+      for (const p of matchProducts(qLower, 2)) {
+        pushChip({ label: `stock ${p.name}`, cmd: `stock ${p.name}` });
+        pushChip({ label: `if i sold 50 ${p.name}`, cmd: `if i sold 50 ${p.name}` });
+      }
+    }
+
+    if (suggestions.length < 4) {
+      const generalTemplates: { label: string; cmd: string; keys: string[] }[] = [
+        {
+          label: `how much will i earn if i sold 50 ${sampleProductName}`,
+          cmd: `how much will i earn if i sold 50 ${sampleProductName}`,
+          keys: ["how much", "will", "earn", "if", "sold", "sell", "profit", "tubo", "ganansya", "kita"],
+        },
+        {
+          label: "sales today",
+          cmd: "sales today",
+          keys: ["sales", "today", "halin", "benta", "karon", "revenue", "income", "how much"],
+        },
+        {
+          label: "sales October",
+          cmd: "sales October",
+          keys: ["sales", "october", "oct", "month", "data", "show"],
+        },
+        {
+          label: "low stock alerts",
+          cmd: "show low stock items",
+          keys: ["low stock", "alert", "critical", "out of stock", "short", "mahurot", "kulang", "which"],
+        },
+        {
+          label: "forecast next month",
+          cmd: "forecast next month",
+          keys: ["forecast", "predict", "next month", "demand", "sma", "sunod"],
+        },
+        {
+          label: "what is FIFO / SmartTrack?",
+          cmd: "what is fifo",
+          keys: ["what is", "purpose", "explain", "fifo", "unsa", "para unsa", "help"],
+        },
+      ];
+
+      for (const tpl of generalTemplates) {
+        if (tpl.keys.some(k => k.includes(qLower) || qLower.includes(k))) {
+          pushChip({ label: tpl.label, cmd: tpl.cmd });
+        }
+      }
+
+      for (const p of pageCandidates) {
+        if (allowedPages.includes(p.page) && p.keywords.some(k => k.includes(qLower) || qLower.includes(k))) {
+          pushChip({ label: p.label, cmd: p.label });
+        }
+      }
+      if (canSell && ("new sale".includes(qLower) || "sell".includes(qLower) || "baligya".includes(qLower))) {
+        pushChip({ label: "new sale", cmd: "new sale" });
+      }
+      if (canManageInventory && ("add product".includes(qLower) || "dugang".includes(qLower))) {
+        pushChip({ label: "add product", cmd: "add product" });
+      }
+    }
+
+    if (suggestions.length === 0 && qLower.length >= 4) {
+      return {
+        outOfScope: false,
+        showNoMatchHint: true,
+        suggestions: [
+          { label: "stock …", prefill: "stock " },
+          { label: "sales …", prefill: "sales " },
+          { label: "if i sold 50 …", prefill: "if i sold 50 " },
+          { label: "forecast next month", cmd: "forecast next month" },
+        ],
+      };
+    }
+
+    return { outOfScope: false, showNoMatchHint: false, suggestions };
+  }, [query, inventory, allowedPages, canSell, canManageInventory, sampleProductName]);
+
+  const liveSpotlightMatches = useMemo((): SpotlightMatch[] => {
+    const raw = query.trim();
+    if (!raw) return [];
+    const qLower = raw.toLowerCase();
+    const out: SpotlightMatch[] = [];
+    const seenCmd = new Set<string>();
+    const pushItem = (item: SpotlightMatch) => {
+      if (seenCmd.has(item.cmd)) return;
+      seenCmd.add(item.cmd);
+      out.push(item);
+    };
+
+    for (const c of navCommands) {
+      if (c.label.toLowerCase().includes(qLower) || c.cmd.includes(qLower) || c.keys.some(k => k.includes(qLower) || qLower.includes(k))) {
+        pushItem({
+          id: `cmd-${c.cmd}`,
+          label: c.label,
+          meta: c.cmd,
+          tag: c.tag,
+          cmd: c.cmd,
+          kind: "command",
+        });
+      }
+    }
+
+    const medTerm = qLower
+      .replace(/^(?:stock|price|how much(?: is| for)?|if i sold\s*\d*|if i sell\s*\d*|pila(?: pay)? stock(?: sa)?)\s*/i, "")
+      .trim();
+    const sellQtyMatch = qLower.match(/(?:if i sold|if i sell|sell|sold)\s*(\d+)/i);
+    if (medTerm.length >= 2) {
+      for (const p of inventory) {
+        if (p.name.toLowerCase().includes(medTerm)) {
+          const reorder = getReorderUnits(p);
+          const status = p.stock === 0 ? "Out" : p.stock <= reorder ? "Low" : "In stock";
+          pushItem({
+            id: `prod-${p.id}`,
+            label: sellQtyMatch ? `Simulate: ${sellQtyMatch[1]} × ${p.name}` : p.name,
+            meta: `${p.stock} units · ${fmt(p.price)} (${status})`,
+            tag: sellQtyMatch ? "What-If" : "Live Stock",
+            cmd: sellQtyMatch ? `if i sold ${sellQtyMatch[1]} ${p.name}` : `stock ${p.name}`,
+            kind: "product",
+          });
+          if (out.length >= 6) break;
+        }
+      }
+    }
+
+    if (out.length === 0 && !predictiveState.outOfScope) {
+      for (const s of predictiveState.suggestions) {
+        if (s.cmd) {
+          pushItem({
+            id: `pred-${s.cmd}`,
+            label: s.label,
+            meta: s.cmd,
+            tag: "Lookup",
+            cmd: s.cmd,
+            kind: "lookup",
+          });
+        }
+      }
+    }
+
+    return out.slice(0, 6);
+  }, [query, navCommands, inventory, predictiveState.suggestions, predictiveState.outOfScope]);
 
   // Keep Escape available to close the embedded assistant without competing
   // with the app-wide search shortcut.
@@ -190,8 +602,6 @@ const CommandAssistant = memo(function CommandAssistant({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [enabled, isOpen]);
 
-  const prevMsgCountRef = useRef(messages.length);
-
   // Focus input AFTER TrackHub/Modal expand transition settles so focus layout + caret
   // paint never compete with the opening morph frames.
   useEffect(() => {
@@ -199,25 +609,10 @@ const CommandAssistant = memo(function CommandAssistant({
     const focusTimer = window.setTimeout(() => {
       inputRef.current?.focus({ preventScroll: true });
     }, isTrackHubMode ? 280 : 180);
-    const rafId = window.requestAnimationFrame(() => {
-      chatBottomRef.current?.scrollIntoView({ behavior: "auto" });
-    });
     return () => {
       window.clearTimeout(focusTimer);
-      window.cancelAnimationFrame(rafId);
     };
   }, [isOpen, isTrackHubMode]);
-
-  useEffect(() => {
-    if (!isOpen) {
-      prevMsgCountRef.current = messages.length;
-      return;
-    }
-    if (messages.length !== prevMsgCountRef.current) {
-      prevMsgCountRef.current = messages.length;
-      chatBottomRef.current?.scrollIntoView({ behavior: "smooth" });
-    }
-  }, [isOpen, messages.length]);
 
   const addMessage = (msg: Omit<Message, "id">) => {
     setMessages(prev => [...prev, { ...msg, id: Math.random().toString(36).substring(2, 9) }]);
@@ -228,10 +623,36 @@ const CommandAssistant = memo(function CommandAssistant({
     return INAPPROPRIATE_WORDS.some(w => new RegExp(`\\b${w}\\b`, "i").test(lower));
   };
 
+  const findMonthInQuery = (text: string): { index: number; name: string } | null => {
+    for (const [mName, mIdx] of Object.entries(MONTHS_MAP)) {
+      if (new RegExp(`\\b${mName}\\b`, "i").test(text)) {
+        return { index: mIdx, name: mName };
+      }
+    }
+    return null;
+  };
+
+  const prefillCommand = (text: string) => {
+    setShowGuide(false);
+    setQuery(text);
+    window.requestAnimationFrame(() => {
+      inputRef.current?.focus();
+    });
+  };
+
+  const activateChip = (chip: SuggestionChip) => {
+    if (chip.action) chip.action();
+    else if (chip.cmd) handleCommand(chip.cmd);
+    else if (chip.prefill) prefillCommand(chip.prefill);
+  };
+
   const handleCommand = async (userInput: string) => {
     const raw = userInput.trim();
     if (!raw) return;
 
+    setShowGuide(false);
+    setSelectedResultId(null);
+    setHighlightedIndex(-1);
     // 1. Add user message
     addMessage({ sender: "user", text: raw });
     setQuery("");
@@ -241,8 +662,14 @@ const CommandAssistant = memo(function CommandAssistant({
 
     // Detect user query language (English vs Tagalog vs Bisaya)
     const isTagalog = /\b(ano|paano|bakit|saan|kailan|mga|ng|nang|benta|kahapon|ngayon|buwan|produkto|dagdag|buksan|pumunta)\b/i.test(q);
-    const isBisaya = /\b(unsa|unsay|para unsa|nganong|pila|pilay|nabilin|gahapon|karon|bulana|tambal|dugang|hurot|ubos|kulang|halin|adto|ablihi|tan-awon|pakita|baligya|tubo|ganansya)\b/i.test(q);
+    const isBisaya = /\b(unsa|unsay|para unsa|nganong|pila|pilay|nabilin|gahapon|karon|bulana|tambal|dugang|hurot|ubos|kulang|halin|adto|ablihi|tan-awon|pakita|baligya|tubo|ganansya|kaya|pwede)\b/i.test(q);
     const lang: "en" | "tl" | "ceb" = isBisaya ? "ceb" : isTagalog ? "tl" : "en";
+
+    if (/^(help|\?|commands?|examples?|what can you do|unsay kaya|unsa imong kaya|ano kaya)/i.test(q)) {
+      setLoading(false);
+      setShowGuide(true);
+      return;
+    }
 
     // 2. Inappropriate filter
     if (checkProfanity(q)) {
@@ -257,6 +684,31 @@ const CommandAssistant = memo(function CommandAssistant({
         sender: "bot",
         text: profanityMsg,
         type: "warning",
+      });
+      return;
+    }
+
+    // 2b. Limitation Guard (medical/dosage advice or open-ended non-pharmacy topics)
+    if (
+      OUT_OF_SCOPE_PATTERN.test(q) &&
+      !/\b(stock|price|how many|nabilin|presyo|sold|sell|sales|forecast)\b/i.test(q)
+    ) {
+      setLoading(false);
+      const limitMsg =
+        lang === "ceb"
+          ? `**Dili suportado:** Ang SmartTrack Assistant para lang sa live stock, halin, forecast, ug module shortcuts. Dili kini mohatag og medical/dosage advice o open-ended AI chat.`
+          : lang === "tl"
+          ? `**Hindi suportado:** Pang-live stock, benta, forecast, at shortcuts lang ang SmartTrack Assistant. Hindi ito nagbibigay ng medical advice o open-ended AI chat.`
+          : `**Not supported:** SmartTrack Assistant only reads live pharmacy stock, sales, forecasts, and page shortcuts — it cannot give medical/dosage advice or answer open-ended AI questions.`;
+      addMessage({
+        sender: "bot",
+        text: limitMsg,
+        type: "warning",
+        suggestions: [
+          { label: `stock ${sampleProductName}`, cmd: `stock ${sampleProductName}` },
+          { label: "low stock alerts", cmd: "show low stock items" },
+          { label: "See all commands", action: () => setShowGuide(true) },
+        ],
       });
       return;
     }
@@ -424,11 +876,25 @@ const CommandAssistant = memo(function CommandAssistant({
       }
     }
 
-    // 4. Navigation shortcuts (English, Bisaya, Tagalog)
+    // 4. Explicit navigation shortcuts (avoid hijacking live sales/stock data questions)
+    const matchedMonth = findMonthInQuery(q);
+    const hasTimeWindow =
+      matchedMonth !== null ||
+      /\b(today|yesterday|karon|gahapon|kahapon|this month|last month|past month|karong bulana|miaging bulan|ngayong buwan|nakaraang buwan)\b/i.test(q);
+    const hasDataIntent =
+      hasTimeWindow ||
+      /\b(how much|pila|pilay|total|summary|data|low stock|critical|out of stock|shortage|mahurot|kulang|forecast|predict|demand)\b/i.test(q);
+
+    const isDirectPageWord =
+      !hasDataIntent &&
+      /^(dashboard|home|inventory|transactions|stock alerts?|alerts?|analytics|reports?|returns?|financial(?: audit)?|recycle bin|activity logs?|purchase orders?|purchases?|users?(?: & roles)?)$/i.test(q);
+
     const isNav =
-      q.includes("go to") || q.includes("open") || q.includes("show me") || q.startsWith("navigate") ||
-      q.includes("adto sa") || q.includes("ablihi") || q.includes("tan-awon") || q.includes("pakita") ||
-      q.includes("pumunta sa") || q.includes("buksan");
+      !hasDataIntent &&
+      (isDirectPageWord ||
+       q.includes("go to") || q.includes("open") || q.startsWith("navigate") ||
+       q.includes("adto sa") || q.includes("ablihi") ||
+       q.includes("pumunta sa") || q.includes("buksan"));
 
     if (isNav) {
       let targetPage: Page | null = null;
@@ -479,8 +945,6 @@ const CommandAssistant = memo(function CommandAssistant({
     }
 
     // 5. Quick Action Triggers
-    const canSell = hasUserRole(user, "cashier");
-    const canManageInventory = hasUserRole(user, "inventory_manager");
 
     if (q.includes("new sale") || q.includes("add transaction") || q.includes("create sale") || q === "sell" || q.includes("bag-ong halin") || q.includes("baligya") || q.includes("bagong benta")) {
       setLoading(false);
@@ -532,11 +996,19 @@ const CommandAssistant = memo(function CommandAssistant({
 
     if (soldMatch) {
       const qty = parseInt(soldMatch[1], 10);
-      const prodNameQuery = soldMatch[2].replace(/(?:this month|how much|does i earn|do i earn|pilay kita|pilay halin|pilay ganansya|\?)/gi, "").trim();
+      const prodNameQuery = soldMatch[2]
+        .replace(/(?:this month|next month|will i earn|would i earn|do i earn|does i earn|how much|profit|earn|revenue|sales?|margin|today|tomorrow|pilay kita|pilay halin|pilay ganansya|,|\?)/gi, "")
+        .replace(/\s+/g, " ")
+        .trim();
 
-      const matchedProduct = inventory.find(p =>
-        p.name.toLowerCase().includes(prodNameQuery) || prodNameQuery.includes(p.name.toLowerCase())
-      );
+      const matchedProduct =
+        inventory.find(p => p.name.toLowerCase().includes(prodNameQuery) || prodNameQuery.includes(p.name.toLowerCase())) ??
+        inventory.find(p =>
+          p.name
+            .toLowerCase()
+            .split(/\s+/)
+            .some(part => part.length > 3 && !GENERIC_STOCK_WORDS.has(part) && prodNameQuery.includes(part))
+        );
 
       if (matchedProduct && qty > 0) {
         const unitPrice = matchedProduct.price;
@@ -580,28 +1052,28 @@ const CommandAssistant = memo(function CommandAssistant({
       }
     }
 
-    // 7. Sales Query (English/Bisaya/Tagalog: "how much total sales from past october?", "pilay halin atong october?")
-    if (q.includes("sale") || q.includes("revenue") || q.includes("earn") || q.includes("income") || q.includes("halin") || q.includes("benta") || q.includes("kita")) {
+    // 7. Sales & Period Data Lookup (handles "sales October", "show data from October", "halin karon", etc.)
+    const wantsPeriodSummary =
+      hasTimeWindow &&
+      !q.includes("forecast") &&
+      !q.includes("predict") &&
+      !q.includes("next month");
+
+    if (
+      wantsPeriodSummary ||
+      q.includes("sale") || q.includes("revenue") || q.includes("earn") ||
+      q.includes("income") || q.includes("halin") || q.includes("benta") || q.includes("kita")
+    ) {
       const salesTransactions = groupCartTransactions(transactions.filter(transaction => transaction.type === "sale"));
       let dateFilter = (_date: Date) => true;
       let timeframeLabel = lang === "ceb" ? "Tanan (All-Time)" : "All-Time";
       const now = new Date();
 
-      // Detect month
-      let foundMonth: number | null = null;
-      let foundMonthName = "";
-      for (const [mName, mIdx] of Object.entries(MONTHS_MAP)) {
-        if (q.includes(mName)) {
-          foundMonth = mIdx;
-          foundMonthName = mName;
-          break;
-        }
-      }
-
-      if (foundMonth !== null) {
-        const year = foundMonth > now.getMonth() ? now.getFullYear() - 1 : now.getFullYear();
-        timeframeLabel = `${foundMonthName.toUpperCase()} ${year}`;
-        dateFilter = date => date.getMonth() === foundMonth && date.getFullYear() === year;
+      if (matchedMonth !== null) {
+        const year = matchedMonth.index > now.getMonth() ? now.getFullYear() - 1 : now.getFullYear();
+        const capMonth = matchedMonth.name.charAt(0).toUpperCase() + matchedMonth.name.slice(1);
+        timeframeLabel = `${capMonth} ${year}`;
+        dateFilter = date => date.getMonth() === matchedMonth.index && date.getFullYear() === year;
       } else if (q.includes("today") || q.includes("karon") || q.includes("ngayong araw")) {
         timeframeLabel = lang === "ceb" ? "Karon (Today)" : "Today";
         dateFilter = date => date.toDateString() === now.toDateString();
@@ -688,7 +1160,11 @@ const CommandAssistant = memo(function CommandAssistant({
 
     // 9. Stock / Product Inquiry (Bisaya: "pila pay nabilin nga amoxicillin?", English: "stock amoxicillin")
     const matchedProducts = inventory.filter(p =>
-      q.includes(p.name.toLowerCase()) || p.name.toLowerCase().split(" ").some(part => part.length > 3 && q.includes(part))
+      q.includes(p.name.toLowerCase()) ||
+      p.name
+        .toLowerCase()
+        .split(/\s+/)
+        .some(part => part.length > 3 && !GENERIC_STOCK_WORDS.has(part) && q.includes(part))
     );
 
     if (matchedProducts.length > 0) {
@@ -742,257 +1218,612 @@ const CommandAssistant = memo(function CommandAssistant({
       return;
     }
 
-    // 11. Keep unsupported questions in scope and return a single helpful reply.
+    // 11. Interactive Apple-style fallback with one-tap example suggestions
     setLoading(false);
     const fallbackMsg =
       lang === "ceb"
-        ? "Pasayloa, dili ko makatubag ana. Ang SmartTrack Assistant para ra sa pharmacy stock, sales, forecasts, ug pag-abli sa mga system task. Sulayi: “stock amoxicillin,” “halin sa October,” o “ablihi ang inventory.”"
+        ? `Wala ko kakita og matching command ana — sulayi pag-apil og word pareha sa **stock**, **sales**, **halin**, **forecast**, o ngalan sa tambal. Pwede sab ka mopindot sa ubos:`
         : lang === "tl"
-        ? "Paumanhin, hindi ako makakasagot niyan. Para lang ang SmartTrack Assistant sa stock, benta, forecast, at pagpunta sa mga bahagi ng system. Subukan: “stock amoxicillin,” “sales October,” o “open inventory.”"
-        : "Sorry, I can’t help with that. The SmartTrack Assistant is only for pharmacy stock, sales, forecasts, and system tasks. Try “stock amoxicillin,” “sales October,” or “open inventory.”";
+        ? `Hindi ko nahanap ang command na iyon — subukang maglagay ng salitang **stock**, **sales**, **benta**, **forecast**, o pangalan ng gamot. O pindutin sa ibaba:`
+        : `I work on direct pharmacy commands — try including **sales**, **stock**, **forecast**, or a medicine name, or tap a quick command below:`;
 
-    addMessage({ sender: "bot", text: fallbackMsg, type: "info" });
+    addMessage({
+      sender: "bot",
+      text: fallbackMsg,
+      type: "info",
+      suggestions: [
+        { label: `Stock: ${sampleProductName}`, cmd: `stock ${sampleProductName}` },
+        { label: "Sales today", cmd: "sales today" },
+        { label: "Sales October", cmd: "sales October" },
+        { label: "Low stock items", cmd: "low stock alerts" },
+        { label: "See all commands", action: () => setShowGuide(true) },
+      ],
+    });
   };
 
-  const quickPrompts = [
-    { label: "Demand Forecast", icon: <TrendingUp size={12} />, cmd: "how many units will be sold next month?" },
-    { label: "Sales Lookups", icon: <DollarSign size={12} />, cmd: "how much total sales from past october?" },
-    { label: "Low Stock Items", icon: <AlertTriangle size={12} />, cmd: "show low stock items" },
-    { label: "Today's Sales", icon: <ShoppingCart size={12} />, cmd: "how much total sales today?" },
-    { label: "Profit Simulator", icon: <Calculator size={12} />, cmd: "if i sold 50 units of amoxicillin, how much do i earn?" },
+  const lookupRows: LookupRow[] = [
+    {
+      label: `Stock & Price · ${sampleProductName}`,
+      hint: "stock [item]",
+      liveBadge: sampleProduct ? `${sampleProduct.stock} units · ${fmt(sampleProduct.price)}` : undefined,
+      cmd: `stock ${sampleProductName}`,
+      icon: Package,
+    },
+    {
+      label: "Sales Summary · October",
+      hint: "sales [month]",
+      cmd: "sales October",
+      icon: DollarSign,
+    },
+    {
+      label: `Profit Simulator · 50 × ${sampleProductName}`,
+      hint: "if i sold [qty]",
+      cmd: `if i sold 50 ${sampleProductName}`,
+      icon: TrendingUp,
+    },
+    {
+      label: "Demand Forecast · Next Month",
+      hint: "forecast",
+      cmd: "forecast next month",
+      icon: Calculator,
+    },
   ];
 
   if (!enabled) return null;
 
-  const renderContent = (isHub: boolean) => (
-    <div
-      className={`relative flex flex-col w-full h-full overflow-hidden ${
-        isHub ? "bg-[#0a0a0a] text-white" : "rounded-2xl border border-border bg-card text-foreground"
-      }`}
-    >
-      {/* Header */}
+  const renderContent = (isHub: boolean) => {
+    const activeBanner = bannerSlides[promptIndex % bannerSlides.length];
+    const hasQuery = query.trim().length > 0;
+    const activeResultCard =
+      (selectedResultId ? resultCards.find(r => r.id === selectedResultId) : undefined) ??
+      resultCards[resultCards.length - 1] ??
+      null;
+    const showingInspector = !hasQuery && !showGuide && activeResultCard !== null;
+    const showingCommands = !hasQuery && !showingInspector;
+
+    return (
       <div
-        className={`flex items-center justify-between px-4 py-3 shrink-0 border-b ${
-          isHub ? "border-white/[0.08] bg-[#0a0a0a]" : "border-border bg-card"
+        data-st-modal-panel={isHub ? undefined : "true"}
+        className={`relative flex flex-col w-full h-full overflow-hidden ${
+          isHub ? "bg-[#0a0a0a] text-white" : "rounded-2xl border border-border bg-card text-foreground"
         }`}
       >
-        <div className="flex items-center gap-3">
-          <div
-            className={`flex h-10 w-10 items-center justify-center rounded-xl ${
-              isHub ? "bg-blue-500/15 border border-blue-400/20" : "bg-primary/10 ring-1 ring-primary/15"
+        {/* Top Apple Spotlight Command & Search Bar */}
+        <form
+          onSubmit={e => {
+            e.preventDefault();
+            if (highlightedIndex >= 0 && liveSpotlightMatches[highlightedIndex]) {
+              handleCommand(liveSpotlightMatches[highlightedIndex].cmd);
+              return;
+            }
+            handleCommand(query);
+          }}
+          className={`flex items-center gap-2.5 px-3.5 py-2.5 shrink-0 border-b ${
+            isHub ? "border-white/[0.08] bg-[#0a0a0a]" : "border-border bg-card"
+          }`}
+        >
+          {loading ? (
+            <LoaderCircle size={16} className={`shrink-0 animate-spin ${isHub ? "text-blue-400" : "text-primary"}`} />
+          ) : (
+            <Search size={16} className={`shrink-0 ${isHub ? "text-white/45" : "text-muted-foreground"}`} />
+          )}
+
+          <input
+            ref={inputRef}
+            type="text"
+            value={query}
+            onChange={e => setQuery(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === "ArrowDown" && liveSpotlightMatches.length > 0) {
+                e.preventDefault();
+                setHighlightedIndex(prev => (prev + 1) % liveSpotlightMatches.length);
+              } else if (e.key === "ArrowUp" && liveSpotlightMatches.length > 0) {
+                e.preventDefault();
+                setHighlightedIndex(prev => (prev <= 0 ? liveSpotlightMatches.length - 1 : prev - 1));
+              } else if (e.key === "Tab" && predictiveState.suggestions.length > 0) {
+                const top = predictiveState.suggestions[0];
+                const fill = top.cmd ?? top.prefill;
+                if (fill) {
+                  e.preventDefault();
+                  setQuery(fill);
+                }
+              }
+            }}
+            placeholder="Command or lookup… (e.g. open analytics, new sale, stock amoxicillin)"
+            aria-label="SmartTrack Spotlight command bar"
+            className={`min-w-0 flex-1 bg-transparent py-1 text-[13px] font-medium focus:outline-none ${
+              isHub ? "text-white placeholder:text-white/35" : "text-foreground placeholder:text-muted-foreground"
             }`}
-          >
-            <SmartBotMascot className="h-8 w-8" floating={isOpen} />
-          </div>
-          <div>
-            <div className="flex items-center gap-1.5">
-              <h3 className={`text-sm font-bold tracking-tight ${isHub ? "text-white" : "text-foreground"}`}>
-                SmartTrack Assistant
-              </h3>
-              <InfoTip
-                title="SmartTrack Assistant"
-                color="sky"
-                lines={[
-                  "Quick rule-based command assistant for everyday pharmacy lookups.",
-                  { label: "Can help with", value: "Stock checks, sales summaries, forecasts, calculations, and navigation" },
-                  { label: "How it works", value: "Matches supported queries directly against live pharmacy records" },
-                  { label: "Limitations", value: "Does not answer open-ended questions or give medical advice" },
-                ]}
-              />
-            </div>
-            <p className={`mt-0.5 text-[10px] ${isHub ? "text-white/50" : "text-muted-foreground"}`}>
-              Pharmacy shortcuts · Live stock &amp; sales
-            </p>
-          </div>
-        </div>
-        <button
-          type="button"
-          onClick={() => setIsOpen(false)}
-          className={`rounded-lg p-2 transition-colors cursor-pointer ${
-            isHub
-              ? "text-white/60 hover:bg-white/[0.08] hover:text-white"
-              : "text-muted-foreground hover:bg-muted hover:text-foreground"
-          }`}
-          title="Close (Esc)"
-          aria-label="Close SmartTrack Assistant"
-        >
-          <X size={16} />
-        </button>
-      </div>
+          />
 
-      {/* Quick prompts */}
-      <div
-        className={`border-b px-3 py-2 shrink-0 ${
-          isHub ? "border-white/[0.08] bg-white/[0.02]" : "border-border/70 bg-muted/15"
-        }`}
-      >
-        <p
-          className={`mb-1.5 px-0.5 text-[9px] font-semibold uppercase tracking-[0.12em] ${
-            isHub ? "text-white/45" : "text-muted-foreground"
-          }`}
-        >
-          Common tasks
-        </p>
-        <div className="flex gap-1.5 overflow-x-auto scrollbar-none">
-          {quickPrompts.map((p, idx) => (
-            <button
-              key={idx}
-              type="button"
-              onClick={() => handleCommand(p.cmd)}
-              className={`flex shrink-0 items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[10px] font-medium transition-colors cursor-pointer ${
-                isHub
-                  ? "border-white/10 bg-white/[0.06] text-white/90 hover:border-blue-400/40 hover:bg-white/[0.12] hover:text-white"
-                  : "border-border bg-card text-foreground hover:border-primary/30 hover:bg-primary/5 hover:text-primary"
-              }`}
-            >
-              <span className={isHub ? "text-white/60" : "text-muted-foreground"}>{p.icon}</span>
-              <span>{p.label}</span>
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Messages */}
-      <div
-        className={`flex-1 space-y-3.5 overflow-y-auto p-4 ${
-          isHub ? "bg-transparent" : "bg-muted/[0.12]"
-        }`}
-      >
-        {messages.map(m => (
-          <div
-            key={m.id}
-            className={`flex items-end gap-2 ${m.sender === "user" ? "justify-end" : "justify-start"}`}
-          >
-            {m.sender === "bot" && (
-              <span
-                className={`mb-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg ${
-                  isHub ? "bg-blue-500/15" : "bg-primary/10"
-                }`}
-              >
-                <SmartBotMascot className="h-6 w-6" floating={false} />
-              </span>
-            )}
-            <div
-              className={`max-w-[84%] rounded-2xl px-3.5 py-2.5 text-xs leading-relaxed shadow-sm ${
-                m.sender === "user"
-                  ? isHub
-                    ? "rounded-br-md bg-blue-600 text-white font-medium"
-                    : "rounded-br-md bg-primary text-primary-foreground"
-                  : isHub
-                  ? "rounded-bl-md border border-white/10 bg-white/[0.07] text-white/95"
-                  : "rounded-bl-md border border-border/80 bg-card text-foreground"
-              }`}
-            >
-              <p className="whitespace-pre-line">{m.text}</p>
-
-              {m.details && (
-                <div
-                  className={`mt-2 space-y-1.5 border-t pt-2 ${
-                    isHub ? "border-white/10" : "border-border/60"
+          <div className="flex shrink-0 items-center gap-1">
+            {query && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setQuery("")}
+                  className={`rounded-md p-1 transition-colors cursor-pointer ${
+                    isHub ? "text-white/40 hover:bg-white/[0.08] hover:text-white" : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                  }`}
+                  aria-label="Clear command input"
+                >
+                  <X size={13} />
+                </button>
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className={`inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[10px] font-semibold transition-colors cursor-pointer ${
+                    isHub
+                      ? "bg-blue-600 text-white hover:bg-blue-500"
+                      : "bg-primary text-primary-foreground hover:bg-primary/90"
                   }`}
                 >
-                  {m.details.map((d, i) => (
-                    <div key={i} className="flex justify-between gap-3 text-[11px]">
-                      <span className={isHub ? "text-white/55" : "text-muted-foreground"}>{d.label}:</span>
-                      <span className={`font-semibold tabular-nums ${isHub ? "text-white" : "text-foreground"}`}>
-                        {d.value}
-                      </span>
-                    </div>
+                  <span>Run</span>
+                  <CornerDownLeft size={10} />
+                </button>
+              </>
+            )}
+
+            {!query && showingInspector && (
+              <button
+                type="button"
+                onClick={() => setShowGuide(true)}
+                className={`inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-[10px] font-medium transition-colors cursor-pointer ${
+                  isHub
+                    ? "border-white/12 bg-white/[0.05] text-white/80 hover:bg-white/[0.1] hover:text-white"
+                    : "border-border bg-muted/50 text-foreground hover:bg-muted"
+                }`}
+              >
+                <ArrowLeft size={11} />
+                <span>Commands</span>
+              </button>
+            )}
+
+            {!query && showingCommands && resultCards.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setShowGuide(false)}
+                className={`inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-[10px] font-medium transition-colors cursor-pointer ${
+                  isHub
+                    ? "border-white/12 bg-white/[0.05] text-white/80 hover:bg-white/[0.1] hover:text-white"
+                    : "border-border bg-muted/50 text-foreground hover:bg-muted"
+                }`}
+              >
+                <span>Last result</span>
+              </button>
+            )}
+
+            <button
+              type="button"
+              onClick={() => setIsOpen(false)}
+              className={`rounded-lg p-1.5 transition-colors cursor-pointer ${
+                isHub
+                  ? "text-white/50 hover:bg-white/[0.08] hover:text-white"
+                  : "text-muted-foreground hover:bg-muted hover:text-foreground"
+              }`}
+              title="Close (Esc)"
+              aria-label="Close SmartTrack Assistant"
+            >
+              <X size={15} />
+            </button>
+          </div>
+        </form>
+
+        {/* Single-line keyboard predictive bar directly beneath Spotlight input when typing */}
+        {hasQuery && predictiveState.suggestions.length > 0 && (
+          <div
+            className={`shrink-0 border-b px-3.5 py-1.5 flex items-center gap-2 ${
+              predictiveState.outOfScope
+                ? isHub
+                  ? "border-amber-400/20 bg-amber-500/[0.07]"
+                  : "border-amber-500/25 bg-amber-500/[0.07]"
+                : isHub
+                ? "border-white/[0.07] bg-white/[0.02]"
+                : "border-border/70 bg-muted/30"
+            }`}
+          >
+            {predictiveState.outOfScope && (
+              <span className={`inline-flex shrink-0 items-center gap-1 text-[10px] font-medium ${isHub ? "text-amber-200" : "text-amber-700 dark:text-amber-300"}`}>
+                <ShieldAlert size={11} />
+                <span>Not supported:</span>
+              </span>
+            )}
+            <div className="flex flex-1 items-center gap-1.5 overflow-x-auto scrollbar-none">
+              {predictiveState.suggestions.map((s, idx) => (
+                <button
+                  key={idx}
+                  type="button"
+                  onMouseDown={e => e.preventDefault()}
+                  onClick={() => activateChip(s)}
+                  className={`inline-flex shrink-0 items-center gap-1 rounded-full border px-2.5 py-0.5 text-[10px] font-medium transition-colors cursor-pointer ${
+                    isHub
+                      ? "border-white/12 bg-white/[0.05] text-white/90 hover:border-blue-400/45 hover:bg-blue-500/20"
+                      : "border-border bg-card text-foreground hover:border-primary/40 hover:text-primary"
+                  }`}
+                >
+                  <span className="truncate max-w-[220px]">{s.label}</span>
+                  {idx === 0 && !predictiveState.outOfScope && !predictiveState.showNoMatchHint && (
+                    <span className="hidden sm:inline text-[8.5px] font-mono opacity-45">⇥</span>
+                  )}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Shopee-style floating rotating notice & example carousel banner */}
+        {showingCommands && (
+          <div
+            onMouseEnter={() => setIsPromptPaused(true)}
+            onMouseLeave={() => setIsPromptPaused(false)}
+            className="mx-3.5 mt-2.5 shrink-0"
+          >
+            <div
+              onClick={() => {
+                if (activeBanner.cmd) handleCommand(activeBanner.cmd);
+                else if (activeBanner.prefill) prefillCommand(activeBanner.prefill);
+              }}
+              className={`flex items-center justify-between gap-2 rounded-xl border px-3 py-1.5 shadow-sm transition-colors ${
+                activeBanner.cmd || activeBanner.prefill ? "cursor-pointer" : ""
+              } ${
+                activeBanner.kind === "limit"
+                  ? isHub
+                    ? "border-amber-400/20 bg-amber-500/[0.08] text-amber-100/90"
+                    : "border-amber-500/25 bg-amber-500/[0.08] text-amber-800 dark:text-amber-200"
+                  : isHub
+                  ? "border-white/[0.08] bg-white/[0.04] text-white/85 hover:border-blue-400/35 hover:bg-white/[0.07]"
+                  : "border-border bg-muted/40 text-foreground hover:border-primary/35"
+              }`}
+            >
+              <div className="flex min-w-0 flex-1 items-center gap-2">
+                {activeBanner.kind === "limit" ? (
+                  <ShieldAlert size={12} className={`shrink-0 ${isHub ? "text-amber-300" : "text-amber-600 dark:text-amber-400"}`} />
+                ) : (
+                  <Sparkles size={12} className={`shrink-0 ${isHub ? "text-blue-400" : "text-primary"}`} />
+                )}
+                <span
+                  className={`min-w-0 flex-1 truncate text-[10.5px] font-medium transition-all duration-150 ${
+                    promptFading ? "opacity-0 -translate-y-0.5" : "opacity-100 translate-y-0"
+                  }`}
+                >
+                  {activeBanner.text}
+                </span>
+              </div>
+              <div className="flex shrink-0 items-center gap-2">
+                {(activeBanner.cmd || activeBanner.prefill) && (
+                  <span className={`text-[9.5px] font-semibold ${isHub ? "text-blue-300" : "text-primary"}`}>
+                    Run ↵
+                  </span>
+                )}
+                <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
+                  {bannerSlides.map((_, idx) => (
+                    <button
+                      key={idx}
+                      type="button"
+                      onClick={() => setPromptIndex(idx)}
+                      aria-label={`Banner ${idx + 1}`}
+                      className={`h-1 rounded-full transition-all cursor-pointer ${
+                        idx === promptIndex % bannerSlides.length
+                          ? isHub
+                            ? "w-2.5 bg-white/80"
+                            : "w-2.5 bg-foreground/70"
+                          : isHub
+                          ? "w-1 bg-white/25 hover:bg-white/45"
+                          : "w-1 bg-muted-foreground/30 hover:bg-muted-foreground/50"
+                      }`}
+                    />
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Main Spotlight Body: Live Filtered Matches / Inspector Result Card / Idle Commands & Lookups */}
+        <div
+          className={`flex-1 overflow-y-auto px-3.5 py-2.5 ${
+            isHub ? "bg-transparent" : "bg-muted/[0.12]"
+          }`}
+        >
+          {hasQuery ? (
+            <div className="space-y-2">
+              {liveSpotlightMatches.length > 0 ? (
+                <div
+                  className={`overflow-hidden rounded-xl border divide-y ${
+                    isHub
+                      ? "border-white/[0.08] bg-white/[0.02] divide-white/[0.06]"
+                      : "border-border bg-card divide-border/70"
+                  }`}
+                >
+                  {liveSpotlightMatches.map((item, idx) => {
+                    const isHighlighted = idx === highlightedIndex;
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onMouseEnter={() => setHighlightedIndex(idx)}
+                        onClick={() => handleCommand(item.cmd)}
+                        className={`flex w-full items-center justify-between gap-3 px-3 py-2 text-left transition-colors cursor-pointer ${
+                          isHighlighted
+                            ? isHub
+                              ? "bg-blue-600/20 text-white"
+                              : "bg-primary/10 text-foreground"
+                            : isHub
+                            ? "hover:bg-white/[0.05] text-white/90"
+                            : "hover:bg-muted/60 text-foreground"
+                        }`}
+                      >
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-xs font-medium">{item.label}</p>
+                          <p className={`truncate text-[10px] ${isHub ? "text-white/45" : "text-muted-foreground"}`}>
+                            {item.meta}
+                          </p>
+                        </div>
+                        <span
+                          className={`shrink-0 rounded-md border px-1.5 py-0.5 text-[9px] font-medium ${
+                            item.kind === "command"
+                              ? isHub
+                                ? "border-blue-400/25 bg-blue-500/15 text-blue-200"
+                                : "border-primary/25 bg-primary/10 text-primary"
+                              : item.kind === "product"
+                              ? isHub
+                                ? "border-emerald-400/25 bg-emerald-500/15 text-emerald-200"
+                                : "border-emerald-500/25 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+                              : isHub
+                              ? "border-white/10 bg-white/[0.05] text-white/60"
+                              : "border-border bg-muted text-muted-foreground"
+                          }`}
+                        >
+                          {item.tag}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div
+                  className={`rounded-xl border px-3.5 py-4 text-center ${
+                    isHub ? "border-white/[0.08] bg-white/[0.02]" : "border-border bg-card"
+                  }`}
+                >
+                  <p className={`text-xs font-medium ${isHub ? "text-white/80" : "text-foreground"}`}>
+                    {predictiveState.outOfScope
+                      ? "Direct pharmacy commands & live records only"
+                      : "Press Enter to query, or try keywords below"}
+                  </p>
+                  <p className={`mt-1 text-[10.5px] ${isHub ? "text-white/45" : "text-muted-foreground"}`}>
+                    {predictiveState.outOfScope
+                      ? "Does not answer medical/dosage questions or general AI chat."
+                      : "Supported: open [page], new sale, stock [item], sales [month], if i sold [qty], forecast"}
+                  </p>
+                </div>
+              )}
+            </div>
+          ) : showingInspector && activeResultCard ? (
+            <div className="space-y-2.5">
+              {/* Breadcrumb & Recent inspector switcher */}
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex min-w-0 items-center gap-1.5 text-[10.5px]">
+                  <span className={`font-mono truncate max-w-[280px] ${isHub ? "text-white/55" : "text-muted-foreground"}`}>
+                    &ldquo;{activeResultCard.queryText}&rdquo;
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMessages([]);
+                    setSelectedResultId(null);
+                    setShowGuide(true);
+                  }}
+                  className={`inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] transition-colors cursor-pointer ${
+                    isHub ? "text-white/45 hover:bg-white/[0.08] hover:text-white" : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                  }`}
+                >
+                  <RotateCcw size={10} />
+                  <span>Clear</span>
+                </button>
+              </div>
+
+              {/* Apple Quick Look Inspector Card */}
+              <div
+                className={`rounded-xl border p-3.5 ${
+                  isHub ? "border-white/[0.1] bg-white/[0.03]" : "border-border bg-card shadow-xs"
+                }`}
+              >
+                <p className={`whitespace-pre-line text-xs leading-relaxed ${isHub ? "text-white/95" : "text-foreground"}`}>
+                  {renderFormattedText(activeResultCard.result.text)}
+                </p>
+
+                {activeResultCard.result.details && activeResultCard.result.details.length > 0 && (
+                  <div
+                    className={`mt-3 overflow-hidden rounded-lg border divide-y ${
+                      isHub
+                        ? "border-white/[0.08] bg-black/30 divide-white/[0.06]"
+                        : "border-border/80 bg-muted/25 divide-border/60"
+                    }`}
+                  >
+                    {activeResultCard.result.details.map((d, i) => (
+                      <div key={i} className="flex items-center justify-between gap-3 px-3 py-1.5 text-[11px]">
+                        <span className={isHub ? "text-white/55" : "text-muted-foreground"}>{d.label}</span>
+                        <span className={`font-semibold tabular-nums text-right ${isHub ? "text-white" : "text-foreground"}`}>
+                          {d.value}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <div className="mt-3 flex flex-wrap items-center gap-1.5">
+                  {activeResultCard.result.onAction && (
+                    <button
+                      type="button"
+                      onClick={activeResultCard.result.onAction}
+                      className={`inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold transition-colors cursor-pointer ${
+                        isHub
+                          ? "bg-blue-600 text-white hover:bg-blue-500"
+                          : "bg-primary text-primary-foreground hover:bg-primary/90"
+                      }`}
+                    >
+                      <span>{activeResultCard.result.actionLabel}</span>
+                      <ChevronRight size={12} />
+                    </button>
+                  )}
+
+                  {activeResultCard.result.suggestions?.map((s, idx) => (
+                    <button
+                      key={idx}
+                      type="button"
+                      onClick={() => activateChip(s)}
+                      className={`inline-flex items-center gap-1 rounded-lg border px-2.5 py-1 text-[10px] font-medium transition-colors cursor-pointer ${
+                        isHub
+                          ? "border-white/12 bg-white/[0.05] text-white/85 hover:border-blue-400/45 hover:bg-blue-500/20"
+                          : "border-border bg-muted/40 text-foreground hover:border-primary/40 hover:text-primary"
+                      }`}
+                    >
+                      <CornerDownRight size={10} className="opacity-60" />
+                      <span>{s.label}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {resultCards.length > 1 && (
+                <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                  <span className={`text-[9.5px] uppercase tracking-wider ${isHub ? "text-white/35" : "text-muted-foreground"}`}>
+                    Recent:
+                  </span>
+                  {resultCards.slice(-4, -1).reverse().map(card => (
+                    <button
+                      key={card.id}
+                      type="button"
+                      onClick={() => {
+                        setSelectedResultId(card.id);
+                        setShowGuide(false);
+                      }}
+                      className={`max-w-[140px] truncate rounded-md border px-2 py-0.5 text-[10px] transition-colors cursor-pointer ${
+                        card.id === activeResultCard.id
+                          ? isHub
+                            ? "border-blue-400/40 bg-blue-500/20 text-blue-200"
+                            : "border-primary/40 bg-primary/10 text-primary"
+                          : isHub
+                          ? "border-white/10 bg-white/[0.03] text-white/60 hover:text-white"
+                          : "border-border bg-card text-muted-foreground hover:text-foreground"
+                      }`}
+                    >
+                      {card.queryText}
+                    </button>
                   ))}
                 </div>
               )}
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {/* Section 1: Actual System Commands (POS, Add Product, Pages) */}
+              <div>
+                <div className="mb-1.5 flex items-center justify-between px-0.5">
+                  <span className={`text-[9.5px] font-semibold uppercase tracking-[0.08em] ${isHub ? "text-white/45" : "text-muted-foreground"}`}>
+                    Commands · Jump &amp; Run
+                  </span>
+                  <span className={`text-[9px] ${isHub ? "text-white/30" : "text-muted-foreground"}`}>
+                    Type page name or command
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
+                  {navCommands.slice(0, 6).map(item => (
+                    <button
+                      key={item.cmd}
+                      type="button"
+                      onClick={() => handleCommand(item.cmd)}
+                      className={`group flex items-center justify-between gap-2 rounded-xl border px-2.5 py-2 text-left transition-colors cursor-pointer ${
+                        isHub
+                          ? "border-white/[0.08] bg-white/[0.03] hover:border-blue-400/35 hover:bg-white/[0.07]"
+                          : "border-border bg-card hover:border-primary/35 hover:bg-muted/50"
+                      }`}
+                    >
+                      <span className={`truncate text-[11px] font-medium ${isHub ? "text-white/90 group-hover:text-white" : "text-foreground"}`}>
+                        {item.label}
+                      </span>
+                      <span
+                        className={`shrink-0 rounded px-1 py-0.5 text-[8.5px] font-medium ${
+                          isHub ? "bg-white/[0.06] text-white/45" : "bg-muted text-muted-foreground"
+                        }`}
+                      >
+                        {item.tag}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
 
-              {m.onAction && (
-                <button
-                  type="button"
-                  onClick={m.onAction}
-                  className={`mt-2.5 inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[11px] font-semibold transition-all active:scale-95 cursor-pointer ${
+              {/* Section 2: Direct Live Lookups */}
+              <div>
+                <div className="mb-1.5 flex items-center justify-between px-0.5">
+                  <span className={`text-[9.5px] font-semibold uppercase tracking-[0.08em] ${isHub ? "text-white/45" : "text-muted-foreground"}`}>
+                    Live Lookups · Pharmacy Data
+                  </span>
+                  <span className={`text-[9px] font-mono ${isHub ? "text-white/30" : "text-muted-foreground"}`}>
+                    syntax hints
+                  </span>
+                </div>
+                <div
+                  className={`overflow-hidden rounded-xl border divide-y ${
                     isHub
-                      ? "border-blue-400/40 bg-blue-500/20 text-blue-200 hover:bg-blue-500/30"
-                      : "border-primary/25 bg-primary/12 text-primary hover:bg-primary/20"
+                      ? "border-white/[0.08] bg-white/[0.02] divide-white/[0.06]"
+                      : "border-border bg-card divide-border/70"
                   }`}
                 >
-                  <span>{m.actionLabel}</span>
-                </button>
-              )}
+                  {lookupRows.map(row => {
+                    const RowIcon = row.icon;
+                    return (
+                      <button
+                        key={row.cmd}
+                        type="button"
+                        onClick={() => handleCommand(row.cmd)}
+                        className={`group flex w-full items-center justify-between gap-3 px-3 py-2 text-left transition-colors cursor-pointer ${
+                          isHub ? "hover:bg-white/[0.05]" : "hover:bg-muted/60"
+                        }`}
+                      >
+                        <span className="flex min-w-0 items-center gap-2.5">
+                          <RowIcon
+                            size={13}
+                            className={`shrink-0 transition-colors ${
+                              isHub ? "text-white/45 group-hover:text-blue-400" : "text-muted-foreground group-hover:text-primary"
+                            }`}
+                          />
+                          <span className={`truncate text-xs font-medium ${isHub ? "text-white/90 group-hover:text-white" : "text-foreground"}`}>
+                            {row.label}
+                          </span>
+                        </span>
+                        <span className="flex shrink-0 items-center gap-2">
+                          {row.liveBadge && (
+                            <span
+                              className={`hidden sm:inline rounded px-1.5 py-0.5 text-[9px] font-medium tabular-nums ${
+                                isHub ? "bg-emerald-500/15 text-emerald-300" : "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+                              }`}
+                            >
+                              {row.liveBadge}
+                            </span>
+                          )}
+                          <span className={`font-mono text-[9.5px] ${isHub ? "text-white/35 group-hover:text-white/55" : "text-muted-foreground"}`}>
+                            {row.hint}
+                          </span>
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
             </div>
-          </div>
-        ))}
-
-        {loading && (
-          <div className="flex items-center gap-2.5 pl-1 text-[11px]">
-            <SmartBotMascot className="h-7 w-7" floating={isOpen} />
-            <span
-              className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 ${
-                isHub
-                  ? "border-white/10 bg-white/[0.06] text-white/70"
-                  : "border-border bg-card text-muted-foreground"
-              }`}
-            >
-              <LoaderCircle size={12} className={`animate-spin ${isHub ? "text-blue-400" : "text-primary"}`} />
-              Checking pharmacy data…
-            </span>
-          </div>
-        )}
-        <div ref={chatBottomRef} />
-      </div>
-
-      {/* Input */}
-      <form
-        onSubmit={e => {
-          e.preventDefault();
-          handleCommand(query);
-        }}
-        className={`flex shrink-0 flex-col gap-2 border-t p-3 ${
-          isHub ? "border-white/[0.08] bg-[#0a0a0a]" : "border-border bg-card"
-        }`}
-      >
-        <div className="flex items-center gap-2">
-          <div className="relative flex-1">
-            <input
-              ref={inputRef}
-              type="text"
-              value={query}
-              onChange={e => setQuery(e.target.value)}
-              placeholder="Ask about stock, sales, or a task…"
-              className={`w-full rounded-xl border px-3.5 py-2.5 pr-8 text-xs transition-colors focus:outline-none focus:ring-2 ${
-                isHub
-                  ? "border-white/10 bg-white/[0.06] text-white placeholder:text-white/40 focus:border-blue-500 focus:ring-blue-500/20"
-                  : "border-border bg-background text-foreground placeholder:text-muted-foreground focus:border-primary focus:ring-primary/20"
-              }`}
-            />
-            {query && (
-              <button
-                type="button"
-                onClick={() => setQuery("")}
-                className={`absolute right-2.5 top-1/2 -translate-y-1/2 cursor-pointer ${
-                  isHub ? "text-white/40 hover:text-white" : "text-muted-foreground hover:text-foreground"
-                }`}
-                aria-label="Clear message"
-              >
-                <X size={12} />
-              </button>
-            )}
-          </div>
-          <button
-            type="submit"
-            disabled={!query.trim() || loading}
-            className={`flex items-center gap-1.5 rounded-xl px-3.5 py-2.5 text-xs font-semibold shadow-sm transition-colors disabled:opacity-40 cursor-pointer ${
-              isHub
-                ? "bg-blue-600 text-white hover:bg-blue-500"
-                : "bg-primary text-primary-foreground hover:bg-primary/90"
-            }`}
-          >
-            <span>Send</span>
-            <CornerDownLeft size={13} />
-          </button>
+          )}
         </div>
+
+        {/* Quiet Spotlight Footer */}
         <div
-          className={`flex items-center justify-between px-1 text-[9px] ${
-            isHub ? "text-white/40" : "text-muted-foreground"
+          className={`flex shrink-0 items-center justify-between border-t px-3.5 py-2 text-[9.5px] ${
+            isHub ? "border-white/[0.08] bg-[#0a0a0a] text-white/35" : "border-border bg-card text-muted-foreground"
           }`}
         >
-          <span>Rule-based · Pharmacy data only</span>
+          <span>↑↓ select · Tab fill · ↵ run · English, Bisaya, Tagalog</span>
           <span>
             <kbd
               className={`rounded border px-1 font-mono ${
@@ -1001,12 +1832,12 @@ const CommandAssistant = memo(function CommandAssistant({
             >
               Esc
             </kbd>{" "}
-            to close
+            close
           </span>
         </div>
-      </form>
-    </div>
-  );
+      </div>
+    );
+  };
 
   // When rendered inside TrackHub Dynamic Island, mount directly inside the expanded island pill
   if (mode === "trackhub") {
@@ -1057,14 +1888,14 @@ const CommandAssistant = memo(function CommandAssistant({
             aria-modal="true"
             aria-label="SmartTrack Assistant"
           >
-            {/* Click outside to close — clear backdrop, no dark overlay */}
+            {/* Click outside to close — clean non-blur dim backdrop for crisp contrast */}
             <div
-              className="fixed inset-0"
+              className="fixed inset-0 bg-black/25 dark:bg-black/45"
               onClick={() => setIsOpen(false)}
             />
 
             {/* Panel */}
-            <div className="relative z-10 w-full max-w-lg h-[min(90dvh,600px)] shadow-2xl">
+            <div className="relative z-10 w-full max-w-lg h-[min(85dvh,420px)] shadow-2xl">
               {renderContent(false)}
             </div>
           </div>,

@@ -146,7 +146,7 @@ export function ConfirmDialog({
     <div data-st-confirm="true" className="fixed inset-0 z-[9999] flex items-center justify-center p-4">
       {/* Clean backdrop without blur */}
       <div className="absolute inset-0 bg-black/40 st-overlay-in" onClick={onCancel} />
-      <div className="relative bg-card border border-border rounded-2xl shadow-2xl w-full max-w-sm p-6 text-center space-y-4 st-modal-in">
+      <div data-st-modal-panel="true" className="relative bg-card border border-border rounded-2xl shadow-2xl w-full max-w-sm p-6 text-center space-y-4 st-modal-in">
         <div className={`w-14 h-14 rounded-full flex items-center justify-center mx-auto ${colors.ring}`}>
           {icon ?? <AlertTriangle size={26} className={colors.dot} />}
         </div>
@@ -565,7 +565,7 @@ export function InfoTip({
             left: `${coords.left}px`,
             zIndex: 99999,
           }}
-          className="font-sans antialiased w-[min(21rem,calc(100vw-2rem))] rounded-2xl border border-border/80 bg-card p-4 space-y-3 shadow-[0_18px_48px_-12px_rgba(15,23,42,0.22),0_4px_16px_-4px_rgba(15,23,42,0.08)] dark:shadow-[0_20px_54px_-12px_rgba(0,0,0,0.68)] st-dropdown-in text-left"
+          className="st-glass-popover font-sans antialiased w-[min(21rem,calc(100vw-2rem))] rounded-2xl border border-border/80 bg-card p-4 space-y-3 shadow-[0_18px_48px_-12px_rgba(15,23,42,0.22),0_4px_16px_-4px_rgba(15,23,42,0.08)] dark:shadow-[0_20px_54px_-12px_rgba(0,0,0,0.68)] st-dropdown-in text-left"
         >
           <div className="flex items-center justify-between gap-2.5 pb-2.5 border-b border-border/50">
             <div className="flex items-center gap-2 min-w-0">
@@ -601,7 +601,7 @@ export function InfoTip({
               ) : (
                 <div
                   key={i}
-                  className="rounded-xl border border-border/60 bg-muted/35 dark:bg-white/[0.04] divide-y divide-border/50 overflow-hidden"
+                  className="st-glass-inset rounded-xl border border-border/60 bg-muted/35 dark:bg-white/[0.04] divide-y divide-border/50 overflow-hidden"
                 >
                   {seg.rows.map((row, j) => {
                     const isCompact =
@@ -909,8 +909,8 @@ export function Modal({
   return (
     <div ref={modalRef} data-st-modal="true" className="fixed inset-0 z-50 flex items-start justify-center p-4 pt-16 sm:items-center sm:pt-4">
       <div className="absolute inset-0 bg-black/50 st-overlay-in" onClick={closeOnOverlay ? onClose : undefined} />
-      <div className={`relative bg-card border border-border/80 ring-1 ring-black/[0.04] dark:ring-white/[0.08] rounded-2xl shadow-[0_24px_60px_-15px_rgba(15,23,42,0.22),0_10px_25px_-5px_rgba(0,0,0,0.08)] w-full ${maxWidthClass ?? (wide ? compact ? "max-w-4xl" : "max-w-6xl" : "max-w-md")} max-h-[90vh] flex flex-col overflow-hidden st-modal-in`}>
-        <div className="flex items-center justify-between px-6 py-4 border-b border-border/60 flex-shrink-0 bg-card">
+      <div data-st-modal-panel="true" className={`relative bg-card border border-border/80 ring-1 ring-black/[0.04] dark:ring-white/[0.08] rounded-2xl shadow-[0_24px_60px_-15px_rgba(15,23,42,0.22),0_10px_25px_-5px_rgba(0,0,0,0.08)] w-full ${maxWidthClass ?? (wide ? compact ? "max-w-4xl" : "max-w-6xl" : "max-w-md")} max-h-[90vh] flex flex-col overflow-hidden st-modal-in`}>
+        <div data-st-modal-header="true" className="flex items-center justify-between px-6 py-4 border-b border-border/60 flex-shrink-0 bg-card">
           <h2 className="text-sm font-bold text-foreground">{title}</h2>
           {!hideCloseButton && (
             <button
@@ -1161,7 +1161,7 @@ export function NotificationPanel({
   const noUnread = filter === "unread" && unreadCount === 0;
 
   return (
-    <div ref={ref} role="dialog" aria-label="Notifications" className="absolute right-0 top-full mt-2 w-[min(24rem,calc(100vw-2rem))] bg-card border border-border rounded-2xl shadow-[0_20px_50px_-10px_rgba(15,23,42,0.18),0_10px_20px_-5px_rgba(0,0,0,0.08)] overflow-hidden st-dropdown-in" style={{ zIndex: 200 }}>
+    <div ref={ref} role="dialog" aria-label="Notifications" className="st-glass-popover absolute right-0 top-full mt-2 w-[min(24rem,calc(100vw-2rem))] bg-card border border-border rounded-2xl shadow-[0_20px_50px_-10px_rgba(15,23,42,0.18),0_10px_20px_-5px_rgba(0,0,0,0.08)] overflow-hidden st-dropdown-in" style={{ zIndex: 200 }}>
       <div className="flex items-center justify-between gap-3 px-4 py-3">
         <div className="min-w-0">
           <p className="text-sm font-semibold tracking-tight text-foreground">Notifications</p>

@@ -776,16 +776,16 @@ const DashboardView = memo(function DashboardView({ user, inventory, transaction
   const isCashier = hasUserRole(user, "cashier");
 
   return (
-    <div className="flex flex-col w-full overflow-hidden" style={{ height: "calc(100dvh - 56px)" }}>
+    <div className="st-page-shell flex flex-col w-full overflow-hidden" style={{ height: "calc(100dvh - 56px)" }}>
       {/* Fixed Header — same for all roles */}
-      <div className="flex-shrink-0 st-shell-px pt-4 sm:pt-5 pb-3 bg-background border-b border-border/60 z-20">
+      <div className="st-page-header flex-shrink-0 st-shell-px pt-4 sm:pt-5 pb-3 bg-background border-b border-border/60 z-20">
         <h1 className="text-xl font-bold text-foreground">Dashboard</h1>
         <p className="text-sm text-muted-foreground mt-0.5">
           {greeting(user)} {roleSub(isAdmin ? "admin" : isInventoryManager ? "inventory_manager" : "cashier")}
         </p>
       </div>
 
-      <div className="flex-1 min-h-0 overflow-y-auto st-shell-px py-5 space-y-5" data-table-scroll="fixed">
+      <div className="st-page-scroll-body flex-1 min-h-0 overflow-y-auto st-shell-px py-5 space-y-5" data-table-scroll="fixed">
         {isAdmin && <AdminDashboard computed={computed} />}
         {!isAdmin && isInventoryManager && <InventoryManagerDashboard computed={computed} />}
         {!isAdmin && !isInventoryManager && isCashier && <CashierDashboard user={user} computed={computed} summary={cashierDashboard} />}

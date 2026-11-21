@@ -104,10 +104,10 @@ const StockAlertsPage = memo(function StockAlertsPage({
   }), [expiryProducts, expiryStatusFilter, expirySearch]);
 
   return (
-    <div className="flex flex-col w-full overflow-hidden" style={{ height: "calc(100dvh - 56px)" }}>
+    <div className="st-page-shell flex flex-col w-full overflow-hidden" style={{ height: "calc(100dvh - 56px)" }}>
 
       {/* ── Fixed header ── */}
-      <div className="flex-shrink-0 st-shell-px pt-5 sm:pt-7 pb-0 bg-background border-b border-border/70 z-20">
+      <div className="st-page-header flex-shrink-0 st-shell-px pt-5 sm:pt-7 pb-0 bg-background border-b border-border/70 z-20">
         <div className="flex items-start sm:items-center justify-between gap-3">
           <div>
             <div className="flex items-center gap-2">
@@ -167,7 +167,7 @@ const StockAlertsPage = memo(function StockAlertsPage({
       </div>
 
       {/* ── Fixed workspace content (only table scrolls) ── */}
-      <div className="flex-1 min-h-0 flex flex-col st-shell-px py-5 gap-4 overflow-hidden">
+      <div className="st-page-fixed-body flex-1 min-h-0 flex flex-col st-shell-px py-5 gap-4 overflow-hidden">
 
       {/* ── Stock Levels tab ──────────────────────────────────────────────── */}
       {activeTab === "stock" && (

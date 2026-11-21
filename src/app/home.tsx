@@ -5,7 +5,7 @@ import {
   Moon, Sun, Settings, BellRing, ClipboardList, Landmark,
   X, RefreshCw, ClipboardCheck, Truck,
   ChevronDown, ChevronLeft, ChevronRight, Menu, Activity, Trash2, AlertTriangle, Bot, Info, Maximize2,
-  Database, Plus, Check, PanelLeft, Type, Rows3, Sparkles, Palette,
+  Database, Plus, Check, PanelLeft, Type, Rows3, Sparkles, Palette, LogIn,
 } from "lucide-react";
 import {
   FONT_SCALE_OPTIONS,
@@ -20,6 +20,7 @@ import {
   saveMutedColors,
   readShowAlertOrb,
   saveShowAlertOrb,
+  applyUiStyle,
   applyDisplayPreferences,
   type FontScale,
   type TableDensity,
@@ -65,8 +66,21 @@ const TRACKHUB_TILE_STYLE = {
   icon: "text-blue-400 group-hover:text-blue-300",
 } as const;
 
-const SETTINGS_ROW_ICON_CLASS =
-  "flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg bg-foreground/[0.06] text-foreground/75";
+const SETTINGS_ROW_ICON_BASE =
+  "flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg border";
+
+const SETTINGS_ICON_TONES = {
+  amber: "border-amber-500/15 bg-amber-500/10 text-amber-600 dark:border-amber-400/20 dark:bg-amber-400/12 dark:text-amber-400",
+  blue: "border-blue-500/15 bg-blue-500/10 text-blue-600 dark:border-blue-400/20 dark:bg-blue-400/12 dark:text-blue-400",
+  indigo: "border-indigo-500/15 bg-indigo-500/10 text-indigo-600 dark:border-indigo-400/20 dark:bg-indigo-400/12 dark:text-indigo-400",
+  violet: "border-violet-500/15 bg-violet-500/10 text-violet-600 dark:border-violet-400/20 dark:bg-violet-400/12 dark:text-violet-400",
+  slate: "border-slate-500/15 bg-slate-500/10 text-slate-600 dark:border-slate-400/20 dark:bg-slate-400/12 dark:text-slate-300",
+  rose: "border-rose-500/15 bg-rose-500/10 text-rose-600 dark:border-rose-400/20 dark:bg-rose-400/12 dark:text-rose-400",
+  emerald: "border-emerald-500/15 bg-emerald-500/10 text-emerald-600 dark:border-emerald-400/20 dark:bg-emerald-400/12 dark:text-emerald-400",
+} as const;
+
+const settingsIconClass = (tone: keyof typeof SETTINGS_ICON_TONES) =>
+  `${SETTINGS_ROW_ICON_BASE} ${SETTINGS_ICON_TONES[tone]}`;
 
 function SettingsSwitch({
   checked,
@@ -99,12 +113,22 @@ function SettingsSwitch({
 
 const TrackHubMiniaturePreview = memo(function TrackHubMiniaturePreview({ userInitials }: { userInitials: string }) {
   return (
-    <div className="relative w-full aspect-[16/10] rounded-xl overflow-hidden border border-border/80 bg-[#f8fafc] dark:bg-[#0b1220] shadow-xs pointer-events-none select-none">
-      {/* Actual TrackHub Topbar */}
-      <div className="relative h-8 border-b border-slate-200/90 dark:border-slate-800 bg-white dark:bg-[#111827] px-2 flex items-center justify-between">
+    <div
+      className="relative w-full aspect-[16/10] rounded-xl overflow-hidden border border-sky-200/80 dark:border-sky-400/20 shadow-xs pointer-events-none select-none"
+      style={{
+        backgroundImage:
+          "radial-gradient(at 15% 10%, rgba(147,197,253,0.45) 0px, transparent 55%), radial-gradient(at 88% 14%, rgba(165,243,252,0.4) 0px, transparent 52%), radial-gradient(at 50% 95%, rgba(199,210,254,0.35) 0px, transparent 58%), linear-gradient(180deg, #edf4fc 0%, #e4edf8 100%)",
+      }}
+    >
+      <div className="hidden dark:block absolute inset-0" style={{
+        backgroundImage:
+          "radial-gradient(at 15% 10%, rgba(56,189,248,0.22) 0px, transparent 55%), radial-gradient(at 88% 14%, rgba(99,102,241,0.22) 0px, transparent 52%), linear-gradient(180deg, #070f1f 0%, #050a14 100%)",
+      }} />
+      {/* Frosted Modern Topbar */}
+      <div className="relative h-8 border-b border-white/75 dark:border-white/12 bg-white/65 dark:bg-slate-900/65 px-2 flex items-center justify-between" style={{ boxShadow: "inset 0 1px 0 rgba(255,255,255,0.85)" }}>
         <div className="flex items-center gap-1 min-w-0">
           <img src={SMARTTRACK_LOGO_URL} alt="" className="w-3.5 h-3.5 object-contain flex-shrink-0" />
-          <span className="flex h-3.5 w-3.5 items-center justify-center rounded-full border border-blue-500/45 bg-slate-50 dark:bg-slate-900">
+          <span className="flex h-3.5 w-3.5 items-center justify-center rounded-full border border-blue-500/45 bg-white/80 dark:bg-slate-900/80">
             <Search size={6.5} className="text-blue-500" />
           </span>
         </div>
@@ -112,10 +136,10 @@ const TrackHubMiniaturePreview = memo(function TrackHubMiniaturePreview({ userIn
         {/* Centered Obsidian TrackHub Pill + Separated Store Monitor Orb */}
         <div className="absolute left-1/2 -translate-x-1/2 flex items-center gap-1">
           <div
-            className="flex items-center gap-1 rounded-full bg-black border border-white/20 px-1.5 py-0.5 shadow-md"
-            style={{ boxShadow: "inset 0 1px 0 rgba(255,255,255,0.28), 0 3px 10px rgba(0,0,0,0.3)" }}
+            className="flex items-center gap-1 rounded-full bg-black/90 border border-white/25 px-1.5 py-0.5 shadow-md"
+            style={{ boxShadow: "inset 0 1px 0 rgba(255,255,255,0.32), 0 3px 10px rgba(0,0,0,0.3)" }}
           >
-            <span className="flex items-center gap-0.5 rounded-full bg-white/[0.1] px-1 py-0.5 text-[6px] font-semibold text-white/90">
+            <span className="flex items-center gap-0.5 rounded-full bg-white/[0.12] px-1 py-0.5 text-[6px] font-semibold text-white/90">
               <Bot size={7} className="text-blue-300" />
               <span>Assistant</span>
             </span>
@@ -131,8 +155,8 @@ const TrackHubMiniaturePreview = memo(function TrackHubMiniaturePreview({ userIn
 
           {/* Detached Store Stock Monitor Orb */}
           <div
-            className="flex items-center gap-0.5 rounded-full bg-black border border-white/20 px-1.5 py-1 shadow-md"
-            style={{ boxShadow: "inset 0 1px 0 rgba(255,255,255,0.25), 0 3px 8px rgba(0,0,0,0.25)" }}
+            className="flex items-center gap-0.5 rounded-full bg-black/90 border border-white/25 px-1.5 py-1 shadow-md"
+            style={{ boxShadow: "inset 0 1px 0 rgba(255,255,255,0.28), 0 3px 8px rgba(0,0,0,0.25)" }}
           >
             <AlertTriangle size={6.5} className="text-rose-400" />
             <span className="text-[6px] font-bold text-rose-300 leading-none">Stock · 4</span>
@@ -140,7 +164,7 @@ const TrackHubMiniaturePreview = memo(function TrackHubMiniaturePreview({ userIn
         </div>
 
         <div className="flex items-center gap-1">
-          <span className="w-3 h-3 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center">
+          <span className="w-3 h-3 rounded-full bg-white/70 dark:bg-slate-800/80 flex items-center justify-center">
             <Bell size={6} className="text-slate-500" />
           </span>
           <span className="w-3.5 h-3.5 rounded-full bg-blue-500/15 text-blue-600 dark:text-blue-300 flex items-center justify-center text-[5.5px] font-bold">
@@ -149,14 +173,14 @@ const TrackHubMiniaturePreview = memo(function TrackHubMiniaturePreview({ userIn
         </div>
       </div>
 
-      {/* Full-Width Workspace Canvas Below */}
-      <div className="p-2.5 space-y-2 h-[calc(100%-2rem)] flex flex-col">
+      {/* Full-Width Frosted Glass Workspace Canvas Below */}
+      <div className="relative p-2.5 space-y-2 h-[calc(100%-2rem)] flex flex-col">
         <div className="flex items-center justify-between">
           <div className="space-y-1">
             <div className="h-2 w-20 rounded bg-slate-800/80 dark:bg-slate-200/80" />
-            <div className="h-1 w-28 rounded bg-slate-300 dark:bg-slate-700" />
+            <div className="h-1 w-28 rounded bg-slate-400/60 dark:bg-slate-600" />
           </div>
-          <div className="h-3 w-12 rounded-md bg-blue-600/90" />
+          <div className="h-3 w-12 rounded-full bg-blue-600/90 shadow-xs" />
         </div>
         <div className="grid grid-cols-3 gap-1.5">
           {[
@@ -164,25 +188,35 @@ const TrackHubMiniaturePreview = memo(function TrackHubMiniaturePreview({ userIn
             { accent: "bg-emerald-500", w: "w-12" },
             { accent: "bg-amber-500", w: "w-9" },
           ].map((c, idx) => (
-            <div key={idx} className="rounded-lg border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-[#111827] p-1.5 space-y-1">
+            <div
+              key={idx}
+              className="rounded-xl border border-white/80 dark:border-white/15 bg-white/70 dark:bg-slate-900/60 p-1.5 space-y-1 shadow-xs"
+              style={{ boxShadow: "inset 0 1px 0 rgba(255,255,255,0.9)" }}
+            >
               <div className="flex items-center justify-between">
-                <div className="h-1 w-8 rounded bg-slate-300 dark:bg-slate-700" />
+                <div className="h-1 w-8 rounded bg-slate-400/60 dark:bg-slate-600" />
                 <span className={`w-1.5 h-1.5 rounded-full ${c.accent}`} />
               </div>
               <div className={`h-2 ${c.w} rounded bg-slate-800/75 dark:bg-slate-200/80`} />
-              <div className="h-1 w-11 rounded bg-slate-200 dark:bg-slate-800" />
+              <div className="h-1 w-11 rounded bg-slate-300/70 dark:bg-slate-700" />
             </div>
           ))}
         </div>
         <div className="grid grid-cols-[1.5fr_1fr] gap-1.5 flex-1 min-h-0">
-          <div className="rounded-lg border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-[#111827] p-1.5 flex flex-col justify-between">
+          <div
+            className="rounded-xl border border-white/80 dark:border-white/15 bg-white/70 dark:bg-slate-900/60 p-1.5 flex flex-col justify-between shadow-xs"
+            style={{ boxShadow: "inset 0 1px 0 rgba(255,255,255,0.9)" }}
+          >
             <div className="h-1.5 w-16 rounded bg-slate-400/60" />
             <svg viewBox="0 0 120 32" className="w-full h-7 overflow-visible">
               <path d="M2,24 C20,22 36,12 56,14 C72,16 82,22 92,20" fill="none" stroke="#2563eb" strokeWidth="2" strokeLinecap="round" />
               <path d="M92,20 C102,17 110,12 118,11" fill="none" stroke="#0d9488" strokeWidth="1.8" strokeDasharray="3 2.5" strokeLinecap="round" />
             </svg>
           </div>
-          <div className="rounded-lg border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-[#111827] p-1.5 flex flex-col justify-center gap-1.5">
+          <div
+            className="rounded-xl border border-white/80 dark:border-white/15 bg-white/70 dark:bg-slate-900/60 p-1.5 flex flex-col justify-center gap-1.5 shadow-xs"
+            style={{ boxShadow: "inset 0 1px 0 rgba(255,255,255,0.9)" }}
+          >
             <div className="h-1.5 w-full rounded-full bg-teal-500/80" />
             <div className="h-1.5 w-4/5 rounded-full bg-cyan-500/80" />
             <div className="h-1.5 w-3/5 rounded-full bg-violet-500/80" />
@@ -201,10 +235,10 @@ const ClassicBarMiniaturePreview = memo(function ClassicBarMiniaturePreview({
   roleLabel: string;
 }) {
   return (
-    <div className="relative w-full aspect-[16/10] rounded-xl overflow-hidden border border-border/80 bg-[#f8fafc] dark:bg-[#0b1220] shadow-xs flex pointer-events-none select-none">
-      {/* Exact Dark Navy Gradient Sidebar */}
+    <div className="relative w-full aspect-[16/10] rounded-xl overflow-hidden border border-border/80 bg-[#f2f4f7] dark:bg-[#090e18] shadow-xs flex pointer-events-none select-none">
+      {/* Grouped Easy Sidebar */}
       <div
-        className="w-[31%] h-full flex flex-col justify-between p-1.5 border-r border-white/[0.08]"
+        className="w-[33%] h-full flex flex-col justify-between p-1.5 border-r border-white/[0.08]"
         style={{ background: "linear-gradient(180deg, #0b1528 0%, #060b14 100%)" }}
       >
         <div>
@@ -212,32 +246,28 @@ const ClassicBarMiniaturePreview = memo(function ClassicBarMiniaturePreview({
             <img src={SMARTTRACK_LOGO_URL} alt="" className="w-3 h-3 object-contain flex-shrink-0" />
             <span className="text-[7px] font-bold text-white truncate">SmartTrack</span>
           </div>
-          <div className="mt-1.5 flex items-center gap-1 rounded bg-blue-500/15 border border-white/[0.06] px-1.5 py-0.5">
-            <Shield size={6.5} className="text-blue-300 flex-shrink-0" />
+          <div className="mt-1 flex items-center gap-1 rounded bg-blue-500/15 border border-white/[0.06] px-1.5 py-0.5">
+            <Shield size={6} className="text-blue-300 flex-shrink-0" />
             <span className="text-[5.5px] font-bold text-blue-200 truncate">{roleLabel}</span>
           </div>
           <div className="mt-1.5 space-y-0.5">
+            <p className="px-1 text-[4.5px] font-bold uppercase tracking-wider text-white/35">Daily Work</p>
             <div className="flex items-center gap-1 rounded-md bg-blue-600/25 border border-blue-400/35 px-1.5 py-0.5">
-              <LayoutDashboard size={6.5} className="text-blue-200" />
-              <span className="text-[6px] font-bold text-blue-200">Dashboard</span>
+              <LayoutDashboard size={6} className="text-blue-200" />
+              <span className="text-[5.8px] font-bold text-blue-200">Dashboard</span>
             </div>
-            <div className="flex items-center justify-between px-1.5 py-0.5 text-white/55">
-              <span className="flex items-center gap-1"><Package size={6.5} /><span className="text-[6px]">Inventory</span></span>
+            <div className="flex items-center justify-between px-1.5 py-0.5 text-white/60">
+              <span className="flex items-center gap-1"><Package size={6} /><span className="text-[5.8px]">Inventory</span></span>
               <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
             </div>
-            <div className="flex items-center gap-1 px-1.5 py-0.5 text-white/55">
-              <BellRing size={6.5} /><span className="text-[6px]">Stock Alerts</span>
-            </div>
-            <div className="flex items-center gap-1 px-1.5 py-0.5 text-white/55">
-              <ShoppingCart size={6.5} /><span className="text-[6px]">Transactions</span>
-            </div>
-            <div className="flex items-center gap-1 px-1.5 py-0.5 text-white/55">
-              <BarChart2 size={6.5} /><span className="text-[6px]">Analytics</span>
+            <p className="px-1 pt-0.5 text-[4.5px] font-bold uppercase tracking-wider text-white/35">Orders</p>
+            <div className="flex items-center gap-1 px-1.5 py-0.5 text-white/60">
+              <BarChart2 size={6} /><span className="text-[5.8px]">Analytics</span>
             </div>
           </div>
         </div>
 
-        <div className="pt-1 border-t border-white/[0.08] space-y-1">
+        <div className="pt-1 border-t border-white/[0.08]">
           <div className="flex items-center gap-1 rounded bg-white/[0.04] px-1.5 py-0.5">
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 flex-shrink-0" />
             <span className="text-[5.5px] font-medium text-white/75 truncate">Active Station</span>
@@ -245,16 +275,19 @@ const ClassicBarMiniaturePreview = memo(function ClassicBarMiniaturePreview({
         </div>
       </div>
 
-      {/* Right Content Panel */}
+      {/* Right Content Panel — Clean Solid Matte iOS 18 Cards + Labeled Topbar */}
       <div className="flex-1 min-w-0 flex flex-col">
-        <div className="h-7 border-b border-slate-200/90 dark:border-slate-800 bg-white dark:bg-[#111827] px-2 flex items-center justify-between">
-          <div className="flex items-center gap-1 rounded-full border border-blue-500/45 bg-slate-50 dark:bg-slate-900 px-1.5 py-0.5 w-24">
-            <Search size={6.5} className="text-blue-500" />
-            <span className="text-[6px] text-slate-400">Search…</span>
+        <div className="h-7 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] px-2 flex items-center justify-between">
+          <div className="flex items-center gap-1 rounded-full border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 px-1.5 py-0.5 w-20">
+            <Search size={6} className="text-blue-500" />
+            <span className="text-[5.5px] text-slate-400">Search…</span>
           </div>
           <div className="flex items-center gap-1">
-            <span className="w-3 h-3 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center">
-              <Bell size={6} className="text-slate-500" />
+            <span className="rounded bg-slate-100 dark:bg-slate-800 px-1 py-0.5 text-[5px] font-semibold text-slate-600 dark:text-slate-300">
+              Alerts
+            </span>
+            <span className="rounded bg-slate-100 dark:bg-slate-800 px-1 py-0.5 text-[5px] font-semibold text-slate-600 dark:text-slate-300">
+              Settings
             </span>
             <span className="w-3.5 h-3.5 rounded-full bg-blue-500/15 text-blue-600 dark:text-blue-300 flex items-center justify-center text-[5.5px] font-bold">
               {userInitials}
@@ -273,7 +306,7 @@ const ClassicBarMiniaturePreview = memo(function ClassicBarMiniaturePreview({
               { accent: "bg-emerald-500" },
               { accent: "bg-amber-500" },
             ].map((c, idx) => (
-              <div key={idx} className="rounded-md border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-[#111827] p-1 space-y-1">
+              <div key={idx} className="rounded-md border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] p-1 space-y-1">
                 <div className="flex justify-between items-center">
                   <div className="h-1 w-6 rounded bg-slate-300 dark:bg-slate-700" />
                   <span className={`w-1.5 h-1.5 rounded-full ${c.accent}`} />
@@ -283,14 +316,14 @@ const ClassicBarMiniaturePreview = memo(function ClassicBarMiniaturePreview({
             ))}
           </div>
           <div className="grid grid-cols-[1.35fr_1fr] gap-1 flex-1 min-h-0">
-            <div className="rounded-md border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-[#111827] p-1 flex flex-col justify-between">
+            <div className="rounded-md border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] p-1 flex flex-col justify-between">
               <div className="h-1 w-10 rounded bg-slate-400/60" />
               <svg viewBox="0 0 100 28" className="w-full h-6 overflow-visible">
                 <path d="M2,21 C18,19 32,10 48,12 C62,14 70,19 80,17" fill="none" stroke="#2563eb" strokeWidth="2" strokeLinecap="round" />
                 <path d="M80,17 C88,14 93,10 98,9" fill="none" stroke="#0d9488" strokeWidth="1.8" strokeDasharray="3 2.5" strokeLinecap="round" />
               </svg>
             </div>
-            <div className="rounded-md border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-[#111827] p-1 flex flex-col justify-center gap-1">
+            <div className="rounded-md border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] p-1 flex flex-col justify-center gap-1">
               <div className="h-1 w-full rounded-full bg-teal-500/80" />
               <div className="h-1 w-4/5 rounded-full bg-cyan-500/80" />
               <div className="h-1 w-3/5 rounded-full bg-violet-500/80" />
@@ -481,6 +514,7 @@ function NavigationStyleChoiceModal({
 
       <div
         ref={cardRef}
+        data-st-modal-panel="true"
         className="relative w-full max-w-[720px] overflow-hidden rounded-[28px] border border-border/80 bg-card shadow-[0_24px_64px_rgba(15,23,42,0.28)] dark:shadow-[0_28px_72px_rgba(0,0,0,0.8)]"
         style={{
           transform: sidebarExitActive
@@ -505,10 +539,10 @@ function NavigationStyleChoiceModal({
                 Welcome back, {firstName} · {roleLabel}
               </p>
               <h2 id="nav-style-picker-title" className="mt-0.5 text-[19px] font-semibold tracking-tight text-foreground">
-                How would you like to get around?
+                Choose your SmartTrack experience
               </h2>
               <p className="mt-0.5 text-xs text-muted-foreground">
-                Pick what feels easiest for you — you can change this anytime in Settings.
+                Pick Simple Standard for the easiest daily workflow, or Modern View for a sleek frosted workspace.
               </p>
             </div>
           </div>
@@ -516,7 +550,7 @@ function NavigationStyleChoiceModal({
             type="button"
             onClick={onClose}
             aria-label="Close layout picker"
-            title="Keep current layout"
+            title="Keep current style"
             className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-muted/60 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground cursor-pointer"
           >
             <X size={15} />
@@ -525,7 +559,7 @@ function NavigationStyleChoiceModal({
 
         {/* Two Visual Choice Cards */}
         <div className="grid grid-cols-1 gap-4 px-6 pb-6 sm:grid-cols-2">
-          {/* Option 1: TrackHub */}
+          {/* Option 1: Modern View (TrackHub) */}
           <button
             type="button"
             onClick={() => setSelected("island")}
@@ -541,13 +575,13 @@ function NavigationStyleChoiceModal({
             <TrackHubMiniaturePreview userInitials={user.initials} />
 
             <div className="mt-3.5 flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2">
-                <span className="text-[15px] font-semibold tracking-tight text-foreground">TrackHub</span>
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="text-[15px] font-semibold tracking-tight text-foreground">Modern View</span>
                 <span className="rounded-full bg-primary/10 px-2.5 py-0.5 text-[10px] font-medium text-primary">
-                  Clean &amp; Spacious
+                  Best Visuals
                 </span>
               </div>
-              <span className={`flex h-5 w-5 items-center justify-center rounded-full border transition-colors duration-150 ${
+              <span className={`flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full border transition-colors duration-150 ${
                 selected === "island"
                   ? "border-primary bg-primary text-primary-foreground"
                   : "border-border bg-background text-transparent"
@@ -557,22 +591,22 @@ function NavigationStyleChoiceModal({
             </div>
 
             <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
-              A tidy pill at the top that keeps your whole screen open for work.
+              Frosted glass cards and a floating TrackHub pill — richer modern design with more screen space, best once you are familiar with the app.
             </p>
 
             <ul className="mt-3 space-y-1.5 border-t border-border/50 pt-3 text-[11.5px] text-foreground/80">
               <li className="flex items-center gap-2">
                 <Check size={12} className="flex-shrink-0 text-primary" />
-                <span>Extra room for wide tables &amp; charts</span>
+                <span>Translucent glass cards &amp; wider tables</span>
               </li>
               <li className="flex items-center gap-2">
                 <Check size={12} className="flex-shrink-0 text-primary" />
-                <span>Alerts &amp; Assistant float neatly on top</span>
+                <span>Floating TrackHub &amp; Assistant (compact controls)</span>
               </li>
             </ul>
           </button>
 
-          {/* Option 2: Classic Bar */}
+          {/* Option 2: Simple Standard (iOS 18 Clean & Easy) */}
           <button
             type="button"
             onClick={() => setSelected("sidebar")}
@@ -588,13 +622,13 @@ function NavigationStyleChoiceModal({
             <ClassicBarMiniaturePreview userInitials={user.initials} roleLabel={roleLabel} />
 
             <div className="mt-3.5 flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2">
-                <span className="text-[15px] font-semibold tracking-tight text-foreground">Classic Bar</span>
-                <span className="rounded-full bg-muted px-2.5 py-0.5 text-[10px] font-medium text-muted-foreground">
-                  Familiar Menu
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="text-[15px] font-semibold tracking-tight text-foreground">Simple Standard</span>
+                <span className="rounded-full bg-emerald-500/12 px-2.5 py-0.5 text-[10px] font-medium text-emerald-700 dark:text-emerald-300">
+                  Easiest to Use
                 </span>
               </div>
-              <span className={`flex h-5 w-5 items-center justify-center rounded-full border transition-colors duration-150 ${
+              <span className={`flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full border transition-colors duration-150 ${
                 selected === "sidebar"
                   ? "border-primary bg-primary text-primary-foreground"
                   : "border-border bg-background text-transparent"
@@ -604,17 +638,17 @@ function NavigationStyleChoiceModal({
             </div>
 
             <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
-              A familiar side menu where every section stays right in view.
+              Clean solid cards, a grouped side menu, and clearly labeled buttons — built to be the easiest layout for everyday counter work.
             </p>
 
             <ul className="mt-3 space-y-1.5 border-t border-border/50 pt-3 text-[11.5px] text-foreground/80">
               <li className="flex items-center gap-2">
-                <Check size={12} className="flex-shrink-0 text-primary" />
-                <span>Jump to any page in one click</span>
+                <Check size={12} className="flex-shrink-0 text-emerald-600 dark:text-emerald-400" />
+                <span>Clear text labels on menu &amp; topbar buttons</span>
               </li>
               <li className="flex items-center gap-2">
-                <Check size={12} className="flex-shrink-0 text-primary" />
-                <span>Can shrink into slim icons anytime</span>
+                <Check size={12} className="flex-shrink-0 text-emerald-600 dark:text-emerald-400" />
+                <span>Solid, steady cards — quickest for new staff</span>
               </li>
             </ul>
           </button>
@@ -641,7 +675,7 @@ function NavigationStyleChoiceModal({
             onClick={() => triggerConfirm(selected)}
             className="rounded-full bg-primary px-5 py-2 text-xs font-semibold text-primary-foreground shadow-sm transition-opacity hover:opacity-90 active:scale-[0.98] cursor-pointer"
           >
-            Continue with {selected === "island" ? "TrackHub" : "Classic Bar"}
+            Continue with {selected === "island" ? "Modern View" : "Simple Standard"}
           </button>
         </div>
       </div>
@@ -757,6 +791,7 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
   }, []);
   useEffect(() => {
     try { localStorage.setItem("st_nav_mode", navMode); } catch { /* ignore */ }
+    applyUiStyle(navMode === "island" ? "glass" : "classic");
   }, [navMode]);
   const [trackHubOpen, setTrackHubOpen] = useState(false);
   const [trackHubAssistantOpen, setTrackHubAssistantOpen] = useState(false);
@@ -775,6 +810,7 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
   const [showTrackHubSettings, setShowTrackHubSettings] = useState(false);
   const [showDatabaseModal, setShowDatabaseModal] = useState(false);
   const trackHubSettingsRef = useRef<HTMLDivElement>(null);
+  const mainContentRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
     applyDisplayPreferences({
@@ -782,8 +818,9 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
       tableDensity,
       reduceMotion: reduceMotionPref,
       mutedColors,
+      uiStyle: navMode === "island" ? "glass" : "classic",
     });
-  }, [fontScale, tableDensity, reduceMotionPref, mutedColors]);
+  }, [fontScale, tableDensity, reduceMotionPref, mutedColors, navMode]);
 
   const updateFontScale = useCallback((nextScale: FontScale) => {
     setFontScaleState(nextScale);
@@ -878,6 +915,104 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
   useEffect(() => {
     if (!loading) onReady?.();
   }, [loading, onReady]);
+
+  // Modern View only: sync overlaid page header height & Apple scroll-edge progressive blur state
+  useLayoutEffect(() => {
+    if (loading) return;
+    const mainEl = mainContentRef.current;
+    if (!mainEl) return;
+
+    if (navMode !== "island") {
+      mainEl.querySelectorAll<HTMLElement>(".st-page-shell").forEach(el => {
+        el.style.removeProperty("--st-page-header-h");
+      });
+      mainEl.querySelectorAll<HTMLElement>(".st-page-header").forEach(el => {
+        delete el.dataset.scrolled;
+      });
+      return;
+    }
+
+    let observedHeader: HTMLElement | null = null;
+    let resizeObs: ResizeObserver | null = null;
+    let rafId = 0;
+
+    const measureHeader = () => {
+      const shell = mainEl.querySelector<HTMLElement>(".st-page-shell");
+      const header = shell?.querySelector<HTMLElement>(".st-page-header");
+      if (!shell || !header) return;
+      const h = Math.ceil(header.getBoundingClientRect().height);
+      if (h > 0) {
+        shell.style.setProperty("--st-page-header-h", `${h}px`);
+      }
+      if (header !== observedHeader) {
+        resizeObs?.disconnect();
+        observedHeader = header;
+        if (typeof ResizeObserver !== "undefined") {
+          resizeObs = new ResizeObserver(() => {
+            const nextH = Math.ceil(header.getBoundingClientRect().height);
+            if (nextH > 0) {
+              shell.style.setProperty("--st-page-header-h", `${nextH}px`);
+            }
+          });
+          resizeObs.observe(header);
+        }
+      }
+    };
+
+    const syncScrollState = () => {
+      const shell = mainEl.querySelector<HTMLElement>(".st-page-shell");
+      const header = shell?.querySelector<HTMLElement>(".st-page-header");
+      if (!shell || !header) return;
+      const scrollers = shell.querySelectorAll<HTMLElement>(".st-page-scroll-body");
+      let anyScrolled = false;
+      scrollers.forEach(s => {
+        if (s.scrollTop > 2) anyScrolled = true;
+      });
+      const nextVal = anyScrolled ? "true" : "false";
+      if (header.dataset.scrolled !== nextVal) {
+        header.dataset.scrolled = nextVal;
+      }
+    };
+
+    const scheduleSync = () => {
+      if (rafId) return;
+      rafId = window.requestAnimationFrame(() => {
+        rafId = 0;
+        measureHeader();
+        syncScrollState();
+      });
+    };
+
+    measureHeader();
+    syncScrollState();
+
+    const onCaptureScroll = (e: Event) => {
+      const target = e.target;
+      if (!(target instanceof HTMLElement)) return;
+      if (!target.classList.contains("st-page-scroll-body")) return;
+      const shell = target.closest<HTMLElement>(".st-page-shell");
+      const header = shell?.querySelector<HTMLElement>(".st-page-header");
+      if (!header) return;
+      const nextVal = target.scrollTop > 2 ? "true" : "false";
+      if (header.dataset.scrolled !== nextVal) {
+        header.dataset.scrolled = nextVal;
+      }
+    };
+
+    mainEl.addEventListener("scroll", onCaptureScroll, { capture: true, passive: true });
+
+    const mutObs = typeof MutationObserver !== "undefined"
+      ? new MutationObserver(scheduleSync)
+      : null;
+    mutObs?.observe(mainEl, { childList: true, subtree: true });
+
+    return () => {
+      mainEl.removeEventListener("scroll", onCaptureScroll, { capture: true });
+      if (rafId) window.cancelAnimationFrame(rafId);
+      resizeObs?.disconnect();
+      mutObs?.disconnect();
+    };
+  }, [loading, page, navMode]);
 
   // ── Modal state ─────────────────────────────────────────────────────────────
   const [showAddProduct,    setShowAddProduct]    = useState(false);
@@ -1819,10 +1954,12 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
     ? "min(268px, calc(100dvh - 80px))"
     : "min(248px, calc(100dvh - 80px))";
 
+  const assistantHubHeight = "min(410px, calc(100dvh - 80px))";
+
   const pillH         = confirmOpen
     ? "148px"
     : trackHubAssistantOpen
-    ? "min(520px, calc(100dvh - 80px))"
+    ? assistantHubHeight
     : trackHubOpen
     ? expandedHubHeight
     : trackHubActivitiesOpen
@@ -2753,7 +2890,7 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
           className="absolute top-0 left-1/2 flex flex-col overflow-hidden"
           style={{
             width: "min(570px, calc(100vw - 24px))",
-            height: "min(520px, calc(100dvh - 80px))",
+            height: assistantHubHeight,
             contain: "strict",
             backfaceVisibility: "hidden",
             visibility: (!confirmOpen && trackHubAssistantOpen) ? "visible" : "hidden",
@@ -3226,7 +3363,7 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
         <section className="overflow-hidden rounded-2xl border border-border/60 bg-muted/20 divide-y divide-border/40">
           <div className="flex items-center justify-between gap-3 px-3.5 py-2.5">
             <div className="flex min-w-0 items-center gap-2.5">
-              <span className={SETTINGS_ROW_ICON_CLASS}>
+              <span className={settingsIconClass(darkMode ? "indigo" : "amber")}>
                 {darkMode ? <Moon size={14} /> : <Sun size={14} />}
               </span>
               <div className="min-w-0">
@@ -3247,7 +3384,7 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
 
           <div className="flex items-center justify-between gap-3 px-3.5 py-2.5">
             <div className="flex min-w-0 items-center gap-2.5">
-              <span className={SETTINGS_ROW_ICON_CLASS}>
+              <span className={settingsIconClass("violet")}>
                 <Palette size={14} />
               </span>
               <div className="min-w-0">
@@ -3269,7 +3406,7 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
           <div className="px-3.5 py-2.5">
             <div className="mb-2 flex items-center justify-between gap-2">
               <div className="flex min-w-0 items-center gap-2.5">
-                <span className={SETTINGS_ROW_ICON_CLASS}>
+                <span className={settingsIconClass("blue")}>
                   <Type size={14} />
                 </span>
                 <div className="min-w-0">
@@ -3319,7 +3456,7 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
 
           <div className="flex items-center justify-between gap-3 px-3.5 py-2.5">
             <div className="flex min-w-0 items-center gap-2.5">
-              <span className={SETTINGS_ROW_ICON_CLASS}>
+              <span className={settingsIconClass("slate")}>
                 <Rows3 size={14} />
               </span>
               <div className="min-w-0">
@@ -3354,7 +3491,7 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
 
           <div className="flex items-center justify-between gap-3 px-3.5 py-2.5">
             <div className="flex min-w-0 items-center gap-2.5">
-              <span className={SETTINGS_ROW_ICON_CLASS}>
+              <span className={settingsIconClass("indigo")}>
                 <Sparkles size={14} />
               </span>
               <div className="min-w-0">
@@ -3375,19 +3512,19 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
         </section>
       </div>
 
-      {/* ── Navigation & Hub ── */}
+      {/* ── Interface Style & Navigation ── */}
       <div>
-        <p className="mb-1.5 px-1.5 text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">Navigation</p>
+        <p className="mb-1.5 px-1.5 text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground">Interface Style</p>
         <section className="overflow-hidden rounded-2xl border border-border/60 bg-muted/20 divide-y divide-border/40">
           <div className="px-3.5 py-2.5">
             <div className="mb-2 flex items-center justify-between gap-2">
               <div className="flex min-w-0 items-center gap-2.5">
-                <span className={SETTINGS_ROW_ICON_CLASS}>
+                <span className={settingsIconClass("blue")}>
                   <PanelLeft size={14} />
                 </span>
                 <div className="min-w-0">
-                  <p className="text-xs font-medium text-foreground">Layout Style</p>
-                  <p className="text-[10px] text-muted-foreground">Choose how you browse pages.</p>
+                  <p className="text-xs font-medium text-foreground">App Look &amp; Layout</p>
+                  <p className="text-[10px] text-muted-foreground">Pick easiest workflow or frosted glass UI.</p>
                 </div>
               </div>
               <button
@@ -3410,41 +3547,59 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
               <button
                 type="button"
                 aria-pressed={navMode === "island"}
-                onClick={() => { setNavMode("island"); setShowTrackHubSettings(false); }}
+                onClick={() => {
+                  setNavMode("island");
+                  setShowTrackHubSettings(false);
+                  showHubToast("Switched to Modern View (TrackHub)", "info");
+                }}
                 className={`relative z-10 rounded-lg px-2 py-1.5 text-xs transition-colors active:scale-[0.98] motion-reduce:transition-none ${
                   navMode === "island" ? "font-semibold text-foreground" : "font-medium text-muted-foreground hover:text-foreground"
                 }`}
               >
-                TrackHub
+                Modern View
               </button>
               <button
                 type="button"
                 aria-pressed={navMode === "sidebar"}
-                onClick={() => { setNavMode("sidebar"); setShowTrackHubSettings(false); }}
+                onClick={() => {
+                  setNavMode("sidebar");
+                  setShowTrackHubSettings(false);
+                  showHubToast("Switched to Simple Standard (Easy View)", "info");
+                }}
                 className={`relative z-10 rounded-lg px-2 py-1.5 text-xs transition-colors active:scale-[0.98] motion-reduce:transition-none ${
                   navMode === "sidebar" ? "font-semibold text-foreground" : "font-medium text-muted-foreground hover:text-foreground"
                 }`}
               >
-                Classic Bar
+                Simple Standard
               </button>
             </div>
+            <p className="mt-2 px-0.5 text-[10px] leading-snug text-muted-foreground">
+              {navMode === "island"
+                ? "Best Visuals · Frosted glass cards & floating TrackHub pill (compact controls)."
+                : "Easiest to Use · Clean solid cards, grouped sidebar & clear button labels."}
+            </p>
           </div>
 
           <div className="flex items-center justify-between gap-3 px-3.5 py-2.5">
-            <div className="min-w-0 pl-9">
-              <p className="text-xs font-medium text-foreground">Ask After Logout</p>
-              <p className="text-[10px] text-muted-foreground">Show layout picker at each sign-in.</p>
+            <div className="flex min-w-0 items-center gap-2.5">
+              <span className={settingsIconClass("slate")}>
+                <LogIn size={14} />
+              </span>
+              <div className="min-w-0">
+                <p className="text-xs font-medium text-foreground">Ask After Logout</p>
+                <p className="text-[10px] text-muted-foreground">Show style picker at each sign-in.</p>
+              </div>
             </div>
             <SettingsSwitch
               checked={askNavOnLogin}
-              label="Ask layout after logout"
+              label="Ask style after logout"
               onToggle={() => toggleAskNavOnLogin(!askNavOnLogin)}
             />
           </div>
 
           <div className="flex items-center justify-between gap-3 px-3.5 py-2.5">
             <div className="flex min-w-0 items-center gap-2.5">
-              <span className={SETTINGS_ROW_ICON_CLASS}>
+              <span className={settingsIconClass("blue")}>
                 <Bot size={14} />
               </span>
               <div className="min-w-0">
@@ -3459,14 +3614,16 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
             />
           </div>
 
-          <div className="flex items-center justify-between gap-3 px-3.5 py-2.5">
+          <div className={`flex items-center justify-between gap-3 px-3.5 py-2.5 transition-opacity ${navMode === "sidebar" ? "opacity-55" : ""}`}>
             <div className="flex min-w-0 items-center gap-2.5">
-              <span className={SETTINGS_ROW_ICON_CLASS}>
+              <span className={settingsIconClass("amber")}>
                 <BellRing size={14} />
               </span>
               <div className="min-w-0">
                 <p className="text-xs font-medium text-foreground">Stock Alert Orb</p>
-                <p className="text-[10px] text-muted-foreground">Show stock badge beside TrackHub.</p>
+                <p className="text-[10px] text-muted-foreground">
+                  {navMode === "island" ? "Show stock badge beside TrackHub." : "Available in Modern View mode."}
+                </p>
               </div>
             </div>
             <SettingsSwitch
@@ -3487,7 +3644,7 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
             onClick={handleToggleFullScreen}
             className="flex w-full items-center gap-2.5 px-3.5 py-2.5 text-left transition-colors hover:bg-muted/35 active:scale-[0.98]"
           >
-            <span className={SETTINGS_ROW_ICON_CLASS}>
+            <span className={settingsIconClass("slate")}>
               <Maximize2 size={14} />
             </span>
             <span className="min-w-0 flex-1">
@@ -3504,7 +3661,7 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
             onClick={() => { setPage("activity-log"); setShowTrackHubSettings(false); }}
             className="group flex w-full items-center gap-2.5 px-3.5 py-2.5 text-left transition-colors hover:bg-muted/35 active:scale-[0.98]"
           >
-            <span className={SETTINGS_ROW_ICON_CLASS}>
+            <span className={settingsIconClass("indigo")}>
               <ClipboardList size={14} />
             </span>
             <span className="min-w-0 flex-1">
@@ -3520,7 +3677,7 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
               onClick={() => { setPage("recycle-bin"); setShowTrackHubSettings(false); }}
               className="group flex w-full items-center gap-2.5 px-3.5 py-2.5 text-left transition-colors hover:bg-muted/35 active:scale-[0.98]"
             >
-              <span className={SETTINGS_ROW_ICON_CLASS}>
+              <span className={settingsIconClass("rose")}>
                 <Trash2 size={14} />
               </span>
               <span className="min-w-0 flex-1">
@@ -3537,7 +3694,7 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
               onClick={() => { setShowDatabaseModal(true); setShowTrackHubSettings(false); }}
               className="group flex w-full items-center gap-2.5 px-3.5 py-2.5 text-left transition-colors hover:bg-muted/35 active:scale-[0.98]"
             >
-              <span className={SETTINGS_ROW_ICON_CLASS}>
+              <span className={settingsIconClass("emerald")}>
                 <Database size={14} />
               </span>
               <span className="min-w-0 flex-1">
@@ -3614,17 +3771,41 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
         </div>
       )}
 
-      <nav className="flex-1 px-2 py-3 space-y-0.5 overflow-y-auto">
-        {navItems.map(item => (
-          <button type="button" key={item.id} onClick={() => navigateTo(item.id)} title={!sidebarExpanded ? item.label : undefined}
-            className={`w-full flex items-center gap-3 px-2.5 py-2.5 rounded-xl st-nav-item ${page === item.id ? "bg-blue-600/25 text-blue-200 border border-blue-400/30 shadow-2xs font-bold" : "text-white/50 hover:bg-white/[0.06] hover:text-white/90 border border-transparent"}`}>
-            <item.icon size={15} className="flex-shrink-0" />
-            {sidebarExpanded && <>
-              <span className="flex-1 text-left text-xs font-semibold">{item.label}</span>
-              {(item.badge ?? 0) > 0 && <span className="w-4 h-4 bg-amber-400 rounded-full text-[9px] text-black flex items-center justify-center font-bold">{item.badge}</span>}
-            </>}
-          </button>
-        ))}
+      <nav className="flex-1 px-2 py-3 space-y-2.5 overflow-y-auto">
+        {sidebarExpanded ? (
+          ([
+            { label: "Daily Work", ids: ["dashboard", "transactions", "inventory", "stock-alerts"] as Page[] },
+            { label: "Orders & Analytics", ids: ["analytics", "purchases", "returns", "reports"] as Page[] },
+            { label: "Management", ids: ["financial", "users"] as Page[] },
+          ]).map(group => {
+            const groupItems = navItems.filter(item => group.ids.includes(item.id));
+            if (groupItems.length === 0) return null;
+            return (
+              <div key={group.label} className="space-y-0.5">
+                <p className="px-2.5 pb-1 text-[10px] font-bold uppercase tracking-[0.08em] text-white/35">
+                  {group.label}
+                </p>
+                {groupItems.map(item => (
+                  <button type="button" key={item.id} onClick={() => navigateTo(item.id)}
+                    className={`w-full flex items-center gap-3 px-2.5 py-2 rounded-xl st-nav-item ${page === item.id ? "bg-blue-600/25 text-blue-200 border border-blue-400/30 shadow-2xs font-bold" : "text-white/65 hover:bg-white/[0.06] hover:text-white/95 border border-transparent"}`}>
+                    <item.icon size={15} className="flex-shrink-0" />
+                    <span className="flex-1 text-left text-xs font-semibold">{item.label}</span>
+                    {(item.badge ?? 0) > 0 && <span className="w-4 h-4 bg-amber-400 rounded-full text-[9px] text-black flex items-center justify-center font-bold">{item.badge}</span>}
+                  </button>
+                ))}
+              </div>
+            );
+          })
+        ) : (
+          <div className="space-y-0.5">
+            {navItems.map(item => (
+              <button type="button" key={item.id} onClick={() => navigateTo(item.id)} title={item.label}
+                className={`w-full flex items-center justify-center px-2.5 py-2.5 rounded-xl st-nav-item ${page === item.id ? "bg-blue-600/25 text-blue-200 border border-blue-400/30 shadow-2xs font-bold" : "text-white/55 hover:bg-white/[0.06] hover:text-white/95 border border-transparent"}`}>
+                <item.icon size={15} className="flex-shrink-0" />
+              </button>
+            ))}
+          </div>
+        )}
       </nav>
 
       {smartBotEnabled && (
@@ -3708,18 +3889,18 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
         </div>
       )}
 
-      <div className="st-home-enter flex h-screen bg-background overflow-hidden">
-        {/* Sidebar — only in sidebar mode (snaps cleanly without multi-frame full-page reflow) */}
+      <div className="st-home-enter st-workspace-shell flex h-screen bg-background overflow-hidden">
+        {/* Sidebar — only in Simple Standard mode (snaps cleanly without multi-frame full-page reflow) */}
         {navMode === "sidebar" && (
           <aside className="flex-shrink-0 overflow-hidden"
-            style={{ width: sidebarExpanded ? "224px" : "52px" }}>
+            style={{ width: sidebarExpanded ? "228px" : "52px" }}>
             {sidebarContent}
           </aside>
         )}
 
         <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
           {/* Topbar */}
-          <header className="flex-shrink-0 h-[56px] border-b border-border/80 flex items-center gap-3 st-shell-px bg-card shadow-[0_1px_3px_rgba(0,0,0,0.03)]" style={{ zIndex: confirmOpen ? 10005 : (toastOpen || systemAlertOpen) ? 65 : 40, position: "relative" }}>
+          <header className="st-topbar flex-shrink-0 h-[56px] border-b border-border/80 flex items-center gap-3 st-shell-px bg-card shadow-[0_1px_3px_rgba(0,0,0,0.03)]" style={{ zIndex: confirmOpen ? 10005 : (toastOpen || systemAlertOpen) ? 65 : 40, position: "relative" }}>
 
             {navMode === "island" ? (
               /* ── TrackHub mode topbar layout ── */
@@ -3774,7 +3955,7 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
                   )}
                   {/* Search Dropdown */}
                   {searchOpen && searchQuery.length >= 2 && (
-                    <div className="st-dropdown-in absolute top-full left-0 right-0 mt-1.5 bg-card border border-border/80 rounded-xl shadow-[0_12px_32px_-4px_rgba(37,99,235,0.15),0_4px_12px_rgba(0,0,0,0.06)] overflow-hidden z-50">
+                    <div className="st-glass-popover st-dropdown-in absolute top-full left-0 right-0 mt-1.5 bg-card border border-border/80 rounded-xl shadow-[0_12px_32px_-4px_rgba(37,99,235,0.15),0_4px_12px_rgba(0,0,0,0.06)] overflow-hidden z-50">
                       {searchResults.length === 0 ? (
                         <div className="px-4 py-3 text-xs text-muted-foreground">No results for "{searchQuery}"</div>
                       ) : (
@@ -3897,8 +4078,8 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
                       <Settings size={16} />
                     </button>
                     {showTrackHubSettings && (
-                      <div className="absolute right-0 top-full mt-2 w-[min(24rem,calc(100vw_-_1.5rem))] max-h-[calc(100dvh_-_5rem)] flex flex-col overflow-hidden rounded-3xl border border-border bg-card shadow-[0_20px_50px_rgba(0,0,0,0.18)] dark:shadow-[0_24px_50px_rgba(0,0,0,0.6)] z-50 st-dropdown-in transform-gpu">
-                        <div className="flex flex-shrink-0 items-center justify-between border-b border-border/60 px-4 py-3">
+                      <div className="st-glass-popover absolute right-0 top-full mt-2 w-[min(24rem,calc(100vw_-_1.5rem))] max-h-[calc(100dvh_-_5rem)] flex flex-col overflow-hidden rounded-3xl border border-border bg-card shadow-[0_20px_50px_rgba(0,0,0,0.18)] dark:shadow-[0_24px_50px_rgba(0,0,0,0.6)] z-50 st-dropdown-in">
+                        <div className="st-glass-popover-header flex flex-shrink-0 items-center justify-between border-b border-border/60 px-4 py-3">
                           <span className="text-[13px] font-semibold tracking-tight text-foreground">Settings</span>
                           <button type="button" onClick={() => setShowTrackHubSettings(false)} aria-label="Close settings" className="rounded-full bg-muted/60 p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"><X size={13} /></button>
                         </div>
@@ -4036,22 +4217,26 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
                     )}
                   </div>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1.5">
                   <button
                     type="button"
                     onClick={handleRefresh}
                     disabled={refreshing}
                     aria-label="Refresh data"
                     title="Refresh data"
-                    className="relative w-9 h-9 flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded-xl transition-all disabled:opacity-60"
+                    className="inline-flex h-9 items-center gap-1.5 rounded-xl px-2.5 text-xs font-semibold text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors disabled:opacity-60"
                   >
-                    <RefreshCw size={16} className={refreshing ? "animate-spin" : ""} />
+                    <RefreshCw size={15} className={refreshing ? "animate-spin" : ""} />
+                    <span className="hidden xl:inline">Refresh</span>
                   </button>
                   <div className="relative">
                     <button type="button" onClick={() => setShowNotifications(v => !v)}
-                      className="relative w-9 h-9 flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded-xl transition-all">
-                      <Bell size={16} />
-                      {unreadCount > 0 && <span className="absolute top-1.5 right-1.5 w-4 h-4 bg-red-500 rounded-full text-[9px] text-white flex items-center justify-center font-bold leading-none">{unreadCount}</span>}
+                      aria-label="Alerts and Notifications"
+                      title="Alerts and Notifications"
+                      className="relative inline-flex h-9 items-center gap-1.5 rounded-xl px-2.5 text-xs font-semibold text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors">
+                      <Bell size={15} />
+                      <span className="hidden lg:inline">Alerts</span>
+                      {unreadCount > 0 && <span className="inline-flex min-w-[16px] h-4 px-1 bg-red-500 rounded-full text-[9px] text-white items-center justify-center font-bold leading-none">{unreadCount}</span>}
                     </button>
                     {showNotifications && (
                       <NotificationPanel notifs={notifs} onMarkAll={markAllRead} onMarkOne={markOneRead}
@@ -4066,26 +4251,27 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
                     onClick={() => setShowAboutSystem(true)}
                     aria-label="About SmartTrack"
                     title="About SmartTrack"
-                    className="inline-flex h-9 items-center gap-1.5 rounded-xl px-2.5 text-xs font-semibold text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
+                    className="inline-flex h-9 items-center gap-1.5 rounded-xl px-2.5 text-xs font-semibold text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
                   >
                     <Info size={15} />
-                    <span>About</span>
+                    <span className="hidden lg:inline">About</span>
                   </button>
                   <div ref={trackHubSettingsRef} className="relative">
                     <button
                       type="button"
                       onClick={() => setShowTrackHubSettings(v => !v)}
-                      aria-label="Preferences"
-                      title="Preferences & Navigation Layout"
-                      className={`relative w-9 h-9 flex items-center justify-center rounded-xl transition-all ${
-                        showTrackHubSettings ? "bg-primary/20 text-primary" : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                      aria-label="Settings and Interface Style"
+                      title="Settings & Interface Style"
+                      className={`inline-flex h-9 items-center gap-1.5 rounded-xl px-2.5 text-xs font-semibold transition-colors ${
+                        showTrackHubSettings ? "bg-primary/15 text-primary" : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
                       }`}
                     >
-                      <Settings size={16} />
+                      <Settings size={15} />
+                      <span className="hidden lg:inline">Settings</span>
                     </button>
                     {showTrackHubSettings && (
-                      <div className="absolute right-0 top-full mt-2 w-[min(24rem,calc(100vw_-_1.5rem))] max-h-[calc(100dvh_-_5rem)] flex flex-col overflow-hidden rounded-3xl border border-border bg-card shadow-[0_20px_50px_rgba(0,0,0,0.18)] dark:shadow-[0_24px_50px_rgba(0,0,0,0.6)] z-50 st-dropdown-in transform-gpu">
-                        <div className="flex flex-shrink-0 items-center justify-between border-b border-border/60 px-4 py-3">
+                      <div className="st-glass-popover absolute right-0 top-full mt-2 w-[min(24rem,calc(100vw_-_1.5rem))] max-h-[calc(100dvh_-_5rem)] flex flex-col overflow-hidden rounded-3xl border border-border bg-card shadow-[0_20px_50px_rgba(0,0,0,0.18)] dark:shadow-[0_24px_50px_rgba(0,0,0,0.6)] z-50 st-dropdown-in">
+                        <div className="st-glass-popover-header flex flex-shrink-0 items-center justify-between border-b border-border/60 px-4 py-3">
                           <span className="text-[13px] font-semibold tracking-tight text-foreground">Settings</span>
                           <button type="button" onClick={() => setShowTrackHubSettings(false)} aria-label="Close settings" className="rounded-full bg-muted/60 p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"><X size={13} /></button>
                         </div>
@@ -4123,7 +4309,7 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
           </header>
 
           {/* Pages */}
-          <main className="flex-1 overflow-y-auto w-full">
+          <main ref={mainContentRef} className="flex-1 overflow-y-auto w-full">
             <div key={page} className="st-page-in min-h-full w-full">
             {page === "dashboard"    && <DashboardView user={user} inventory={inventory} transactions={transactions} cashierDashboard={cashierDashboard} />}
             {page === "inventory"    && <InventoryPage inventory={inventory} transactions={transactions} categories={categories}
@@ -4320,7 +4506,7 @@ export default function Home({ user, onLogout, onUserUpdated, onReady, hideTrack
             setNavMode(mode);
             try { sessionStorage.removeItem("st_nav_prompt_pending"); } catch { /* ignore */ }
             setShowNavStyleModal(false);
-            showHubToast(mode === "island" ? "Using TrackHub floating layout" : "Using Classic Bar sidebar layout", "info");
+            showHubToast(mode === "island" ? "Using Modern View (TrackHub) mode" : "Using Simple Standard (Easy View) mode", "info");
           }}
           onClose={() => {
             try { sessionStorage.removeItem("st_nav_prompt_pending"); } catch { /* ignore */ }

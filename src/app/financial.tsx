@@ -298,7 +298,7 @@ function FinancialPage({ user, showToast }: { user: AuthUser; showToast?: (msg: 
   }
 
   return (
-    <div className="flex flex-col w-full overflow-hidden printable-financial print:!h-auto print:!overflow-visible" style={{ height: "calc(100dvh - 56px)" }}>
+    <div className="st-page-shell flex flex-col w-full overflow-hidden printable-financial print:!h-auto print:!overflow-visible" style={{ height: "calc(100dvh - 56px)" }}>
       <style>{`@media print {
         body * { visibility: hidden !important; }
         .printable-financial, .printable-financial * { visibility: visible !important; }
@@ -307,7 +307,7 @@ function FinancialPage({ user, showToast }: { user: AuthUser; showToast?: (msg: 
       }`}</style>
 
       {/* ── Fixed Top Controls: Header + Filter Toolbar + Tabs ── */}
-      <div className="flex-shrink-0 st-shell-px pt-4 pb-3 border-b border-border/60 bg-background space-y-3 z-20">
+      <div className="st-page-header flex-shrink-0 st-shell-px pt-4 pb-3 border-b border-border/60 bg-background space-y-3 z-20">
       {/* ── Header & Action Bar ── */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
@@ -407,9 +407,9 @@ function FinancialPage({ user, showToast }: { user: AuthUser; showToast?: (msg: 
       </div>
 
       {/* ── Tab Viewport Body (only list/tab contents scroll) ── */}
-      <div className="flex-1 min-h-0 flex flex-col st-shell-px py-4 overflow-hidden print:!overflow-visible">
+      <div className="st-page-passthrough flex-1 min-h-0 flex flex-col st-shell-px py-4 overflow-hidden print:!overflow-visible">
       {tab === "overview" && (
-        <div className="flex-1 min-h-0 overflow-y-auto space-y-4 print:!overflow-visible" data-table-scroll="fixed">
+        <div className="st-page-scroll-body flex-1 min-h-0 overflow-y-auto space-y-4 print:!overflow-visible" data-table-scroll="fixed">
       {/* ── Executive 4-Pillar Financial Summary ── */}
       {summary && (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
@@ -696,7 +696,7 @@ function FinancialPage({ user, showToast }: { user: AuthUser; showToast?: (msg: 
       {/* TAB: LEDGER                                                            */}
       {/* ══════════════════════════════════════════════════════════════════════ */}
       {tab === "ledger" && (
-        <div className="flex-1 min-h-0 flex flex-col gap-3 overflow-hidden print:!overflow-visible">
+        <div className="st-page-fixed-body flex-1 min-h-0 flex flex-col gap-3 overflow-hidden print:!overflow-visible">
           {/* Filter bar */}
           <div className="flex-shrink-0 flex flex-wrap items-center gap-2 no-print">
             <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Type:</span>
@@ -813,7 +813,7 @@ function FinancialPage({ user, showToast }: { user: AuthUser; showToast?: (msg: 
       {/* TAB: BY CATEGORY                                                       */}
       {/* ══════════════════════════════════════════════════════════════════════ */}
       {tab === "breakdown" && (
-        <div className="flex-1 min-h-0 overflow-y-auto space-y-4 print:!overflow-visible" data-table-scroll="fixed">
+        <div className="st-page-scroll-body flex-1 min-h-0 overflow-y-auto space-y-4 print:!overflow-visible" data-table-scroll="fixed">
           {breakdown.length === 0 ? (
             <div className="bg-card border border-border rounded-xl p-10 text-center text-sm text-muted-foreground">No sales data for the selected range</div>
           ) : (
@@ -905,7 +905,7 @@ function FinancialPage({ user, showToast }: { user: AuthUser; showToast?: (msg: 
       {/* TAB: BY STAFF                                                          */}
       {/* ══════════════════════════════════════════════════════════════════════ */}
       {tab === "staff" && (
-        <div className="flex-1 min-h-0 overflow-y-auto space-y-4 print:!overflow-visible" data-table-scroll="fixed">
+        <div className="st-page-scroll-body flex-1 min-h-0 overflow-y-auto space-y-4 print:!overflow-visible" data-table-scroll="fixed">
           {staffData.length === 0 ? (
             <div className="bg-card border border-border rounded-xl p-10 text-center text-sm text-muted-foreground">No staff sales data for the selected range</div>
           ) : (
@@ -993,7 +993,7 @@ function FinancialPage({ user, showToast }: { user: AuthUser; showToast?: (msg: 
       {/* TAB: INCOME (per-product revenue, cost, profit)                        */}
       {/* ══════════════════════════════════════════════════════════════════════ */}
       {tab === "income" && (
-        <div className="flex-1 min-h-0 flex flex-col gap-3 overflow-hidden print:!overflow-visible">
+        <div className="st-page-fixed-body flex-1 min-h-0 flex flex-col gap-3 overflow-hidden print:!overflow-visible">
           {/* Totals bar */}
           {incomeTotals && (
             <div className="flex-shrink-0 grid grid-cols-2 lg:grid-cols-4 gap-2.5">
