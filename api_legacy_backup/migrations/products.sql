@@ -1,0 +1,503 @@
+-- ==========================================
+-- 1. INSERT CATEGORIES
+-- ==========================================
+INSERT IGNORE INTO `categories` (`name`) VALUES
+('Analgesic / Antipyretic'),
+('Analgesic / Antipyretic / Anti-inflammatory'),
+('Analgesic / NSAID'),
+('Antacid / Antiflatulent'),
+('Anti-asthma / Anti-allergy'),
+('Anti-ulcerant / Gastroprotective'),
+('Anti-vertigo'),
+('Antibacterial / Antiprotozoal'),
+('Antibiotic'),
+('Antidiarrheal'),
+('Anthelmintic / Dewormer'),
+('Antihistamine / Anti-allergy'),
+('Antihistamine / Decongestant'),
+('Antihypertensive'),
+('Antihyperuricemic (Gout Treatment)'),
+('Antiplatelet / Cardiovascular'),
+('Antispasmodic'),
+('Antitussive / Cough Care'),
+('Antiviral / Immunomodulator'),
+('Appetite Stimulant / Vitamin'),
+('Baby Care / Cleanser'),
+('Baby Powder / Personal Care'),
+('Beverage / Apple Juice'),
+('Beverage / Grape Juice'),
+('Brain / Memory Supplement'),
+('Cold & Cough Remedy'),
+('Counterirritant / Topical Analgesic'),
+('Dietary Supplement'),
+('Diuretic / Antihypertensive'),
+('Expectorant / Cough Care'),
+('Herbal / Dietary Supplement'),
+('Iron & Folic Acid Supplement'),
+('Laxative'),
+('Medicated Soap / Skin Care'),
+('Mucolytic / Cough Care'),
+('Multivitamin / Growth Supplement'),
+('Multivitamin / Supplement'),
+('Multivitamin Supplement'),
+('Ophthalmic Preparation (Eye Drops)'),
+('Oral Antiseptic / Mouthwash'),
+('Oral Contraceptive'),
+('Oral Rehydration Solution'),
+('Otic Preparation (Ear Drops)'),
+('Throat Sore Relief / Antiseptic'),
+('Topical Corticosteroid'),
+('Topical Antifungal'),
+('Topical Antifungal / Keratolytic'),
+('Urinary Alkalinizer'),
+('Urological / Urinary Alkalinizer'),
+('Vitamin / Calcium Supplement'),
+('Vitamin / Dietary Supplement'),
+('Vitamin / Immunity Supplement'),
+('Vitamin / Mineral Supplement'),
+('Vitamin / Supplement'),
+('Vitamin B Complex');
+
+
+-- ==========================================
+-- 2. INSERT PRODUCTS
+-- ==========================================
+DROP TEMPORARY TABLE IF EXISTS `tmp_seed_products`;
+DROP TEMPORARY TABLE IF EXISTS `tmp_seed_category_parts`;
+CREATE TEMPORARY TABLE `tmp_seed_products` (
+  `id` INT UNSIGNED NOT NULL PRIMARY KEY,
+  `name` VARCHAR(150) NOT NULL,
+  `category_text` VARCHAR(160) NOT NULL,
+  `supplier` VARCHAR(120) NOT NULL,
+  `reorder` INT NOT NULL,
+  `price` DECIMAL(10,2) NOT NULL,
+  `sale_price` DECIMAL(10,2) NULL,
+  `unit_label` VARCHAR(30) NOT NULL,
+  `units_per_pack` INT NOT NULL,
+  `pack_price` DECIMAL(10,2) NULL,
+  `is_vat_exempt` TINYINT(1) NOT NULL,
+  `status` ENUM('good','moderate','low','critical','out_of_stock') NOT NULL,
+  `created_at` DATETIME NOT NULL,
+  `updated_at` DATETIME NOT NULL
+) ENGINE=InnoDB;
+
+INSERT INTO `tmp_seed_products` (`id`, `name`, `category_text`, `supplier`, `reorder`, `price`, `sale_price`, `unit_label`, `units_per_pack`, `pack_price`, `is_vat_exempt`, `status`, `created_at`, `updated_at`) VALUES
+(1001, 'ALDOMET 250MG TAB 500''', 'Antihypertensive', 'LOURDES PHARMACY', 10, 26.00, NULL, 'tablet', 1, NULL, 0, 'good', NOW(), NOW()),
+(1002, 'ALLERKID 2.5MG DROPS 10ML 1''', 'Antihistamine / Anti-allergy', 'LOURDES PHARMACY', 10, 225.00, NULL, 'bottle', 1, NULL, 0, 'good', NOW(), NOW()),
+(1003, 'APLOSYN OTIC SOLN 5 ML 1''', 'Otic Preparation (Ear Drops)', 'LOURDES PHARMACY', 10, 450.00, NULL, 'bottle', 1, NULL, 0, 'good', NOW(), NOW()),
+(1004, 'APPEBON KID SYR 120ML', 'Appetite Stimulant / Vitamin', 'LOURDES PHARMACY', 10, 224.00, NULL, 'bottle', 1, NULL, 0, 'good', NOW(), NOW()),
+(1005, 'CALTRATE ''ADVANCE'' TAB 100''', 'Vitamin / Mineral Supplement', 'LOURDES PHARMACY', 10, 10.00, NULL, 'tablet', 1, NULL, 0, 'good', NOW(), NOW()),
+(1006, 'CALTRATE PLUS TAB 100''', 'Vitamin / Supplement', 'LOURDES PHARMACY', 10, 11.00, NULL, 'bottle', 1, NULL, 0, 'good', NOW(), NOW()),
+(1007, 'CHERIFER PEDIATRIC SYR W/ CGF 120ML 1''', 'Multivitamin / Growth Supplement', 'LOURDES PHARMACY', 10, 221.00, NULL, 'tablet', 1, NULL, 0, 'good', NOW(), NOW()),
+(1008, 'CHERIFER PEDIATRIC SYR W/ CGF 240ML 1''', 'Multivitamin / Growth Supplement', 'LOURDES PHARMACY', 10, 396.00, NULL, 'tablet', 1, NULL, 0, 'good', NOW(), NOW()),
+(1009, 'CHARM 28''S TAB', 'Oral Contraceptive', 'LOURDES PHARMACY', 10, 52.00, NULL, 'bottle', 1, NULL, 0, 'good', NOW(), NOW()),
+(1010, 'EXPEC SYR 120ML 1''', 'Mucolytic / Cough Care', 'LOURDES PHARMACY', 10, 150.00, NULL, 'bottle', 1, NULL, 0, 'good', NOW(), NOW()),
+(1011, 'FEOSOL CAP 100''', 'Iron & Folic Acid Supplement', 'LOURDES PHARMACY', 10, 10.00, NULL, 'capsule', 1, NULL, 0, 'good', NOW(), NOW()),
+(1012, 'FLAGYL 500MG TAB 100''', 'Antibiotic', 'LOURDES PHARMACY', 10, 30.00, NULL, 'tablet', 1, NULL, 0, 'good', NOW(), NOW()),
+(1013, 'ISOPRINOSINE 500MG TAB 20''', 'Antiviral / Immunomodulator', 'LOURDES PHARMACY', 10, 77.00, NULL, 'tablet', 1, NULL, 0, 'good', NOW(), NOW()),
+(1014, 'IMMUNPRO TAB 100''', 'Vitamin / Immunity Supplement', 'LOURDES PHARMACY', 10, 10.00, NULL, 'tablet', 1, NULL, 0, 'good', NOW(), NOW()),
+(1015, 'JALRA 50MG TAB 28''', 'Topical Antifungal / Keratolytic', 'LOURDES PHARMACY', 10, 24.00, NULL, 'tablet', 1, NULL, 0, 'good', NOW(), NOW()),
+(1016, 'JALRA M 50/1000MG TAB 60''', 'Topical Antifungal / Keratolytic', 'LOURDES PHARMACY', 10, 24.00, NULL, 'tablet', 1, NULL, 0, 'good', NOW(), NOW()),
+(1017, 'JALRA M 50/500MG TAB 60''', 'Topical Antifungal / Keratolytic', 'LOURDES PHARMACY', 10, 23.00, NULL, 'tablet', 1, NULL, 0, 'good', NOW(), NOW()),
+(1018, 'JALRA M 50/850MG TAB 60''', 'Topical Antifungal / Keratolytic', 'LOURDES PHARMACY', 10, 23.00, NULL, 'tablet', 1, NULL, 0, 'good', NOW(), NOW()),
+(1019, 'JB POWD CLASSIC 100 GM 1''', 'Baby Powder / Personal Care', 'LOURDES PHARMACY', 10, 52.00, NULL, 'bottle', 1, NULL, 0, 'good', NOW(), NOW()),
+(1020, 'JB POWD CLASSIC 50 GM 1''', 'Baby Powder / Personal Care', 'LOURDES PHARMACY', 10, 32.00, NULL, 'bottle', 1, NULL, 0, 'good', NOW(), NOW()),
+(1021, 'JB POWD BLOSSOMS 100GM 1''', 'Baby Powder / Personal Care', 'LOURDES PHARMACY', 10, 52.00, NULL, 'bottle', 1, NULL, 0, 'good', NOW(), NOW()),
+(1022, 'KAPECTIN SUSP 120ML 1''', 'Antidiarrheal', 'LOURDES PHARMACY', 10, 102.00, NULL, 'bottle', 1, NULL, 0, 'good', NOW(), NOW()),
+(1023, 'L-CARNICUT 500MG TAB 30''', 'Dietary Supplement', 'LOURDES PHARMACY', 10, 32.00, NULL, 'tablet', 1, NULL, 0, 'good', NOW(), NOW()),
+(1024, 'LIPOVITAN 100ML 1''', 'Vitamin / Dietary Supplement', 'LOURDES PHARMACY', 10, 42.00, NULL, 'bottle', 1, NULL, 0, 'good', NOW(), NOW()),
+(1025, 'LORAN / ALLERES TAB 10MG 100''', 'Antihistamine / Anti-allergy', 'LOURDES PHARMACY', 10, 22.00, NULL, 'tablet', 1, NULL, 0, 'good', NOW(), NOW()),
+(1026, 'LORINASE REPETAB 10''', 'Antihistamine / Decongestant', 'LOURDES PHARMACY', 10, 44.00, NULL, 'tablet', 1, NULL, 0, 'good', NOW(), NOW()),
+(1027, 'MAXI-GROW SYRUP 120ML', 'Multivitamin Supplement', 'LOURDES PHARMACY', 10, 160.00, NULL, 'bottle', 1, NULL, 0, 'good', NOW(), NOW()),
+(1028, 'MEDIPLAST ISOPROPYL ALC 70% W/ MOIST 250ML 1''', 'Baby Care / Cleanser', 'LOURDES PHARMACY', 10, 53.00, NULL, 'bottle', 1, NULL, 0, 'good', NOW(), NOW()),
+(1029, 'MEDIPLAST ISOPROPYL ALC 70% W/ MOIST 500ML 1''', 'Baby Care / Cleanser', 'LOURDES PHARMACY', 10, 93.00, NULL, 'bottle', 1, NULL, 0, 'good', NOW(), NOW()),
+(1030, 'HYDRITE ORAL REHYDRATION SALTS POWDER', 'Oral Rehydration Solution', 'LOURDES PHARMACY', 10, 18.00, NULL, 'sachet', 1, NULL, 0, 'good', NOW(), NOW()),
+(1031, 'NEUROBION FORTE TAB 100''', 'Vitamin B Complex', 'LOURDES PHARMACY', 10, 27.00, NULL, 'tablet', 1, NULL, 0, 'good', NOW(), NOW()),
+(1032, 'OPHTHA CORT EYE OINT 3.5GM 1''', 'Ophthalmic Preparation (Eye Drops)', 'LOURDES PHARMACY', 10, 237.00, NULL, 'tube', 1, NULL, 0, 'good', NOW(), NOW()),
+(1033, 'CITRAKA 1080MG FC TAB 100''', 'Urological / Urinary Alkalinizer', 'LOURDES PHARMACY', 10, 18.00, NULL, 'tablet', 1, NULL, 0, 'good', NOW(), NOW()),
+(1034, 'PONSTAN 250MG CAP 100''', 'Analgesic / Antipyretic', 'LOURDES PHARMACY', 10, 21.00, NULL, 'capsule', 1, NULL, 0, 'good', NOW(), NOW()),
+(1035, 'PONSTAN 500MG FC TAB 100''', 'Analgesic / Antipyretic', 'LOURDES PHARMACY', 10, 29.00, NULL, 'tablet', 1, NULL, 0, 'good', NOW(), NOW()),
+(1036, 'PONSTAN SF 500MG CAP 100''', 'Analgesic / Antipyretic', 'LOURDES PHARMACY', 10, 31.00, NULL, 'capsule', 1, NULL, 0, 'good', NOW(), NOW()),
+(1037, 'PROXACIN 500MG TAB 100''', 'Antibiotic', 'LOURDES PHARMACY', 10, 39.00, NULL, 'tablet', 1, NULL, 0, 'good', NOW(), NOW()),
+(1038, 'PROFINAL 400MG TAB 100''', 'Analgesic / NSAID', 'LOURDES PHARMACY', 10, 10.00, NULL, 'tablet', 1, NULL, 0, 'good', NOW(), NOW()),
+(1039, 'PERSANTIN 75MG TAB 100''', 'Antiplatelet / Cardiovascular', 'LOURDES PHARMACY', 10, 27.00, NULL, 'tablet', 1, NULL, 0, 'good', NOW(), NOW()),
+(1040, 'SANDOZ CALCIUM TAB 20''', 'Vitamin / Calcium Supplement', 'LOURDES PHARMACY', 10, 23.00, NULL, 'tablet', 1, NULL, 0, 'good', NOW(), NOW()),
+(1041, 'SENTRUM TAB 100''', 'Vitamin / Supplement', 'LOURDES PHARMACY', 10, 14.00, NULL, 'tablet', 1, NULL, 0, 'good', NOW(), NOW()),
+(1042, 'SENTRUM SILVER TAB 100''', 'Vitamin / Supplement', 'LOURDES PHARMACY', 10, 16.00, NULL, 'tablet', 1, NULL, 0, 'good', NOW(), NOW()),
+(1043, 'SOLTICE NEBULIZING SOLN 2.5ML 20''', 'Anti-asthma / Anti-allergy', 'LOURDES PHARMACY', 10, 32.00, NULL, 'unit', 1, NULL, 0, 'good', NOW(), NOW()),
+(1044, 'STUGERON 25MG TAB 100''', 'Anti-vertigo', 'LOURDES PHARMACY', 10, 11.00, NULL, 'tablet', 1, NULL, 0, 'good', NOW(), NOW()),
+(1045, 'TELFAST 180MG TAB 100''', 'Antihistamine / Anti-allergy', 'LOURDES PHARMACY', 10, 68.00, NULL, 'tablet', 1, NULL, 0, 'good', NOW(), NOW()),
+(1046, 'TRENTAL 400MG TAB 100''', 'Antiplatelet / Cardiovascular', 'LOURDES PHARMACY', 10, 52.00, NULL, 'tablet', 1, NULL, 0, 'good', NOW(), NOW()),
+(1047, 'VERMOX 500MG TAB 1''', 'Anthelmintic / Dewormer', 'LOURDES PHARMACY', 10, 36.00, NULL, 'tablet', 1, NULL, 0, 'good', NOW(), NOW()),
+(1048, 'VERMOX SUSP 100MG/5ML 10ML 1''', 'Anthelmintic / Dewormer', 'LOURDES PHARMACY', 10, 89.00, NULL, 'bottle', 1, NULL, 0, 'good', NOW(), NOW()),
+(1049, 'ZANTAC 150MG TAB 100''', 'Anti-ulcerant / Gastroprotective', 'LOURDES PHARMACY', 10, 24.00, NULL, 'tablet', 1, NULL, 0, 'good', NOW(), NOW()),
+(1050, 'ALBOCRESYL SOLN 10ML 1''', 'Antibacterial / Antiprotozoal', 'LOURDES PHARMACY', 10, 228.00, NULL, 'bottle', 1, NULL, 0, 'good', NOW(), NOW()),
+(1051, 'ALDACTONE 100MG TAB 100''', 'Diuretic / Antihypertensive', 'LOURDES PHARMACY', 10, 64.00, NULL, 'tablet', 1, NULL, 0, 'good', NOW(), NOW()),
+(1052, 'ALDACTONE 25MG TAB 100''', 'Diuretic / Antihypertensive', 'LOURDES PHARMACY', 10, 22.00, NULL, 'tablet', 1, NULL, 0, 'good', NOW(), NOW()),
+(1053, 'ALLERKID 6MG/ML ORAL DROPS 15ML 1''', 'Antihistamine / Anti-allergy', 'LOURDES PHARMACY', 10, 224.00, NULL, 'bottle', 1, NULL, 0, 'good', NOW(), NOW()),
+(1054, 'ASMALIN NEBU 2.5MG/2.5ML 30''', 'Anti-asthma / Anti-allergy', 'LOURDES PHARMACY', 10, 22.00, NULL, 'unit', 1, NULL, 0, 'good', NOW(), NOW()),
+(1055, 'ASMALIN SYR 60ML 1''', 'Anti-asthma / Anti-allergy', 'LOURDES PHARMACY', 10, 89.00, NULL, 'bottle', 1, NULL, 0, 'good', NOW(), NOW()),
+(1056, 'ATROVENT NEBU 250MCG/ML 20''', 'Anti-asthma / Anti-allergy', 'LOURDES PHARMACY', 10, 32.00, NULL, 'unit', 1, NULL, 0, 'good', NOW(), NOW()),
+(1057, 'BUSCOPAN 10MG TAB 100''', 'Antispasmodic', 'LOURDES PHARMACY', 10, 11.00, NULL, 'tablet', 1, NULL, 0, 'good', NOW(), NOW()),
+(1058, 'CELEBREX 200MG CAP 100''', 'Analgesic / NSAID', 'LOURDES PHARMACY', 10, 60.00, NULL, 'capsule', 1, NULL, 0, 'good', NOW(), NOW()),
+(1059, 'DEQUADIN LOZENGES ORANGE 100''', 'Throat Sore Relief / Antiseptic', 'LOURDES PHARMACY', 10, 17.00, NULL, 'tablet', 1, NULL, 0, 'good', NOW(), NOW()),
+(1060, 'DUAVENT NEBU 2.5ML 30''', 'Anti-asthma / Anti-allergy', 'LOURDES PHARMACY', 10, 31.00, NULL, 'unit', 1, NULL, 0, 'good', NOW(), NOW()),
+(1061, 'DUOPAL SYR 60ML 1''', 'Analgesic / Antipyretic', 'LOURDES PHARMACY', 10, 112.00, NULL, 'bottle', 1, NULL, 0, 'good', NOW(), NOW()),
+(1062, 'EFFICASCENT OIL EXTRA STRENGTH 100ML 1''', 'Counterirritant / Topical Analgesic', 'LOURDES PHARMACY', 10, 88.00, NULL, 'bottle', 1, NULL, 0, 'good', NOW(), NOW()),
+(1063, 'EFFICASCENT OIL EXTRA STRENGTH 50ML 1''', 'Counterirritant / Topical Analgesic', 'LOURDES PHARMACY', 10, 48.00, NULL, 'bottle', 1, NULL, 0, 'good', NOW(), NOW()),
+(1064, 'EFFICASCENT OIL REGULAR 100ML 1''', 'Counterirritant / Topical Analgesic', 'LOURDES PHARMACY', 10, 80.00, NULL, 'bottle', 1, NULL, 0, 'good', NOW(), NOW()),
+(1065, 'EFFICASCENT OIL REGULAR 50ML 1''', 'Counterirritant / Topical Analgesic', 'LOURDES PHARMACY', 10, 43.00, NULL, 'bottle', 1, NULL, 0, 'good', NOW(), NOW()),
+(1066, 'ELOMET OINT 5GM 1''', 'Topical Corticosteroid', 'LOURDES PHARMACY', 10, 480.00, NULL, 'tube', 1, NULL, 0, 'good', NOW(), NOW()),
+(1067, 'FEVERGAN SYR 60ML 1''', 'Analgesic / Antipyretic', 'LOURDES PHARMACY', 10, 95.00, NULL, 'bottle', 1, NULL, 0, 'good', NOW(), NOW()),
+(1068, 'KREMIL S CHEWABLE TAB 100''', 'Antacid / Antiflatulent', 'LOURDES PHARMACY', 10, 8.00, NULL, 'tablet', 1, NULL, 0, 'good', NOW(), NOW()),
+(1069, 'LAMICTAL 50MG TAB 30''', 'Antihypertensive', 'LOURDES PHARMACY', 10, 48.00, NULL, 'tablet', 1, NULL, 0, 'good', NOW(), NOW()),
+(1070, 'LOPERAMIDE DIATABS 2MG CAP 100''', 'Antidiarrheal', 'LOURDES PHARMACY', 10, 8.00, NULL, 'capsule', 1, NULL, 0, 'good', NOW(), NOW()),
+(1071, 'LOTRIDERM CREAM 5GM 1''', 'Topical Corticosteroid', 'LOURDES PHARMACY', 10, 360.00, NULL, 'tube', 1, NULL, 0, 'good', NOW(), NOW()),
+(1072, 'LISTERINE COOL MINT 100ML 1''', 'Oral Antiseptic / Mouthwash', 'LOURDES PHARMACY', 10, 76.00, NULL, 'bottle', 1, NULL, 0, 'good', NOW(), NOW()),
+(1073, 'LISTERINE FRESH BURST 100ML 1''', 'Oral Antiseptic / Mouthwash', 'LOURDES PHARMACY', 10, 76.00, NULL, 'bottle', 1, NULL, 0, 'good', NOW(), NOW()),
+(1074, 'LISTERINE TARTAR CONTROL 100ML 1''', 'Oral Antiseptic / Mouthwash', 'LOURDES PHARMACY', 10, 102.00, NULL, 'bottle', 1, NULL, 0, 'good', NOW(), NOW()),
+(1075, 'MEDICOL ADVANCE 200MG CAP 100''', 'Analgesic / NSAID', 'LOURDES PHARMACY', 10, 8.00, NULL, 'capsule', 1, NULL, 0, 'good', NOW(), NOW()),
+(1076, 'MEDICOL ADVANCE 400MG CAP 100''', 'Analgesic / NSAID', 'LOURDES PHARMACY', 10, 13.00, NULL, 'capsule', 1, NULL, 0, 'good', NOW(), NOW()),
+(1077, 'MUCOSOLVAN 30MG TAB 100''', 'Mucolytic / Cough Care', 'LOURDES PHARMACY', 10, 17.00, NULL, 'tablet', 1, NULL, 0, 'good', NOW(), NOW()),
+(1078, 'NEO-ZEP FORTE TAB 100''', 'Cold & Cough Remedy', 'LOURDES PHARMACY', 10, 7.00, NULL, 'tablet', 1, NULL, 0, 'good', NOW(), NOW()),
+(1079, 'ROBITUSSIN EXPECTORANT SYR 120ML 1''', 'Expectorant / Cough Care', 'LOURDES PHARMACY', 10, 175.00, NULL, 'bottle', 1, NULL, 0, 'good', NOW(), NOW()),
+(1080, 'SOLMUX 200MG CAP 100''', 'Mucolytic / Cough Care', 'LOURDES PHARMACY', 10, 12.00, NULL, 'capsule', 1, NULL, 0, 'good', NOW(), NOW()),
+(1081, 'SOLMUX 500MG CAP 100''', 'Mucolytic / Cough Care', 'LOURDES PHARMACY', 10, 15.00, NULL, 'capsule', 1, NULL, 0, 'good', NOW(), NOW()),
+(1082, 'SOLMUX FORTE SYR 120ML 1''', 'Mucolytic / Cough Care', 'LOURDES PHARMACY', 10, 175.00, NULL, 'bottle', 1, NULL, 0, 'good', NOW(), NOW()),
+(1083, 'TRIMETABOL SYR 120ML 1''', 'Appetite Stimulant / Vitamin', 'LOURDES PHARMACY', 10, 210.00, NULL, 'bottle', 1, NULL, 0, 'good', NOW(), NOW()),
+(1084, 'TWYNSTA 40MG/5MG TAB 30''', 'Antihypertensive', 'LOURDES PHARMACY', 10, 97.00, NULL, 'tablet', 1, NULL, 0, 'good', NOW(), NOW()),
+(1085, 'VENTOLIN EXPECTORANT SYR 120ML 1''', 'Expectorant / Cough Care', 'LOURDES PHARMACY', 10, 195.00, NULL, 'bottle', 1, NULL, 0, 'good', NOW(), NOW()),
+(1086, 'VENTOLIN INHALER 100MCG 200 DOSES 1''', 'Anti-asthma / Anti-allergy', 'LOURDES PHARMACY', 10, 390.00, NULL, 'unit', 1, NULL, 0, 'good', NOW(), NOW()),
+(1087, 'VENTOLIN NEBU 2.5MG/2.5ML 30''', 'Anti-asthma / Anti-allergy', 'LOURDES PHARMACY', 10, 24.00, NULL, 'unit', 1, NULL, 0, 'good', NOW(), NOW()),
+(1088, 'VENTOLIN SYR 120ML 1''', 'Anti-asthma / Anti-allergy', 'LOURDES PHARMACY', 10, 160.00, NULL, 'bottle', 1, NULL, 0, 'good', NOW(), NOW()),
+(1089, 'VISINE EYE DROPS 6ML 1''', 'Ophthalmic Preparation (Eye Drops)', 'LOURDES PHARMACY', 10, 125.00, NULL, 'bottle', 1, NULL, 0, 'good', NOW(), NOW()),
+(1090, 'CALTRATE PLUS FC TAB 100''', 'Vitamin / Supplement', 'LOURDES PHARMACY', 10, 11.00, NULL, 'tablet', 1, NULL, 0, 'good', NOW(), NOW()),
+(1091, 'CHERIFER CAPSULE W/ CGF 100''', 'Multivitamin / Growth Supplement', 'LOURDES PHARMACY', 10, 22.00, NULL, 'capsule', 1, NULL, 0, 'good', NOW(), NOW()),
+(1092, 'DULCOLAX 5MG TAB 100''', 'Laxative', 'LOURDES PHARMACY', 10, 12.00, NULL, 'tablet', 1, NULL, 0, 'good', NOW(), NOW()),
+(1093, 'EFFICASCENT OIL EXTREME 50ML 1''', 'Counterirritant / Topical Analgesic', 'LOURDES PHARMACY', 10, 78.00, NULL, 'bottle', 1, NULL, 0, 'good', NOW(), NOW()),
+(1094, 'EFFICASCENT OIL OINT 20GM 1''', 'Counterirritant / Topical Analgesic', 'LOURDES PHARMACY', 10, 38.00, NULL, 'unit', 1, NULL, 0, 'good', NOW(), NOW()),
+(1095, 'EFFICASCENT OIL REGULAR 25ML 1''', 'Counterirritant / Topical Analgesic', 'LOURDES PHARMACY', 10, 26.00, NULL, 'bottle', 1, NULL, 0, 'good', NOW(), NOW()),
+(1096, 'EFFICASCENT OIL EXTREME 100ML 1''', 'Counterirritant / Topical Analgesic', 'LOURDES PHARMACY', 10, 142.00, NULL, 'bottle', 1, NULL, 0, 'good', NOW(), NOW()),
+(1097, 'EFFICASCENT OIL EXTREME 25ML 1''', 'Counterirritant / Topical Analgesic', 'LOURDES PHARMACY', 10, 45.00, NULL, 'bottle', 1, NULL, 0, 'good', NOW(), NOW()),
+(1098, 'CANESTEN CREAM 3GM 1''', 'Topical Antifungal', 'LOURDES PHARMACY', 10, 165.00, NULL, 'tube', 1, NULL, 0, 'good', NOW(), NOW()),
+(1099, 'GATORADE BLUE BOLT 500ML 1''', 'Oral Rehydration Solution', 'LOURDES PHARMACY', 10, 48.00, NULL, 'bottle', 1, NULL, 0, 'good', NOW(), NOW()),
+(1100, 'JB POWD CLASSIC 25 GM 1''', 'Baby Powder / Personal Care', 'LOURDES PHARMACY', 10, 21.00, NULL, 'bottle', 1, NULL, 0, 'good', NOW(), NOW()),
+(1101, 'MEMOPLUS CAP 30''', 'Brain / Memory Supplement', 'LOURDES PHARMACY', 10, 18.00, NULL, 'capsule', 1, NULL, 0, 'good', NOW(), NOW()),
+(1102, 'L-CARNICUT 500MG TAB 60''', 'Dietary Supplement', 'LOURDES PHARMACY', 10, 32.00, NULL, 'tablet', 1, NULL, 0, 'good', NOW(), NOW()),
+(1103, 'MEDIPLAST ISOPROPYL ALC 70% W/ MOIST 100ML 1''', 'Baby Care / Cleanser', 'LOURDES PHARMACY', 10, 28.00, NULL, 'bottle', 1, NULL, 0, 'good', NOW(), NOW()),
+(1104, 'PURITAN''S PRIDE VITAMIN C 500MG TAB 100''', 'Vitamin / Supplement', 'LOURDES PHARMACY', 10, 12.00, NULL, 'tablet', 1, NULL, 0, 'good', NOW(), NOW()),
+(1105, 'PURITAN''S PRIDE ZINC 50MG TAB 100''', 'Vitamin / Supplement', 'LOURDES PHARMACY', 10, 10.00, NULL, 'tablet', 1, NULL, 0, 'good', NOW(), NOW()),
+(1106, 'RHEUMARIK 300MG TAB 100''', 'Analgesic / Antipyretic / Anti-inflammatory', 'LOURDES PHARMACY', 10, 12.00, NULL, 'tablet', 1, NULL, 0, 'good', NOW(), NOW()),
+(1107, 'SANTEN SANTE FX NEO EYE DROPS 12ML 1''', 'Ophthalmic Preparation (Eye Drops)', 'LOURDES PHARMACY', 10, 380.00, NULL, 'bottle', 1, NULL, 0, 'good', NOW(), NOW()),
+(1108, 'URINORM 50MG TAB 100''', 'Antihyperuricemic (Gout Treatment)', 'LOURDES PHARMACY', 10, 18.00, NULL, 'tablet', 1, NULL, 0, 'good', NOW(), NOW()),
+(1109, 'DR. WONG''S SULFUR SOAP 80G 1''', 'Medicated Soap / Skin Care', 'LOURDES PHARMACY', 10, 48.00, NULL, 'piece', 1, NULL, 0, 'good', NOW(), NOW()),
+(1110, 'DR. WONG''S SULFUR SOAP W/ MOISTURIZER 80G 1''', 'Medicated Soap / Skin Care', 'LOURDES PHARMACY', 10, 52.00, NULL, 'piece', 1, NULL, 0, 'good', NOW(), NOW()),
+(1111, 'LOMOTIL 2.5MG TAB 100''', 'Antidiarrheal', 'LOURDES PHARMACY', 10, 14.00, NULL, 'tablet', 1, NULL, 0, 'good', NOW(), NOW()),
+(1112, 'SINECOD EXTRA STRENGTH 50MG TAB 100''', 'Antitussive / Cough Care', 'LOURDES PHARMACY', 10, 24.00, NULL, 'tablet', 1, NULL, 0, 'good', NOW(), NOW()),
+(1113, 'SINECOD FORTE SYR 120ML 1''', 'Antitussive / Cough Care', 'LOURDES PHARMACY', 10, 220.00, NULL, 'bottle', 1, NULL, 0, 'good', NOW(), NOW()),
+(1114, 'STREPSILS HONEY & LEMON 24''S 1''', 'Throat Sore Relief / Antiseptic', 'LOURDES PHARMACY', 10, 165.00, NULL, 'box', 1, NULL, 0, 'good', NOW(), NOW()),
+(1115, 'SAMBYUCOL BLACK ELDERBERRY SYR 120ML 1''', 'Herbal / Dietary Supplement', 'LOURDES PHARMACY', 10, 650.00, NULL, 'bottle', 1, NULL, 0, 'good', NOW(), NOW()),
+(1116, 'MAY 100% SPARKLING RED GRAPE JUICE 750MLX12', 'Beverage / Grape Juice', 'LOURDES PHARMACY', 10, 230.00, NULL, 'bottle', 1, NULL, 0, 'good', NOW(), NOW()),
+(1117, 'MOTT''S 100% APPLE JUICE32OZX12', 'Beverage / Apple Juice', 'LOURDES PHARMACY', 10, 2000.00, NULL, 'bottle', 1, NULL, 0, 'good', NOW(), NOW()),
+(1118, 'ASCORBIC ACID CEELIN 100MG/ML DROPS 30ML', 'Vitamin / Supplement', 'LOURDES PHARMACY', 10, 120.00, NULL, 'bottle', 1, NULL, 0, 'good', NOW(), NOW());
+
+INSERT INTO `products`
+  (`id`, `name`, `supplier`, `reorder`, `price`, `sale_price`, `unit_label`, `units_per_pack`, `pack_price`, `is_vat_exempt`, `status`, `created_at`, `updated_at`)
+SELECT `id`, `name`, `supplier`, `reorder`, `price`, `sale_price`, `unit_label`, `units_per_pack`, `pack_price`, `is_vat_exempt`, `status`, `created_at`, `updated_at`
+FROM `tmp_seed_products`;
+
+CREATE TEMPORARY TABLE `tmp_seed_category_parts` (
+  `product_id` INT UNSIGNED NOT NULL,
+  `name`       VARCHAR(80) NOT NULL,
+  PRIMARY KEY (`product_id`, `name`)
+) ENGINE=InnoDB;
+
+INSERT IGNORE INTO `tmp_seed_category_parts` (`product_id`, `name`)
+WITH RECURSIVE category_parts AS (
+  SELECT
+    `id` AS product_id,
+    TRIM(SUBSTRING_INDEX(`category_text`, '/', 1)) AS name,
+    CASE
+      WHEN LOCATE('/', `category_text`) > 0
+      THEN SUBSTRING(`category_text`, LOCATE('/', `category_text`) + 1)
+      ELSE ''
+    END AS remaining
+  FROM `tmp_seed_products`
+
+  UNION ALL
+
+  SELECT
+    product_id,
+    TRIM(SUBSTRING_INDEX(remaining, '/', 1)) AS name,
+    CASE
+      WHEN LOCATE('/', remaining) > 0
+      THEN SUBSTRING(remaining, LOCATE('/', remaining) + 1)
+      ELSE ''
+    END AS remaining
+  FROM category_parts
+  WHERE remaining <> ''
+)
+SELECT product_id, name
+FROM category_parts
+WHERE name <> '';
+
+INSERT INTO `categories` (`name`)
+SELECT DISTINCT parts.`name`
+FROM `tmp_seed_category_parts` parts
+WHERE NOT EXISTS (
+  SELECT 1 FROM `categories` c WHERE c.`name` = parts.`name`
+);
+
+INSERT IGNORE INTO `product_category_map` (`product_id`, `category_id`)
+SELECT parts.product_id, c.id
+FROM `tmp_seed_category_parts` parts
+JOIN `categories` c ON c.name = parts.name;
+
+DELETE c
+FROM `categories` c
+LEFT JOIN `product_category_map` pcm ON pcm.category_id = c.id
+WHERE c.name LIKE '%/%' AND pcm.category_id IS NULL;
+
+DROP TEMPORARY TABLE `tmp_seed_category_parts`;
+DROP TEMPORARY TABLE `tmp_seed_products`;
+
+-- UPC confirmed for Appebon Kid Syrup 120ml: https://www.unilab.com.ph/products/appebon-kid?variant=syrup-120ml
+UPDATE `products` SET `barcode` = '688201280348' WHERE `id` = 1004;
+
+
+-- ==========================================
+-- 3. INSERT PRODUCT BATCHES
+-- ==========================================
+INSERT INTO `product_batches` (`batch_id`, `product_id`, `qty`, `expiry_date`, `received_date`, `batch_total_cost`, `unit_cost`, `created_at`) VALUES
+('BATCH-PRD-001-01', 1001, 20, '2027-04-30', '2026-09-16', 471.00, 23.5500, NOW()),
+('BATCH-PRD-002-01', 1002, 4, '2027-09-30', '2026-09-16', 812.00, 204.0000, NOW()),
+('BATCH-PRD-003-01', 1003, 3, '2027-10-31', '2026-09-16', 1227.00, 409.0000, NOW()),
+('BATCH-PRD-004-01', 1004, 3, '2028-01-07', '2026-09-16', 610.50, 203.5000, NOW()),
+('BATCH-PRD-005-01', 1005, 20, NULL, '2026-09-16', 177.00, 8.8500, NOW()),
+('BATCH-PRD-006-01', 1006, 2, '2027-06-30', '2026-09-16', 19.00, 9.5000, NOW()),
+('BATCH-PRD-007-01', 1007, 30, '2027-02-28', '2026-09-16', 6000.00, 200.0000, NOW()),
+('BATCH-PRD-008-01', 1008, 30, '2027-03-31', '2026-09-16', 10710.00, 357.0000, NOW()),
+('BATCH-PRD-009-01', 1009, 3, '2027-01-31', '2026-09-16', 138.00, 46.0000, NOW()),
+('BATCH-PRD-010-01', 1010, 3, '2027-08-31', '2026-09-16', 400.00, 133.3300, NOW()),
+('BATCH-PRD-011-01', 1011, 10, '2028-02-28', '2026-09-16', 88.00, 8.8000, NOW()),
+('BATCH-PRD-012-01', 1012, 20, '2027-11-30', '2026-09-16', 530.00, 26.5000, NOW()),
+('BATCH-PRD-013-01', 1013, 20, '2027-07-31', '2026-09-16', 1380.00, 69.0000, NOW()),
+('BATCH-PRD-014-01', 1014, 100, '2027-12-31', '2026-09-16', 880.00, 8.8000, NOW()),
+('BATCH-PRD-015-01', 1015, 28, '2027-05-31', '2026-09-16', 588.00, 21.0000, NOW()),
+('BATCH-PRD-016-01', 1016, 60, '2027-09-30', '2026-09-16', 1260.00, 21.0000, NOW()),
+('BATCH-PRD-017-01', 1017, 60, '2027-08-31', '2026-09-16', 1200.00, 20.0000, NOW()),
+('BATCH-PRD-018-01', 1018, 60, '2027-10-31', '2026-09-16', 1200.00, 20.0000, NOW()),
+('BATCH-PRD-019-01', 1019, 12, '2028-03-31', '2026-09-16', 552.00, 46.0000, NOW()),
+('BATCH-PRD-020-01', 1020, 12, NULL, '2026-09-16', 336.00, 28.0000, NOW()),
+('BATCH-PRD-021-01', 1021, 12, '2028-04-30', '2026-09-16', 552.00, 46.0000, NOW()),
+('BATCH-PRD-022-01', 1022, 3, '2027-05-31', '2026-09-16', 273.00, 91.0000, NOW()),
+('BATCH-PRD-023-01', 1023, 30, '2027-11-30', '2026-09-16', 840.00, 28.0000, NOW()),
+('BATCH-PRD-024-01', 1024, 10, '2027-06-30', '2026-09-16', 370.00, 37.0000, NOW()),
+('BATCH-PRD-025-01', 1025, 20, '2027-07-31', '2026-09-16', 380.00, 19.0000, NOW()),
+('BATCH-PRD-026-01', 1026, 10, '2027-08-31', '2026-09-16', 390.00, 39.0000, NOW()),
+('BATCH-PRD-027-01', 1027, 3, '2027-12-31', '2026-09-16', 426.00, 142.0000, NOW()),
+('BATCH-PRD-028-01', 1028, 6, '2028-01-31', '2026-09-16', 282.00, 47.0000, NOW()),
+('BATCH-PRD-029-01', 1029, 6, '2028-02-28', '2026-09-16', 498.00, 83.0000, NOW()),
+('BATCH-PRD-030-01', 1030, 25, '2027-09-30', '2026-09-16', 387.50, 15.5000, NOW()),
+('BATCH-PRD-031-01', 1031, 30, '2027-10-31', '2026-09-16', 720.00, 24.0000, NOW()),
+('BATCH-PRD-032-01', 1032, 3, '2027-04-30', '2026-09-16', 633.00, 211.0000, NOW()),
+('BATCH-PRD-033-01', 1033, 20, '2027-11-30', '2026-09-16', 310.00, 15.5000, NOW()),
+('BATCH-PRD-034-01', 1034, 20, '2027-03-31', '2026-09-16', 370.00, 18.5000, NOW()),
+('BATCH-PRD-035-01', 1035, 30, '2027-05-31', '2026-09-16', 780.00, 26.0000, NOW()),
+('BATCH-PRD-036-01', 1036, 30, '2027-06-30', '2026-09-16', 825.00, 27.5000, NOW()),
+('BATCH-PRD-037-01', 1037, 20, '2027-08-31', '2026-09-16', 700.00, 35.0000, NOW()),
+('BATCH-PRD-038-01', 1038, 20, '2027-07-31', '2026-09-16', 170.00, 8.5000, NOW()),
+('BATCH-PRD-039-01', 1039, 30, '2027-09-30', '2026-09-16', 720.00, 24.0000, NOW()),
+('BATCH-PRD-040-01', 1040, 20, '2027-10-31', '2026-09-16', 410.00, 20.5000, NOW()),
+('BATCH-PRD-041-01', 1041, 30, '2027-12-31', '2026-09-16', 375.00, 12.5000, NOW()),
+('BATCH-PRD-042-01', 1042, 30, '2028-01-31', '2026-09-16', 435.00, 14.5000, NOW()),
+('BATCH-PRD-043-01', 1043, 20, '2027-05-31', '2026-09-16', 570.00, 28.5000, NOW()),
+('BATCH-PRD-044-01', 1044, 30, '2027-06-30', '2026-09-16', 285.00, 9.5000, NOW()),
+('BATCH-PRD-045-01', 1045, 20, '2027-11-30', '2026-09-16', 1210.00, 60.5000, NOW()),
+('BATCH-PRD-046-01', 1046, 20, '2027-08-31', '2026-09-16', 920.00, 46.0000, NOW()),
+('BATCH-PRD-047-01', 1047, 10, '2027-09-30', '2026-09-16', 320.00, 32.0000, NOW()),
+('BATCH-PRD-048-01', 1048, 3, '2027-07-31', '2026-09-16', 237.00, 79.0000, NOW()),
+('BATCH-PRD-049-01', 1049, 30, '2027-04-30', '2026-09-16', 645.00, 21.5000, NOW()),
+('BATCH-PRD-050-01', 1050, 3, '2027-10-31', '2026-09-16', 612.00, 204.0000, NOW()),
+('BATCH-PRD-051-01', 1051, 20, '2027-12-31', '2026-09-16', 1140.00, 57.0000, NOW()),
+('BATCH-PRD-052-01', 1052, 30, '2027-11-30', '2026-09-16', 585.00, 19.5000, NOW()),
+('BATCH-PRD-053-01', 1053, 3, '2027-08-31', '2026-09-16', 600.00, 200.0000, NOW()),
+('BATCH-PRD-054-01', 1054, 30, '2027-06-30', '2026-09-16', 585.00, 19.5000, NOW()),
+('BATCH-PRD-055-01', 1055, 3, '2027-05-31', '2026-09-16', 237.00, 79.0000, NOW()),
+('BATCH-PRD-056-01', 1056, 20, '2027-09-30', '2026-09-16', 570.00, 28.5000, NOW()),
+('BATCH-PRD-057-01', 1057, 30, '2027-07-31', '2026-09-16', 285.00, 9.5000, NOW()),
+('BATCH-PRD-058-01', 1058, 20, '2027-04-30', '2026-09-16', 1070.00, 53.5000, NOW()),
+('BATCH-PRD-059-01', 1059, 20, '2027-03-31', '2026-09-16', 300.00, 15.0000, NOW()),
+('BATCH-PRD-060-01', 1060, 30, '2027-10-31', '2026-09-16', 825.00, 27.5000, NOW()),
+('BATCH-PRD-061-01', 1061, 3, '2027-11-30', '2026-09-16', 300.00, 100.0000, NOW()),
+('BATCH-PRD-062-01', 1062, 6, '2028-02-28', '2026-09-16', 468.00, 78.0000, NOW()),
+('BATCH-PRD-063-01', 1063, 6, '2028-03-31', '2026-09-16', 252.00, 42.0000, NOW()),
+('BATCH-PRD-064-01', 1064, 6, '2028-01-31', '2026-09-16', 426.00, 71.0000, NOW()),
+('BATCH-PRD-065-01', 1065, 6, '2028-04-30', '2026-09-16', 228.00, 38.0000, NOW()),
+('BATCH-PRD-066-01', 1066, 2, '2027-08-31', '2026-09-16', 850.00, 425.0000, NOW()),
+('BATCH-PRD-067-01', 1067, 3, '2027-06-30', '2026-09-16', 255.00, 85.0000, NOW()),
+('BATCH-PRD-068-01', 1068, 100, '2027-12-31', '2026-09-16', 700.00, 7.0000, NOW()),
+('BATCH-PRD-069-01', 1069, 30, '2027-09-30', '2026-09-16', 1260.00, 42.0000, NOW()),
+('BATCH-PRD-070-01', 1070, 100, '2027-07-31', '2026-09-16', 680.00, 6.8000, NOW()),
+('BATCH-PRD-071-01', 1071, 2, '2027-05-31', '2026-09-16', 640.00, 320.0000, NOW()),
+('BATCH-PRD-072-01', 1072, 3, '2028-05-31', '2026-09-16', 204.00, 68.0000, NOW()),
+('BATCH-PRD-073-01', 1073, 3, NULL, '2026-09-16', 204.00, 68.0000, NOW()),
+('BATCH-PRD-074-01', 1074, 3, NULL, '2026-09-16', 273.00, 91.0000, NOW()),
+('BATCH-PRD-075-01', 1075, 50, '2027-10-31', '2026-09-16', 350.00, 7.0000, NOW()),
+('BATCH-PRD-076-01', 1076, 50, '2027-11-30', '2026-09-16', 575.00, 11.5000, NOW()),
+('BATCH-PRD-077-01', 1077, 30, '2027-08-31', '2026-09-16', 450.00, 15.0000, NOW()),
+('BATCH-PRD-078-01', 1078, 100, '2027-04-30', '2026-09-16', 600.00, 6.0000, NOW()),
+('BATCH-PRD-079-01', 1079, 3, '2027-06-30', '2026-09-16', 468.00, 156.0000, NOW()),
+('BATCH-PRD-080-01', 1080, 50, '2027-09-30', '2026-09-16', 525.00, 10.5000, NOW()),
+('BATCH-PRD-081-01', 1081, 50, '2027-12-31', '2026-09-16', 650.00, 13.0000, NOW()),
+('BATCH-PRD-082-01', 1082, 3, '2027-07-31', '2026-09-16', 468.00, 156.0000, NOW()),
+('BATCH-PRD-083-01', 1083, 3, '2027-03-31', '2026-09-16', 564.00, 188.0000, NOW()),
+('BATCH-PRD-084-01', 1084, 30, NULL, '2026-09-16', 2580.00, 86.0000, NOW()),
+('BATCH-PRD-085-01', 1085, 3, '2027-05-31', '2026-09-16', 525.00, 175.0000, NOW()),
+('BATCH-PRD-086-01', 1086, 2, '2027-10-31', '2026-09-16', 700.00, 350.0000, NOW()),
+('BATCH-PRD-087-01', 1087, 30, '2027-08-31', '2026-09-16', 630.00, 21.0000, NOW()),
+('BATCH-PRD-088-01', 1088, 3, '2027-09-30', '2026-09-16', 426.00, 142.0000, NOW()),
+('BATCH-PRD-089-01', 1089, 3, '2027-11-30', '2026-09-16', 336.00, 112.0000, NOW()),
+('BATCH-PRD-090-01', 1090, 20, '2027-07-31', '2026-09-16', 190.00, 9.5000, NOW()),
+('BATCH-PRD-091-01', 1091, 30, '2027-06-30', '2026-09-16', 570.00, 19.0000, NOW()),
+('BATCH-PRD-092-01', 1092, 30, '2027-08-31', '2026-09-16', 315.00, 10.5000, NOW()),
+('BATCH-PRD-093-01', 1093, 6, '2028-02-28', '2026-09-16', 414.00, 69.0000, NOW()),
+('BATCH-PRD-094-01', 1094, 12, '2028-03-31', '2026-09-16', 408.00, 34.0000, NOW()),
+('BATCH-PRD-095-01', 1095, 6, '2028-01-31', '2026-09-16', 138.00, 23.0000, NOW()),
+('BATCH-PRD-096-01', 1096, 6, NULL, '2026-09-16', 756.00, 126.0000, NOW()),
+('BATCH-PRD-097-01', 1097, 2, NULL, '2026-09-16', 80.00, 40.0000, NOW()),
+('BATCH-PRD-098-01', 1098, 3, '2027-10-31', '2026-09-16', 435.00, 145.0000, NOW()),
+('BATCH-PRD-099-01', 1099, 12, '2027-05-31', '2026-09-16', 516.00, 43.0000, NOW()),
+('BATCH-PRD-100-01', 1100, 12, NULL, '2026-09-16', 216.00, 18.0000, NOW()),
+('BATCH-PRD-101-01', 1101, 30, '2027-12-31', '2026-09-16', 480.00, 16.0000, NOW()),
+('BATCH-PRD-102-01', 1102, 60, '2027-11-30', '2026-09-16', 1680.00, 28.0000, NOW()),
+('BATCH-PRD-103-01', 1103, 6, '2028-06-30', '2026-09-16', 150.00, 25.0000, NOW()),
+('BATCH-PRD-104-01', 1104, 30, '2028-01-31', '2026-09-16', 300.00, 10.0000, NOW()),
+('BATCH-PRD-105-01', 1105, 30, '2028-02-29', '2026-09-16', 255.00, 8.5000, NOW()),
+('BATCH-PRD-106-01', 1106, 50, '2027-09-30', '2026-09-16', 500.00, 10.0000, NOW()),
+('BATCH-PRD-107-01', 1107, 3, '2027-10-31', '2026-09-16', 1020.00, 340.0000, NOW()),
+('BATCH-PRD-108-01', 1108, 30, '2027-08-31', '2026-09-16', 480.00, 16.0000, NOW()),
+('BATCH-PRD-109-01', 1109, 12, '2028-04-30', '2026-09-16', 504.00, 42.0000, NOW()),
+('BATCH-PRD-110-01', 1110, 12, '2028-05-31', '2026-09-16', 552.00, 46.0000, NOW()),
+('BATCH-PRD-111-01', 1111, 30, '2027-07-31', '2026-09-16', 360.00, 12.0000, NOW()),
+('BATCH-PRD-112-01', 1112, 30, '2027-09-30', '2026-09-16', 630.00, 21.0000, NOW()),
+('BATCH-PRD-113-01', 1113, 3, '2027-06-30', '2026-09-16', 585.00, 195.0000, NOW()),
+('BATCH-PRD-114-01', 1114, 5, '2027-12-31', '2026-09-16', 725.00, 145.0000, NOW()),
+('BATCH-PRD-115-01', 1115, 2, '2027-11-30', '2026-09-16', 1160.00, 580.0000, NOW()),
+('BATCH-PRD-116-01', 1116, 3, NULL, '2026-09-16', 600.00, 200.0000, NOW()),
+('BATCH-PRD-117-01', 1117, 1, NULL, '2026-09-16', 1750.00, 1750.0000, NOW()),
+('BATCH-PRD-118-01', 1118, 3, '2027-08-31', '2026-09-16', 315.00, 105.0000, NOW());
+
+
+-- ==========================================
+-- 4. INSERT 300 SEPTEMBER 2026 SALES
+-- ==========================================
+-- The first 118 sale groups cover each imported product once. The remaining
+-- groups contain 1-8 distinct products, with one base unit per sale line.
+INSERT INTO `transactions`
+	(`id`, `type`, `sale_group_id`, `product_name`, `product_id`, `qty`, `sale_qty`,
+	 `sale_unit`, `units_per_sale`, `amount`, `discount_amount`, `pre_tax_amount`,
+	 `tax_amount`, `tax_rate`, `staff`, `staff_id`, `status`, `note`, `transacted_at`)
+WITH RECURSIVE sale_numbers (sale_no) AS (
+	SELECT 1
+	UNION ALL
+	SELECT sale_no + 1 FROM sale_numbers WHERE sale_no < 300
+), line_numbers (line_no) AS (
+	SELECT 1
+	UNION ALL
+	SELECT line_no + 1 FROM line_numbers WHERE line_no < 8
+), catalog_products AS (
+	SELECT
+		p.id AS product_id,
+		ROW_NUMBER() OVER (ORDER BY b.batch_id) AS product_no
+	FROM product_batches b
+	JOIN products p ON p.id = b.product_id
+	WHERE b.batch_id LIKE 'BATCH-PRD-%'
+), sale_groups AS (
+	SELECT
+		sale_no,
+		CASE
+			WHEN sale_no <= 118 THEN 1
+			ELSE 1 + MOD(CRC32(CONCAT('SEPT-LINES-', sale_no)), 8)
+		END AS line_count
+	FROM sale_numbers
+), sale_lines AS (
+	SELECT
+		g.sale_no,
+		l.line_no,
+		CASE
+			WHEN g.sale_no <= 118 THEN g.sale_no
+			ELSE 1 + MOD(CRC32(CONCAT('SEPT-PRODUCTS-', g.sale_no)) + l.line_no - 1, 118)
+		END AS product_no
+	FROM sale_groups g
+	JOIN line_numbers l ON l.line_no <= g.line_count
+)
+SELECT
+	CONCAT('SEPTX', LPAD(s.sale_no, 4, '0'), '-', LPAD(s.line_no, 2, '0')),
+	'sale',
+	CONCAT('SEPTX', LPAD(s.sale_no, 4, '0')),
+	p.name,
+	p.id,
+	1,
+	1,
+	'unit',
+	1,
+	p.price,
+	0.00,
+	CASE
+		WHEN p.is_vat_exempt = 1 THEN p.price
+		ELSE ROUND(p.price / 1.12, 2)
+	END,
+	CASE
+		WHEN p.is_vat_exempt = 1 THEN 0.00
+		ELSE ROUND(p.price - (p.price / 1.12), 2)
+	END,
+	CASE WHEN p.is_vat_exempt = 1 THEN 0.0000 ELSE 0.1200 END,
+	'Demo Cashier',
+	NULL,
+	'completed',
+	'Generated September 2026 demo sale',
+	DATE_ADD(
+		DATE_ADD('2026-09-17 08:00:00', INTERVAL MOD(CRC32(CONCAT('SEPT-DATE-', s.sale_no)), 14) DAY),
+		INTERVAL MOD(CRC32(CONCAT('SEPT-TIME-', s.sale_no)), 600) MINUTE
+	)
+FROM sale_lines s
+JOIN catalog_products cp ON cp.product_no = s.product_no
+JOIN products p ON p.id = cp.product_id
+WHERE NOT EXISTS (
+	SELECT 1
+	FROM transactions existing
+	WHERE existing.id = CONCAT('SEPTX', LPAD(s.sale_no, 4, '0'), '-', LPAD(s.line_no, 2, '0'))
+);
+
+-- Record the batch consumed by each seeded sale line.
+INSERT IGNORE INTO `transaction_batches` (`transaction_id`, `batch_id`, `expiry_date`, `qty`)
+SELECT
+	t.id,
+	b.batch_id,
+	b.expiry_date,
+	t.qty
+FROM transactions t
+JOIN product_batches b
+	ON b.product_id = t.product_id
+	AND b.batch_id LIKE 'BATCH-PRD-%'
+WHERE t.id LIKE 'SEPTX%'
+	AND NOT EXISTS (
+		SELECT 1
+		FROM transaction_batches tb
+		WHERE tb.transaction_id = t.id AND tb.batch_id = b.batch_id
+	);
+
+-- Verify group count, line count, and product coverage.
+SELECT
+	COUNT(DISTINCT sale_group_id) AS september_sale_groups,
+	COUNT(*) AS sale_lines,
+	COUNT(DISTINCT product_id) AS products_sold
+FROM transactions
+WHERE id LIKE 'SEPTX%';
+
+SELECT sale_group_id, COUNT(*) AS products_in_sale
+FROM transactions
+WHERE id LIKE 'SEPTX%'
+GROUP BY sale_group_id
+HAVING COUNT(*) < 1 OR COUNT(*) > 8;
