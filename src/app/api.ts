@@ -83,19 +83,24 @@ function getApiBase(): string {
     return 'http://localhost/SmartTrack/api';
   }
 
-  // Environment variable override
   const configuredApiBase = import.meta.env.VITE_API_URL?.trim().replace(/\/$/, '');
-  if (configuredApiBase) {
-    log('Using configured API base', configuredApiBase);
-    return configuredApiBase;
-  }
-
   const { protocol, hostname, port } = window.location;
 
   // Electron app running from file:// protocol
   if (protocol === 'file:') {
+    if (configuredApiBase && /^https?:\/\//i.test(configuredApiBase)) {
+      log('Using configured API base', configuredApiBase);
+      return configuredApiBase;
+    }
+
     log('Electron app detected (file:// protocol)', 'Using http://127.0.0.1/SmartTrack/api');
     return 'http://127.0.0.1/SmartTrack/api';
+  }
+
+  // Environment variable override
+  if (configuredApiBase) {
+    log('Using configured API base', configuredApiBase);
+    return configuredApiBase;
   }
 
   // Vite dev server or production on non-standard port
