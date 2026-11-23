@@ -121,22 +121,20 @@ const InventoryRow = memo(function InventoryRow({
           <span className="ml-1 text-[10px] text-primary">+{meta.extraBatches} batch</span>
         )}
       </td>
-      <td className="px-4 py-3 whitespace-nowrap"><StockBadge status={item.status} /></td>
       <td className="px-4 py-3 whitespace-nowrap">
-        {canModify ? (
-          <div className="flex items-center gap-2">
-            <button onClick={() => onEditProduct(item)} className="p-1.5 rounded-lg text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors" title="Edit product">
-              <Pencil size={16} />
-            </button>
-            <button onClick={() => onDeleteProduct(item)} className="p-1.5 rounded-lg text-muted-foreground hover:text-red-500 hover:bg-red-500/10 transition-colors" title="Delete product">
-              <Trash2 size={16} />
-            </button>
-          </div>
-        ) : (
-          <span className="text-[10px] text-muted-foreground italic">
-            {isCashier ? "View only" : "Read only"}
-          </span>
-        )}
+        <div className="flex items-center gap-1.5">
+          <StockBadge status={item.status} />
+          {canModify ? (
+            <>
+              <button onClick={() => onEditProduct(item)} className="p-1 rounded-lg text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors" title="Edit product">
+                <Pencil size={14} />
+              </button>
+              <button onClick={() => onDeleteProduct(item)} className="p-1 rounded-lg text-muted-foreground hover:text-red-500 hover:bg-red-500/10 transition-colors" title="Delete product">
+                <Trash2 size={14} />
+              </button>
+            </>
+          ) : null}
+        </div>
       </td>
     </tr>
   );
@@ -376,7 +374,7 @@ const InventoryPage = memo(function InventoryPage({
           <table className="w-full">
             <thead className="sticky top-0 z-10 bg-card shadow-sm">
               <tr className="border-b border-border bg-muted/30">
-                {["Product / Barcode", "Category", "Supplier", "Stock (Packs / Units)", "Sold", "Reorder At", "Unit Price", "Expiry", "Stock Status", ""].map(h => (
+                {["Product / Barcode", "Category", "Supplier", "Stock (Packs / Units)", "Sold", "Reorder At", "Unit Price", "Expiry", "Stock Status"].map(h => (
                   <th key={h} className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide py-3 text-left px-4 first:px-5 whitespace-nowrap">{h}</th>
                 ))}
               </tr>
@@ -402,7 +400,7 @@ const InventoryPage = memo(function InventoryPage({
               })}
               {filtered.length === 0 && (
                 <tr>
-                  <td colSpan={10} className="text-center py-10 text-sm text-muted-foreground">
+                  <td colSpan={9} className="text-center py-10 text-sm text-muted-foreground">
                     No products match your filter.
                   </td>
                 </tr>

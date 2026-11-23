@@ -1,12 +1,26 @@
-Options -Indexes
-RewriteEngine On
+<IfModule mod_rewrite.c>
+    <IfModule mod_negotiation.c>
+        Options -MultiViews -Indexes
+    </IfModule>
 
-# Pass Authorization header through to PHP (required for Bearer token auth)
-# Apache strips this header by default in CGI/FastCGI mode
-RewriteCond %{HTTP:Authorization} .
-RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
+    RewriteEngine On
+    RewriteBase /SmartTrack/api/
 
-# Route all requests to index.php
-RewriteCond %{REQUEST_FILENAME} !-f
-RewriteCond %{REQUEST_FILENAME} !-d
-RewriteRule ^(.*)$ index.php [QSA,L]
+    # Send every request to the Laravel bridge index.php
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteCond %{REQUEST_FILENAME} !-d
+    RewriteRule ^ index.php [L]
+
+    # Apache often strips the Authorization header for CGI/FastCGI handlers.
+    # Re-inject it from %{HTTP:Authorization} so the Laravel token middleware can read it.
+    RewriteCond %{HTTP:Authorization} ^(.+)$
+    RewriteRule .* - [E=HTTP_AUTHORIZATION:%1]
+</IfModule>
+
+# CORS preflight — answered by the Laravel Cors middleware, but allow
+# the request to reach PHP rather than being short-circuited by Apache.
+<IfModule mod_headers.c>
+    Header always set Access-Control-Allow-Origin "*"
+    Header always set Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS"
+    Header always set Access-Control-Allow-Headers "Content-Type, Authorization, X-Requested-With, X-Active-Role"
+</IfModule>
